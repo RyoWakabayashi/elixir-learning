@@ -1,0 +1,117 @@
+# 制御構造
+
+## if
+
+```elixir
+if String.valid?("Hello") do
+  "Valid string!"
+else
+  "Invalid string."
+end
+```
+
+該当するものがなければ nil が返る
+
+```elixir
+if String.length("Hello") < 3 do
+  "!!!"
+end
+```
+
+```elixir
+res =
+  if is_atom(:foo) do
+    ":foo is atom"
+  else
+    "not atom"
+  end
+```
+
+## unless
+
+```elixir
+a = 1
+
+unless a < 0 do
+  "!!!"
+end
+```
+
+```elixir
+unless a > 0 do
+  "!!!"
+end
+```
+
+## case
+
+```elixir
+case {:ok, "Hello World"} do
+  {:ok, result} -> result
+  {:error} -> "Uh oh!"
+  _ -> "Catch all"
+end
+```
+
+```elixir
+case :even do
+  :odd -> "Odd"
+end
+```
+
+```elixir
+case :even do
+  :odd -> "Odd"
+  _ -> "Not Odd"
+end
+```
+
+```elixir
+case {1, 2, 3} do
+  {1, x, 3} when x > 0 ->
+    "Will match"
+
+  _ ->
+    "Won't match"
+end
+```
+
+## cond
+
+```elixir
+cond do
+  2 + 2 == 5 ->
+    "This will not be true"
+
+  2 * 2 == 3 ->
+    "Nor this"
+
+  1 + 1 == 2 ->
+    "But this will"
+end
+```
+
+```elixir
+cond do
+  7 + 1 == 0 -> "Incorrect"
+  true -> "Catch all"
+end
+```
+
+## with
+
+```elixir
+user = %{first: "Sean", last: "Callan"}
+```
+
+```elixir
+with {:ok, first} <- Map.fetch(user, :first),
+     {:ok, last} <- Map.fetch(user, :last),
+     do: last <> ", " <> first
+```
+
+```elixir
+with {:ok, middle} <- Map.fetch(user, :middle),
+     {:ok, last} <- Map.fetch(user, :last),
+     do: last <> ", " <> middle
+```

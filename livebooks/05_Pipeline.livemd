@@ -1,0 +1,15 @@
+# パイプライン
+
+## パイプライン演算子
+
+```elixir
+"Elixir rocks" |> String.split()
+```
+
+```elixir
+"Elixir rocks" |> String.upcase() |> String.split()
+```
+
+```elixir
+"elixir" |> String.ends_with?("ixir")
+```

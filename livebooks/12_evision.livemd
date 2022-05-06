@@ -1,0 +1,161 @@
+# evision
+
+## 依存パッケージ
+
+```elixir
+Mix.install([
+  {:download, "~> 0.0.4"},
+  {:evision, "~> 0.1.0-dev", github: "cocoa-xu/evision", branch: "main"},
+  {:kino, "~> 0.5.2"},
+  {:nx, "~> 0.1", [env: :prod, repo: "hexpm", hex: "nx", optional: true]}
+])
+```
+
+```elixir
+alias Evision, as: OpenCV
+```
+
+```elixir
+defmodule Helper do
+  def show_image(mat) do
+    {:ok, encoded} = OpenCV.imencode(".png", mat)
+
+    encoded
+    |> IO.iodata_to_binary()
+    |> Kino.Image.new(:png)
+  end
+end
+```
+
+## 画像のダウンロード
+
+```elixir
+# 再実行時、Download.from()でeexistエラーになるのを防止
+File.rm("Lenna_%28test_image%29.png")
+
+lenna =
+  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
+  |> elem(1)
+```
+
+```elixir
+lenna
+|> File.read!()
+|> Kino.Image.new(:jpeg)
+```
+
+## 画像の読込
+
+```elixir
+{:ok, mat} = OpenCV.imread(lenna)
+```
+
+```elixir
+{:ok, size} = OpenCV.Mat.shape(mat)
+```
+
+```elixir
+Helper.show_image(mat)
+```
+
+## リサイズ
+
+```elixir
+{:ok, resized_mat} = OpenCV.resize(mat, [_width = 256, _height = 128])
+{:ok, {128, 256, 3}} = OpenCV.Mat.shape(resized_mat)
+Helper.show_image(resized_mat)
+```
+
+## グレースケール
+
+```elixir
+{:ok, gray_scale_mat} =
+  lenna
+  |> OpenCV.imread(flags: OpenCV.cv_IMREAD_GRAYSCALE())
+
+Helper.show_image(gray_scale_mat)
+```
+
+## 二値化
+
+```elixir
+{:ok, {threshold, mono_mat}} =
+  gray_scale_mat
+  |> OpenCV.threshold(127, 255, OpenCV.cv_THRESH_BINARY())
+
+{:ok, {512, 512}} = OpenCV.Mat.shape(mono_mat)
+Helper.show_image(mono_mat)
+```
+
+## 並進
+
+```elixir
+{:ok, affine} =
+  [
+    [1, 0, 100],
+    [0, 1, 50]
+  ]
+  |> Nx.tensor(type: {:f, 32})
+  |> OpenCV.Nx.to_mat()
+```
+
+```elixir
+dsize = [512, 512]
+
+{:ok, moved_mat} = OpenCV.warpAffine(mat, affine, dsize)
+Helper.show_image(moved_mat)
+```
+
+## 回転
+
+```elixir
+{:ok, affine} = OpenCV.getRotationMatrix2D([512 / 2, 512 / 2], 90, 1)
+```
+
+```elixir
+dsize = [512, 512]
+
+{:ok, rotated_mat} = OpenCV.warpAffine(mat, affine, dsize)
+Helper.show_image(rotated_mat)
+```
+
+## ブラー
+
+```elixir
+{:ok, blured_mat} = OpenCV.blur(mat, [9, 9])
+Helper.show_image(blured_mat)
+```
+
+## メディアンブラー
+
+```elixir
+{:ok, blured_mat} = OpenCV.medianBlur(mat, 9)
+Helper.show_image(blured_mat)
+```
+
+## ガウシアンブラー
+
+```elixir
+{:ok, blured_mat} = OpenCV.gaussianBlur(mat, [9, 9], 5, [])
+Helper.show_image(blured_mat)
+```
+
+## 図形描画
+
+```elixir
+{:ok, drawed_mat} = OpenCV.rectangle(mat, [50, 10], [125, 60], [255, 0, 0])
+
+{:ok, drawed_mat} =
+  OpenCV.rectangle(drawed_mat, [250, 60], [325, 110], [0, 255, 0], thickness: -1)
+
+{:ok, drawed_mat} =
+  OpenCV.rectangle(drawed_mat, [150, 120], [225, 320], [0, 0, 255],
+    thickness: 5,
+    lineType: OpenCV.cv_LINE_4()
+  )
+
+{:ok, drawed_mat} =
+  OpenCV.ellipse(drawed_mat, [300, 300], [100, 200], 30, 0, 360, [255, 255, 0], thickness: 3)
+
+Helper.show_image(drawed_mat)
+```

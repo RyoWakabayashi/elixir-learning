@@ -1,0 +1,157 @@
+# 関数
+
+## 匿名関数
+
+```elixir
+sum = fn a, b -> a + b end
+sum.(2, 3)
+```
+
+省略記法
+
+```elixir
+sum = &(&1 + &2)
+sum.(2, 3)
+```
+
+## 名前付き関数
+
+```elixir
+defmodule Greeter do
+  def hello(name) do
+    "Hello, " <> name
+  end
+end
+
+Greeter.hello("Sean")
+```
+
+```elixir
+defmodule Greeter do
+  def hello(name), do: "Hello, " <> name
+end
+
+Greeter.hello("Sean")
+```
+
+```elixir
+defmodule Length do
+  def of([]), do: 0
+  def of([_ | tail]), do: 1 + of(tail)
+end
+```
+
+```elixir
+Length.of([])
+```
+
+```elixir
+Length.of([1, 2, 3])
+```
+
+## 関数の命名とアリティ（引数の数）
+
+引数の数が違うものは別関数として扱われる
+
+```elixir
+defmodule Greeter2 do
+  # hello/0
+  def hello(), do: "Hello, anonymous person!"
+  # hello/1
+  def hello(name), do: "Hello, " <> name
+  # hello/2
+  def hello(name1, name2), do: "Hello, #{name1} and #{name2}"
+end
+```
+
+```elixir
+Greeter2.hello()
+```
+
+```elixir
+Greeter2.hello("Fred")
+```
+
+```elixir
+Greeter2.hello("Fred", "Jane")
+```
+
+## プライベート関数
+
+```elixir
+defmodule Greeter do
+  def hello(name), do: phrase() <> name
+  defp phrase, do: "Hello, "
+end
+```
+
+```elixir
+Greeter.hello("Sean")
+```
+
+```elixir
+Greeter.phrase()
+```
+
+## パターンマッチング
+
+引数がパターンに一致する場合のみ処理する
+
+```elixir
+defmodule Greeter1 do
+  def hello(%{name: person_name}) do
+    IO.puts("Hello, " <> person_name)
+  end
+end
+```
+
+```elixir
+fred = %{
+  name: "Fred",
+  age: "95",
+  favorite_color: "Taupe"
+}
+```
+
+```elixir
+Greeter1.hello(fred)
+```
+
+```elixir
+john = %{
+  age: "85",
+  favorite_color: "Red"
+}
+```
+
+```elixir
+Greeter1.hello(john)
+```
+
+## ガード
+
+条件によって関数を分離する
+
+```elixir
+defmodule Greeter do
+  def hello(names) when is_list(names) do
+    names
+    |> Enum.join(", ")
+    |> hello
+  end
+
+  def hello(name) when is_binary(name) do
+    phrase() <> name
+  end
+
+  defp phrase, do: "Hello, "
+end
+```
+
+```elixir
+Greeter.hello(["Sean", "Steve"])
+```
+
+```elixir
+Greeter.hello("John")
+```

@@ -1,0 +1,76 @@
+# 基本
+
+## 数値演算
+
+```elixir
+1 + 2
+```
+
+```elixir
+5 - 3
+```
+
+```elixir
+10 * 5
+```
+
+```elixir
+7 / 3
+```
+
+```elixir
+div(7, 3)
+```
+
+```elixir
+rem(7, 3)
+```
+
+## 文字列
+
+```elixir
+"Hello"
+```
+
+## 変数
+
+```elixir
+a = 1
+b = 2
+
+a == b
+```
+
+```elixir
+a + 1 == b
+```
+
+```elixir
+a = "Elixir"
+
+"Hello #{a}"
+```
+
+## atom型
+
+変数名 = 値 になっている
+
+```elixir
+:foo
+```
+
+```elixir
+:foo == :foo
+```
+
+```elixir
+:foo == :bar
+```
+
+```elixir
+is_atom(:foo)
+```
+
+```elixir
+is_atom(true)
+```

@@ -1,0 +1,399 @@
+<!-- livebook:{"persist_outputs":true} -->
+
+# Untitled notebook
+
+## Section
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.2.0", github: "elixir-nx/nx", branch: "main", sparse: "nx"},
+    {:kino, "~> 0.3.1"},
+    {:download, "~> 0.0.4"},
+    {:pixels, "~> 0.2.1"},
+    {:pngex, "~> 0.1.1"}
+  ],
+  system_env: [{"CROSSCOMPILE", "1"}]
+)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+* Getting nx (https://github.com/elixir-nx/nx.git - origin/main)
+remote: Enumerating objects: 12914, done.        
+remote: Counting objects: 100% (337/337), done.        
+remote: Compressing objects: 100% (212/212), done.        
+remote: Total 12914 (delta 179), reused 246 (delta 121), pack-reused 12577        
+Resolving Hex dependencies...
+Dependency resolution completed:
+New:
+  certifi 2.9.0
+  complex 0.4.0
+  download 0.0.4
+  elixir_make 0.6.3
+  hackney 1.18.1
+  httpoison 1.8.1
+  idna 6.1.1
+  kino 0.3.1
+  metrics 1.0.1
+  mimerl 1.2.0
+  parse_trans 3.3.1
+  pixels 0.2.1
+  pngex 0.1.1
+  ssl_verify_fun 1.1.6
+  unicode_util_compat 0.7.0
+* Getting kino (Hex package)
+* Getting download (Hex package)
+* Getting pixels (Hex package)
+* Getting pngex (Hex package)
+* Getting elixir_make (Hex package)
+* Getting httpoison (Hex package)
+* Getting hackney (Hex package)
+* Getting certifi (Hex package)
+* Getting idna (Hex package)
+* Getting metrics (Hex package)
+* Getting mimerl (Hex package)
+* Getting parse_trans (Hex package)
+* Getting ssl_verify_fun (Hex package)
+* Getting unicode_util_compat (Hex package)
+* Getting complex (Hex package)
+===> Analyzing applications...
+===> Compiling parse_trans
+==> pngex
+Compiling 4 files (.ex)
+Generated pngex app
+===> Analyzing applications...
+===> Compiling mimerl
+==> kino
+Compiling 14 files (.ex)
+Generated kino app
+===> Analyzing applications...
+===> Compiling metrics
+===> Analyzing applications...
+===> Compiling unicode_util_compat
+===> Analyzing applications...
+===> Compiling idna
+==> ssl_verify_fun
+Compiling 7 files (.erl)
+Generated ssl_verify_fun app
+==> elixir_make
+Compiling 1 file (.ex)
+Generated elixir_make app
+==> complex
+Compiling 2 files (.ex)
+Generated complex app
+==> nx
+Compiling 24 files (.ex)
+Compiling lib/nx/binary_backend.ex (it's taking more than 10s)
+Generated nx app
+===> Analyzing applications...
+===> Compiling certifi
+===> Analyzing applications...
+===> Compiling hackney
+==> httpoison
+Compiling 3 files (.ex)
+Generated httpoison app
+==> download
+Compiling 1 file (.ex)
+warning: System.cwd/0 is deprecated. Use File.cwd/0 instead
+  lib/download.ex:46: Download.get_default_download_path/1
+
+Generated download app
+==> pixels
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/pixels_jpeg.o c_src/pixels_jpeg.c
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/pixels_nif.o c_src/pixels_nif.c
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/pixels_png.o c_src/pixels_png.c
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/ext/lodepng.o c_src/ext/lodepng.c
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/ext/ujpeg.o c_src/ext/ujpeg.c
+cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -Wl,--no-whole-archive -shared -o /home/livebook/.cache/mix/installs/elixir-1.13.2-erts-12.1.5/f5e9b445e2c0fde8217e6781b8f718d6/_build/dev/lib/pixels/priv/pixels_nif.so
+Compiling 3 files (.ex)
+Generated pixels app
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+```elixir
+inputs = [
+  [1, 2],
+  [3, 4]
+]
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[[1, 2], [3, 4]]
+```
+
+```elixir
+Nx.tensor(inputs)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+#Nx.Tensor<
+  s64[2][2]
+  [
+    [1, 2],
+    [3, 4]
+  ]
+>
+```
+
+```elixir
+[
+  [1, 2],
+  [3, 4]
+]
+|> Nx.tensor()
+|> Nx.divide(3)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+#Nx.Tensor<
+  f32[2][2]
+  [
+    [0.3333333432674408, 0.6666666865348816],
+    [1.0, 1.3333333730697632]
+  ]
+>
+```
+
+```elixir
+[
+  [9, 8, 7, 6, 5],
+  [8, 7, 6, 5, 4],
+  [7, 6, 5, 4, 3],
+  [6, 5, 4, 3, 2],
+  [5, 4, 3, 2, 1]
+]
+|> Nx.tensor()
+|> Nx.to_heatmap()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+#Nx.Heatmap<
+  s64[5][5]
+  
+  　　　　　
+  　　　　　
+  　　　　　
+  　　　　　
+  　　　　　
+>
+```
+
+```elixir
+# 再実行時、Download.from()でeexistエラーになるのを防止
+File.rm("Lenna_%28test_image%29.png")
+
+lenna =
+  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
+  |> elem(1)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+"/data/Lenna_%28test_image%29.png"
+```
+
+```elixir
+lenna
+|> File.read!()
+|> Kino.Image.new(:jpeg)
+```
+
+```elixir
+File.rm("D2_x0z7UkAAI4gJ.jpg")
+
+Download.from("https://pbs.twimg.com/media/D2_x0z7UkAAI4gJ.jpg")
+|> elem(1)
+|> File.read!()
+|> Kino.Image.new(:jpeg)
+```
+
+```elixir
+lenna
+|> Pixels.read_file()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:ok,
+ %Pixels{
+   data: <<226, 137, 125, 255, 226, 137, 125, 255, 223, 137, 133, 255, 223, 136, 128, 255, 226, 138,
+     120, 255, 226, 129, 116, 255, 228, 138, 123, 255, 227, 134, 124, 255, 227, 140, 127, 255, 225,
+     136, 119, 255, 228, 135, 126, 255, 225, 134, 121, ...>>,
+   height: 512,
+   width: 512
+ }}
+```
+
+```elixir
+rgba =
+  lenna
+  |> Pixels.read_file()
+  |> elem(1)
+  |> Map.get(:data)
+  |> Nx.from_binary({:u, 8})
+  |> Nx.reshape({262_144, 4})
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+#Nx.Tensor<
+  u8[262144][4]
+  [
+    [226, 137, 125, 255],
+    [226, 137, 125, 255],
+    [223, 137, 133, 255],
+    [223, 136, 128, 255],
+    [226, 138, 120, 255],
+    [226, 129, 116, 255],
+    [228, 138, 123, 255],
+    [227, 134, 124, 255],
+    [227, 140, 127, 255],
+    [225, 136, 119, 255],
+    [228, 135, 126, 255],
+    [225, 134, 121, 255],
+    [223, 130, ...],
+    ...
+  ]
+>
+```
+
+```elixir
+# ここから画像加工処理
+rgb =
+  rgba
+  |> Nx.slice_axis(0, 3, -1)
+  |> Nx.map(&Nx.subtract(255, &1))
+
+a =
+  rgba
+  |> Nx.slice_axis(4, 1, -1)
+
+new_rgba = Nx.concatenate([rgb, a], axis: -1)
+# ここまで画像加工処理
+
+changed =
+  new_rgba
+  |> Nx.to_flat_list()
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+warning: Nx.slice_axis/4 is deprecated. Use slice_along_axis/4 instead
+  /home/livebook/11_Image.livemd#cell:4
+
+warning: Nx.slice_axis/4 is deprecated. Use slice_along_axis/4 instead
+  /home/livebook/11_Image.livemd#cell:9
+
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[29, 118, 130, 255, 29, 118, 130, 255, 32, 118, 122, 255, 32, 119, 127, 255, 29, 117, 135, 255, 29,
+ 126, 139, 255, 27, 117, 132, 255, 28, 121, 131, 255, 28, 115, 128, 255, 30, 119, 136, 255, 27, 120,
+ 129, 255, 30, 121, 134, 255, 32, 125, ...]
+```
+
+```elixir
+rgba_tuple_list =
+  changed
+  |> Enum.chunk_every(4)
+  |> Enum.map(fn [r, g, b, a] -> {r, g, b, a} end)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[
+  {29, 118, 130, 255},
+  {29, 118, 130, 255},
+  {32, 118, 122, 255},
+  {32, 119, 127, 255},
+  {29, 117, 135, 255},
+  {29, 126, 139, 255},
+  {27, 117, 132, 255},
+  {28, 121, 131, 255},
+  {28, 115, 128, 255},
+  {30, 119, 136, 255},
+  {27, 120, 129, 255},
+  {30, 121, 134, 255},
+  {32, 125, 147, 255},
+  {29, 116, 136, 255},
+  {32, 120, 135, 255},
+  {34, 126, 141, 255},
+  {34, 121, 147, 255},
+  {34, 124, 142, 255},
+  {33, 117, 134, 255},
+  {33, 116, 141, 255},
+  {32, 128, 146, 255},
+  {32, 123, 150, 255},
+  {31, 126, 153, 255},
+  {34, 121, 146, 255},
+  {37, 124, 145, 255},
+  {34, 122, 142, 255},
+  {32, 125, 147, 255},
+  {30, 130, 157, 255},
+  {34, 125, 134, 255},
+  {34, 126, 144, 255},
+  {35, 128, 134, 255},
+  {32, 124, 146, 255},
+  {30, 128, 152, 255},
+  {32, 121, 146, 255},
+  {29, 127, 149, 255},
+  {32, 120, 133, 255},
+  {30, 122, 143, 255},
+  {28, 111, 131, 255},
+  {26, 120, 151, 255},
+  {24, 113, 132, 255},
+  {24, 112, 139, 255},
+  {23, 113, 143, 255},
+  {25, 112, 138, 255},
+  {22, 105, 134, 255},
+  {21, 107, 134, 255},
+  {18, 101, 132, 255},
+  {22, 102, 134, ...},
+  {24, 106, ...},
+  {18, ...},
+  {...},
+  ...
+]
+```
+
+```elixir
+image =
+  Pngex.new(type: :rgba, depth: :depth8, width: 512, height: 512)
+  |> Pngex.generate(rgba_tuple_list)
+
+File.write("new.png", image)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+```elixir
+"new.png"
+|> File.read!()
+|> Kino.Image.new(:png)
+```

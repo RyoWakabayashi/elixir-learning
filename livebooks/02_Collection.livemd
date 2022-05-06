@@ -1,0 +1,137 @@
+# コレクション
+
+## リスト
+
+```elixir
+["a", "b", "c"]
+```
+
+```elixir
+list = [3.14, :pie, "Apple"]
+```
+
+## リストへの追加
+
+```elixir
+["π" | list]
+```
+
+```elixir
+[list | "π"]
+```
+
+```elixir
+list ++ ["π"]
+```
+
+```elixir
+[1, 2] ++ [3, 4, 1]
+```
+
+## リストの差分
+
+```elixir
+["a", "b", "c", "d"] -- ["a", "c"]
+```
+
+## リストの先頭
+
+```elixir
+hd(["a", "b", "c", "d"])
+```
+
+## リストの尾部（先頭以外）
+
+```elixir
+tl(["a", "b", "c", "d"])
+```
+
+## リストの先頭と尾部
+
+```elixir
+[list_head | list_tail] = ["a", "b", "c", "d"]
+```
+
+```elixir
+list_head
+```
+
+```elixir
+list_tail
+```
+
+## タプル
+
+```elixir
+{"a", "b", "c"}
+```
+
+```elixir
+tapple = {3.14, :pie, "Apple"}
+```
+
+## キーワードリスト
+
+キーは必ず atom 型
+
+```elixir
+[foo: "bar", hello: "world"]
+```
+
+```elixir
+kl = [
+  foo: "bar",
+  hello: "world"
+]
+
+kl[:hello]
+```
+
+## マップ
+
+キーの型に制約がない
+
+```elixir
+%{:foo => "bar", "hello" => :world}
+```
+
+```elixir
+map = %{
+  :foo => "bar",
+  "hello" => :world
+}
+
+map["hello"]
+```
+
+atom だけがキーの場合、簡略的な書き方もできる
+
+```elixir
+%{
+  :foo => "bar",
+  :hello => "world"
+}
+```
+
+```elixir
+map = %{
+  foo: "bar",
+  hello: "world"
+}
+```
+
+```elixir
+map.foo
+```
+
+```elixir
+%{map | foo: "baz"}
+```
+
+```elixir
+map[:new] = "123"
+```
+
+```elixir
+Map.put(map, :new, "123")
+```
