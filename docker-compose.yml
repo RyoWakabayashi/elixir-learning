@@ -6,7 +6,11 @@ services:
   livebook:
     build: .
     ports:
+      - '4000:4000'
       - '8080:8080'
       - '8081:8081'
+    environment:
+      - HTTP_PROXY
+      - HTTPS_PROXY
     volumes:
       - ./tmp:/tmp
