@@ -2,6 +2,8 @@
 
 ## 数値演算
 
+通常の四則演算
+
 ```elixir
 1 + 2
 ```
@@ -18,6 +20,8 @@
 7 / 3
 ```
 
+整数で商と余りを計算する場合
+
 ```elixir
 div(7, 3)
 ```
@@ -28,27 +32,29 @@ rem(7, 3)
 
 ## 文字列
 
+ダブルクォーテーションで囲むと String
+
 ```elixir
 "Hello"
 ```
 
-## 変数
+シングルクォーテーションで囲むと Character List
 
 ```elixir
-a = 1
-b = 2
-
-a == b
+'Hello'
 ```
 
+Character List は文字コードの配列
+
 ```elixir
-a + 1 == b
+'Hello'
+|> Enum.map(&IO.puts(&1))
 ```
 
-```elixir
-a = "Elixir"
+String と Character List は異なる
 
-"Hello #{a}"
+```elixir
+'Hello' == "Hello"
 ```
 
 ## atom型
@@ -67,10 +73,138 @@ a = "Elixir"
 :foo == :bar
 ```
 
+is_atom で atom 型かどうか確認できる
+
 ```elixir
 is_atom(:foo)
 ```
 
+boolean は atom 型になっている
+
 ```elixir
 is_atom(true)
 ```
+
+## 変数
+
+Elixir では変数に値を「代入」（アサイン）しない
+
+変数を指定したパターンにマッチするよう「束縛」（バインド）する
+
+<!-- livebook:{"break_markdown":true} -->
+
+`=` で変数を束縛する
+
+```elixir
+a = 1
+```
+
+束縛された変数はそのパターンを返す
+
+```elixir
+a
+```
+
+`=` はパターンにマッチしているかを判定する
+
+```elixir
+1 = a
+```
+
+```elixir
+2 = a
+```
+
+同じ変数に別のパターンを再束縛することができる
+
+代入とは違い、同じ名前の別変数が新しく定義されている
+
+```elixir
+a = 5
+```
+
+```elixir
+a
+```
+
+再束縛ではなくパターンマッチさせたい場合、ピン演算子 `^` を使う
+
+```elixir
+^a = 5
+```
+
+```elixir
+^a = 7
+```
+
+```elixir
+a
+```
+
+比較演算子で比較できる
+
+```elixir
+a = 1
+b = 2
+
+a == b
+```
+
+```elixir
+a < b
+```
+
+```elixir
+a + 1 == b
+```
+
+文字列の中で式展開できる
+
+```elixir
+a = "Elixir"
+"Hello #{a}"
+```
+
+`<>` で文字列を結合できる
+
+```elixir
+"Hello" <> " " <> a
+```
+
+## 不変（イミュータブル）
+
+Elixir などの開発言語は全ての変数が不変（イミュータブル）になっている
+
+<!-- livebook:{"break_markdown":true} -->
+
+変更可能（ミュータブル）だと、、、
+
+```python
+a = [1, 2, 3]
+do_something(a)
+a == [1, 2, 3] # 保証できない
+```
+
+do_something の中で a に対して破壊的な変更（要素の削除、ソートなど）が加えられたとき、
+
+呼び出し元からはそのことが予測できない
+
+<!-- livebook:{"break_markdown":true} -->
+
+不変（イミュータブル）だと、、、
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+a = [1, 2, 3]
+b = do_something(a)
+a == [1, 2, 3] # 保証できる
+```
+
+do_something で何をしようと、 a は変更できない
+
+呼び出し先で更新されてしまうことによるバグが防げる
+
+<!-- livebook:{"break_markdown":true} -->
+
+また、ミュータブルよりもイミュータブルの方がメモリ効率が良いケースが多い

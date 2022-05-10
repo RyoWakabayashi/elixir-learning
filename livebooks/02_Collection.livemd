@@ -2,23 +2,74 @@
 
 ## リスト
 
+`[]` で囲むとリストになる
+
 ```elixir
 ["a", "b", "c"]
 ```
+
+リストには異なる型を入れることができる
 
 ```elixir
 list = [3.14, :pie, "Apple"]
 ```
 
+`Enum.at` で特定の要素を指定できる
+
+```elixir
+Enum.at(list, 1)
+```
+
+`list[index]` のような指定はできない
+
+```elixir
+list[1]
+```
+
+Elixir ではリスト内の一部の値を変更する、ということはできない
+
+（値の再代入=再束縛はできないため）
+
+そのため、値を置き換えたリストを再定義する
+
+<!-- livebook:{"break_markdown":true} -->
+
+各要素をパターンマッチングし、一致した場合のみ値を入れ替える
+
+```elixir
+list
+|> Enum.map(fn
+  "Apple" -> :orange
+  other -> other
+end)
+```
+
+インデックス付きにした上で、インデックスのパターンマッチングで値を入れ替える
+
+```elixir
+list
+|> Enum.with_index()
+|> Enum.map(fn
+  {_, 1} -> "π"
+  {other, _} -> other
+end)
+```
+
 ## リストへの追加
+
+先頭への追加は `[<追加する値>|<追加されるリスト>]` で記述でき、高速に動作する
 
 ```elixir
 ["π" | list]
 ```
 
+末尾への追加は `[<追加されるリスト>|<追加する値>]` で記述できない
+
 ```elixir
 [list | "π"]
 ```
+
+末尾への追加は `++` でリストを結合する
 
 ```elixir
 list ++ ["π"]
@@ -30,11 +81,15 @@ list ++ ["π"]
 
 ## リストの差分
 
+`A -- B` で A に存在して B に存在しない要素を取得できる
+
 ```elixir
-["a", "b", "c", "d"] -- ["a", "c"]
+["a", "b", "c", "d"] -- ["a", "c", "e"]
 ```
 
 ## リストの先頭
+
+`hd` 関数でリストの先頭が取得できる
 
 ```elixir
 hd(["a", "b", "c", "d"])
@@ -42,11 +97,17 @@ hd(["a", "b", "c", "d"])
 
 ## リストの尾部（先頭以外）
 
+`tl` 関数でリストの尾部（先頭以外）が取得できる
+
+末尾ではないので注意
+
 ```elixir
 tl(["a", "b", "c", "d"])
 ```
 
 ## リストの先頭と尾部
+
+先頭と尾部をまとめて取得することもできる
 
 ```elixir
 [list_head | list_tail] = ["a", "b", "c", "d"]
@@ -62,29 +123,57 @@ list_tail
 
 ## タプル
 
+`{}` で囲むとタプルになる
+
 ```elixir
 {"a", "b", "c"}
 ```
+
+タプルには異なる型を入れることができる
 
 ```elixir
 tapple = {3.14, :pie, "Apple"}
 ```
 
-## キーワードリスト
-
-キーは必ず atom 型
+`elem(<タプル>,<インデックス>)` で特定の要素を取得する
 
 ```elixir
-[foo: "bar", hello: "world"]
+elem(tapple, 1)
 ```
+
+## キーワードリスト
+
+キーと値をリストに列挙する
+
+キーは必ず atom 型
 
 ```elixir
 kl = [
   foo: "bar",
   hello: "world"
 ]
+```
 
+`<キーワードリスト>[<キー>]` で特定の要素を取得する
+
+```elixir
 kl[:hello]
+```
+
+キーは重複できる
+
+```elixir
+duplicated_kl = [
+  foo: "foo",
+  foo: "bar",
+  foo: "baz"
+]
+```
+
+重複している場合、取得時には先頭が優先される
+
+```elixir
+duplicated_kl[:foo]
 ```
 
 ## マップ
@@ -92,26 +181,31 @@ kl[:hello]
 キーの型に制約がない
 
 ```elixir
-%{:foo => "bar", "hello" => :world}
-```
-
-```elixir
 map = %{
   :foo => "bar",
   "hello" => :world
 }
+```
 
+`<マップ>[<キー>]` で特定の要素を取得する
+
+```elixir
 map["hello"]
 ```
 
-atom だけがキーの場合、簡略的な書き方もできる
+キーは重複できない
+
+末尾の値が優先される
 
 ```elixir
-%{
+duplicated_map = %{
+  :foo => "foo",
   :foo => "bar",
-  :hello => "world"
+  :foo => "baz"
 }
 ```
+
+atom だけがキーの場合、簡略的な書き方もできる
 
 ```elixir
 map = %{
@@ -124,13 +218,13 @@ map = %{
 map.foo
 ```
 
+キーを指定しての値の入れ替えが簡単に記述できる
+
 ```elixir
 %{map | foo: "baz"}
 ```
 
-```elixir
-map[:new] = "123"
-```
+新しいキーを追加する場合は　`Map.put` を使用する
 
 ```elixir
 Map.put(map, :new, "123")

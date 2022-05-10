@@ -2,6 +2,20 @@
 
 ## 匿名関数
 
+コレクションに対する関数など、一時的に使用する関数は名前を付けずに定義できる
+
+```elixir
+[1, 2, 3, 4, 5]
+|> Enum.filter(fn x -> rem(x, 2) == 0 end)
+```
+
+```elixir
+[1, 2, 3, 4, 5]
+|> Enum.map(fn x -> x ** 2 end)
+```
+
+無名関数で変数を束縛することもできる
+
 ```elixir
 sum = fn a, b -> a + b end
 sum.(2, 3)
@@ -10,11 +24,23 @@ sum.(2, 3)
 省略記法
 
 ```elixir
+[1, 2, 3, 4, 5]
+|> Enum.filter(&(rem(&1, 2) == 0))
+```
+
+```elixir
+[1, 2, 3, 4, 5]
+|> Enum.map(&(&1 ** 2))
+```
+
+```elixir
 sum = &(&1 + &2)
 sum.(2, 3)
 ```
 
 ## 名前付き関数
+
+`defmodule` でモジュールを定義し、 `def` でモジュール内に名前付き関数を定義する
 
 ```elixir
 defmodule Greeter do
@@ -26,6 +52,8 @@ end
 Greeter.hello("Sean")
 ```
 
+`do:` を使用すると省略して記述できる
+
 ```elixir
 defmodule Greeter do
   def hello(name), do: "Hello, " <> name
@@ -33,6 +61,8 @@ end
 
 Greeter.hello("Sean")
 ```
+
+パターンマッチングによって異なる関数を記述できる
 
 ```elixir
 defmodule Length do
@@ -77,6 +107,8 @@ Greeter2.hello("Fred", "Jane")
 ```
 
 ## プライベート関数
+
+`defp` で定義するとモジュール外からは呼び出せない
 
 ```elixir
 defmodule Greeter do
@@ -130,7 +162,7 @@ Greeter1.hello(john)
 
 ## ガード
 
-条件によって関数を分離する
+`when` の条件によって関数を分離する
 
 ```elixir
 defmodule Greeter do

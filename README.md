@@ -217,3 +217,23 @@ mix phx.server
 ```
 
 表示される URL にアクセスする
+
+## 新規プロジェクトの作成
+
+以下のコマンドで新規プロジェクトを作成する
+
+※今回は DB を使わないので `--no-ecto` を付けている
+
+```bash
+mix phx.new hello_world --no-ecto
+```
+
+プロジェクトが `hello_world` ディレクトリーに作成される
+
+`hello_world` ディレクトリーに移動して Phoenix を起動する
+
+```bash
+cd hello_world
+sed -i -e 's/127, 0, 0, 1/0, 0, 0, 0/g' config/dev.exs
+mix phx.server
+```

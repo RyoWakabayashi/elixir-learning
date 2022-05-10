@@ -1,8 +1,8 @@
 <!-- livebook:{"persist_outputs":true} -->
 
-# Untitled notebook
+# Nx による画像処理
 
-## Section
+## 依存パッケージのインストール
 
 ```elixir
 Mix.install(
@@ -117,6 +117,10 @@ Generated pixels app
 :ok
 ```
 
+## テンソル
+
+単純な二次元リスト
+
 ```elixir
 inputs = [
   [1, 2],
@@ -129,6 +133,8 @@ inputs = [
 ```
 [[1, 2], [3, 4]]
 ```
+
+テンソルに変換する
 
 ```elixir
 Nx.tensor(inputs)
@@ -145,6 +151,8 @@ Nx.tensor(inputs)
   ]
 >
 ```
+
+テンソルに対して行列演算ができる
 
 ```elixir
 [
@@ -166,6 +174,8 @@ Nx.tensor(inputs)
   ]
 >
 ```
+
+テンソルをヒートマップとして表示する
 
 ```elixir
 [
@@ -193,6 +203,10 @@ Nx.tensor(inputs)
 >
 ```
 
+## 画像処理
+
+画像をダウンロードする
+
 ```elixir
 # 再実行時、Download.from()でeexistエラーになるのを防止
 File.rm("Lenna_%28test_image%29.png")
@@ -208,20 +222,15 @@ lenna =
 "/data/Lenna_%28test_image%29.png"
 ```
 
+画像を表示する
+
 ```elixir
 lenna
 |> File.read!()
 |> Kino.Image.new(:jpeg)
 ```
 
-```elixir
-File.rm("D2_x0z7UkAAI4gJ.jpg")
-
-Download.from("https://pbs.twimg.com/media/D2_x0z7UkAAI4gJ.jpg")
-|> elem(1)
-|> File.read!()
-|> Kino.Image.new(:jpeg)
-```
+画像のピクセル情報
 
 ```elixir
 lenna

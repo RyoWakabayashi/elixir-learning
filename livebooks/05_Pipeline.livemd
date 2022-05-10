@@ -3,13 +3,37 @@
 ## パイプライン演算子
 
 ```elixir
+String.split("Elixir rocks")
+```
+
+`()` 内の先頭の引数をパイプライン演算子 `|>` によって関数の前に記述できる
+
+```elixir
 "Elixir rocks" |> String.split()
 ```
 
-```elixir
-"Elixir rocks" |> String.upcase() |> String.split()
-```
+関数を多重で呼び出すような場合、 `()` だと非常に見づらい
 
 ```elixir
-"elixir" |> String.ends_with?("ixir")
+String.split(String.upcase("Elixir rocks"))
+```
+
+パイプライン演算子をつかことで見やすくなる
+
+```elixir
+"Elixir rocks"
+|> String.upcase()
+|> String.split()
+```
+
+リストのうち、偶数の二乗の合計の半分
+
+```elixir
+half = &(&1 / 2)
+
+[1, 2, 3, 4, 5, 6, 7]
+|> Enum.filter(&(rem(&1, 2) == 0))
+|> Enum.map(&(&1 ** 2))
+|> Enum.sum()
+|> half.()
 ```
