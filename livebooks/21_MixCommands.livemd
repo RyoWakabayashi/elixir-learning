@@ -1,0 +1,63 @@
+# よく使うmixコマンド
+
+## ヘルプを参照する
+
+```bash
+mix help
+```
+
+※ カスタムコマンドを作成することもできる
+
+## プロジェクトを作成する
+
+```bash
+mix new <プロジェクト名>
+```
+
+## すべてのルートを表示する
+
+```bash
+mix phx.routes
+```
+
+## アプリケーションサーバーを起動する
+
+```bash
+mix phx.server
+```
+
+## 依存関係を確認する
+
+```bash
+mix deps
+```
+
+## 依存関係を解消する
+
+```bash
+mix deps.get
+```
+
+## リリース物を生成する
+
+```bash
+mix release
+```
+
+## ソースコードを整形する
+
+```bash
+mix format
+```
+
+## 静的型解析を実行する
+
+```bash
+mix credo --strict
+```
+
+## テストを実行する
+
+```bash
+mix test
+```
