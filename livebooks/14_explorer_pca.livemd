@@ -1,0 +1,395 @@
+# Explorer
+
+```elixir
+Mix.install([
+  {:explorer, "~> 0.2.0"},
+  {:kino_vega_lite, "~> 0.1.1"},
+  {:nx, "~> 0.3.0-dev", github: "elixir-nx/nx", branch: "main", sparse: "nx"}
+])
+```
+
+## Section
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+alias VegaLite, as: Vl
+```
+
+## Load Datasets
+
+```elixir
+wine_df = Explorer.Datasets.wine()
+```
+
+```elixir
+DataFrame.table(wine_df, limit: :infinity)
+```
+
+```elixir
+wine_df
+|> DataFrame.distinct(columns: ["class"])
+|> DataFrame.to_columns()
+|> Map.get("class")
+```
+
+```elixir
+wine_series = DataFrame.to_series(wine_df)
+```
+
+```elixir
+cols = [
+  "alcohol",
+  "malic_acid",
+  "ash",
+  "alcalinity_of_ash",
+  "magnesium",
+  "total_phenols",
+  "flavanoids",
+  "nonflavanoid_phenols",
+  "proanthocyanins",
+  "color_intensity",
+  "hue",
+  "od280_over_od315_of_diluted_wines",
+  "proline"
+]
+```
+
+## Describe
+
+```elixir
+get_series = fn df, column ->
+  df
+  |> DataFrame.to_series()
+  |> Map.get(column)
+end
+
+get_values = fn df, column ->
+  df
+  |> get_series.(column)
+  |> Series.to_list()
+end
+```
+
+```elixir
+add_stats = fn list ->
+  [{"Stats", ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]} | list]
+end
+
+cols
+|> Enum.map(fn col ->
+  series = get_series.(wine_df, col)
+
+  {
+    col,
+    [
+      DataFrame.n_rows(wine_df),
+      Series.mean(series),
+      Series.std(series),
+      Series.min(series),
+      Series.quantile(series, 0.25),
+      Series.median(series),
+      Series.quantile(series, 0.75),
+      Series.max(series)
+    ]
+  }
+end)
+|> add_stats.()
+|> DataFrame.new()
+|> DataFrame.table(limit: :infinity)
+```
+
+## Scatter Matrix
+
+```elixir
+scatter = fn df, x_column, y_column ->
+  x = get_values.(df, x_column)
+  y = get_values.(df, y_column)
+  class = get_values.(wine_df, "class")
+
+  Vl.new(width: 200, height: 200)
+  |> Vl.data_from_values(x: x, y: y, class: class)
+  |> Vl.mark(:point)
+  |> Vl.encode_field(:x, "x",
+    type: :quantitative,
+    scale: [domain: [Enum.min(x), Enum.max(x)]],
+    title: x_column
+  )
+  |> Vl.encode_field(:y, "y",
+    type: :quantitative,
+    scale: [domain: [Enum.min(y), Enum.max(y)]],
+    title: y_column
+  )
+  |> Vl.encode_field(:color, "class", type: :nominal)
+end
+```
+
+```elixir
+scatter.(wine_df, "alcohol", "malic_acid")
+```
+
+```elixir
+histgram = fn x, color ->
+  Vl.new(width: 200, height: 200)
+  |> Vl.mark(:bar, color: color, opacity: 0.5)
+  |> Vl.encode_field(:x, x, type: :quantitative, bin: %{maxbins: 20})
+  |> Vl.encode_field(:y, "y", type: :quantitative, aggregate: :count)
+end
+
+get_class_values = fn df, column, class ->
+  df
+  |> DataFrame.filter(Series.equal(df["class"], class))
+  |> DataFrame.to_series()
+  |> Map.get(column)
+  |> Series.to_list()
+end
+
+class_histgram = fn df, column ->
+  y = List.duplicate(0, DataFrame.n_rows(df))
+  x1 = get_class_values.(df, column, 1)
+  x2 = get_class_values.(df, column, 2)
+  x3 = get_class_values.(df, column, 3)
+
+  Vl.new(width: 200, height: 200)
+  |> Vl.data_from_values(x1: x1, x2: x2, x3: x3, y: y)
+  |> Vl.layers([
+    histgram.("x1", :blue),
+    histgram.("x2", :yellow),
+    histgram.("x3", :red)
+  ])
+end
+```
+
+```elixir
+class_histgram.(wine_df, "alcohol")
+```
+
+```elixir
+Vl.new(width: 400, height: 200)
+|> Vl.concat([
+  class_histgram.(wine_df, "alcohol"),
+  scatter.(wine_df, "alcohol", "malic_acid")
+])
+```
+
+```elixir
+graphs =
+  cols
+  |> Enum.map(fn col_1 ->
+    h_graphs =
+      cols
+      |> Enum.map(fn col_2 ->
+        cond do
+          col_1 == c
+          ol_2 ->
+            class_histgram.(wine_df, col_1)
+
+          true ->
+            scatter.(wine_df, col_1, col_2)
+        end
+      end)
+
+    Vl.new(width: 200 * Enum.count(cols), height: 200)
+    |> Vl.concat(h_graphs, :horizontal)
+  end)
+
+Vl.new(width: 200 * Enum.count(cols), height: 200 * Enum.count(cols))
+|> Vl.concat(graphs, :vertical)
+```
+
+## Standardization
+
+```elixir
+standardize = fn df, column ->
+  mean =
+    wine_df
+    |> DataFrame.to_series()
+    |> Map.get(column)
+    |> Series.mean()
+
+  std =
+    wine_df
+    |> DataFrame.to_series()
+    |> Map.get(column)
+    |> Series.std()
+
+  df
+  |> DataFrame.mutate(%{column => &Series.subtract(&1[column], mean)})
+  |> DataFrame.mutate(%{column => &Series.divide(&1[column], std)})
+end
+```
+
+```elixir
+standardized_wine_df =
+  cols
+  |> Enum.reduce(wine_df, fn col, standardized_df ->
+    standardize.(standardized_df, col)
+  end)
+```
+
+```elixir
+standardized_wine_df
+|> DataFrame.table(limit: :infinity)
+```
+
+## Covariance
+
+```elixir
+get_mul = fn df, col_1, col_2 ->
+  DataFrame.mutate(df, %{(col_1 <> "*" <> col_2) => &Series.multiply(&1[col_1], &1[col_2])})
+end
+
+multiply_df =
+  cols
+  |> Enum.reduce(standardized_wine_df, fn col_1, sub_df_1 ->
+    cols
+    |> Enum.reduce(sub_df_1, fn col_2, sub_df_2 ->
+      get_mul.(sub_df_2, col_1, col_2)
+    end)
+  end)
+```
+
+```elixir
+mean_map =
+  multiply_df
+  |> DataFrame.select(["class"], :drop)
+  |> DataFrame.to_series()
+  |> Enum.map(fn {key, value} -> {key, Series.mean(value)} end)
+  |> Enum.into(%{})
+```
+
+```elixir
+get_covariance = fn col_1, col_2 ->
+  Map.get(mean_map, col_1 <> "*" <> col_2) - Map.get(mean_map, col_1) * Map.get(mean_map, col_2)
+end
+
+covariance_map =
+  cols
+  |> Enum.map(fn col_1 ->
+    cols
+    |> Enum.map(fn col_2 ->
+      {col_1 <> "*" <> col_2, get_covariance.(col_1, col_2)}
+    end)
+    |> Enum.into(%{})
+  end)
+  |> Enum.reduce(fn map, merged_map ->
+    Map.merge(merged_map, map)
+  end)
+```
+
+```elixir
+covariance_df =
+  cols
+  |> Enum.map(fn col_1 ->
+    %{
+      col_1 =>
+        cols
+        |> Enum.map(fn col_2 ->
+          Map.get(covariance_map, col_1 <> "*" <> col_2)
+        end)
+    }
+  end)
+  |> Enum.reduce(fn map, merged_map ->
+    Map.merge(merged_map, map)
+  end)
+  |> Map.merge(%{"x" => cols})
+  |> DataFrame.new()
+  |> DataFrame.select(["x" | cols])
+
+covariance_df
+|> DataFrame.table(limit: :infinity)
+```
+
+```elixir
+heatmap =
+  cols
+  |> Enum.map(fn col_1 ->
+    cols
+    |> Enum.map(fn col_2 ->
+      %{
+        x: col_1,
+        y: col_2,
+        covariance: Map.get(covariance_map, col_1 <> "*" <> col_2)
+      }
+    end)
+  end)
+  |> List.flatten()
+```
+
+```elixir
+Vl.new(width: 200, height: 200)
+|> Vl.data_from_values(heatmap)
+|> Vl.mark(:rect)
+|> Vl.encode_field(:x, "x", type: :nominal)
+|> Vl.encode_field(:y, "y", type: :nominal)
+|> Vl.encode_field(:fill, "covariance", type: :quantitative)
+```
+
+## Eigenvalues and Eigenvectors
+
+```elixir
+covariance_tensor =
+  cols
+  |> Enum.map(fn col ->
+    covariance_df
+    |> get_series.(col)
+    |> Series.to_tensor()
+  end)
+  |> Nx.concatenate()
+  |> Nx.reshape({Enum.count(cols), Enum.count(cols)})
+```
+
+```elixir
+{eigenvals, eigenvecs} = Nx.LinAlg.eigh(covariance_tensor)
+```
+
+```elixir
+eigenvecs = Nx.transpose(eigenvecs)
+
+w1 = eigenvecs[0]
+w2 = eigenvecs[1]
+
+IO.inspect(w1)
+IO.inspect(w2)
+
+w = Nx.stack([w1, w2], axis: 1)
+```
+
+```elixir
+standardized_wine_tensor =
+  cols
+  |> Enum.map(fn col ->
+    standardized_wine_df
+    |> get_series.(col)
+    |> Series.to_tensor()
+  end)
+  |> Nx.concatenate()
+  |> Nx.reshape({Enum.count(cols), DataFrame.n_rows(standardized_wine_df)})
+```
+
+```elixir
+pca_wine_tensor =
+  standardized_wine_tensor
+  |> Nx.transpose()
+  |> Nx.dot(w)
+  |> Nx.transpose()
+```
+
+```elixir
+classes = get_values.(wine_df, "class")
+
+pca_wine_df =
+  %{
+    class: classes,
+    pc1: Nx.to_flat_list(pca_wine_tensor[0]),
+    pc2: Nx.to_flat_list(pca_wine_tensor[1])
+  }
+  |> DataFrame.new()
+
+pca_wine_df
+|> DataFrame.table(limit: :infinity)
+```
+
+```elixir
+scatter.(pca_wine_df, "pc1", "pc2")
+```
