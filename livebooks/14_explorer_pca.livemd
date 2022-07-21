@@ -79,10 +79,6 @@ wine_df
 |> DataFrame.pull("class")
 ```
 
-```elixir
-wine_series = DataFrame.to_series(wine_df)
-```
-
 分析に利用するため、 `class` 以外の列名を取得しておく
 
 ```elixir
