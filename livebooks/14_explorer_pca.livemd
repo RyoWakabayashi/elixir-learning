@@ -8,7 +8,7 @@ Mix.install([
 ])
 ```
 
-## Section
+## Alias
 
 ```elixir
 alias Explorer.DataFrame
