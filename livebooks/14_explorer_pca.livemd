@@ -161,7 +161,7 @@ end
 ```elixir
 histgram = fn df, col ->
   x = get_values.(df, col)
-  y = List.duplicate(0, DataFrame.n_rows(df))
+  y = List.duplicate(1, DataFrame.n_rows(df))
 
   Vl.new(width: 300, height: 300, title: col)
   |> Vl.data_from_values(x: x, y: y)
@@ -456,7 +456,7 @@ heatmap =
 ```
 
 ```elixir
-Vl.new(width: 200, height: 200)
+Vl.new(width: 300, height: 300)
 |> Vl.data_from_values(heatmap)
 |> Vl.mark(:rect)
 |> Vl.encode_field(:x, "x", type: :nominal)
