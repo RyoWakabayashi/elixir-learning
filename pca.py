@@ -9,6 +9,15 @@ df_wine['class'] = wine.target
 
 print("df_wine")
 print(df_wine)
+print("")
+
+print("df_wine.describe")
+print(df_wine.describe())
+print("")
+
+print("df_wine.corr")
+print(df_wine.corr())
+print("")
 
 X = df_wine.iloc[:, :-1].values  # classカラム以外を取得
 y = df_wine.iloc[:, -1].values  # classカラムを取得
@@ -18,12 +27,14 @@ X_std = sc.fit_transform(X)
 
 print("X_std")
 print(X_std)
+print("")
 
 # 分散共分散行列の作成
 cov_mat = np.cov(X_std.T)
 
 print("cov_mat")
 print(cov_mat)
+print("")
 
 # 分散共分散行列の固有値、固有ベクトルを作成
 eigen_vals, eigen_vecs = np.linalg.eig(cov_mat)
@@ -37,9 +48,11 @@ w2 = eigen_pairs[1][1]  # 第2主成分に対応する固有ベクトル
 
 print("eigen_vals")
 print(eigen_vals)
+print("")
 
 print("w1")
 print(w1)
+print("")
 
 print("w2")
 print(w2)
