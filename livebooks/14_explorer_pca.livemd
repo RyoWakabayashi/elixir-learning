@@ -1,4 +1,4 @@
-# Explorer
+# Explorer PCA
 
 ```elixir
 Mix.install([
@@ -561,7 +561,9 @@ Vl.new(width: 300, height: 300)
 
 次元圧縮 = 各項目の値を主成分にまとめる
 
-第１主成分と第２主成分を取得するため、固有ベクトルの1番目と2番目を取得し、射影行列を作る
+固有ベクトルの1番目 = 第１主成分得点
+
+固有ベクトルの2番目 = 第２主成分得点
 
 ```elixir
 eigenvecs = Nx.transpose(eigenvecs)
