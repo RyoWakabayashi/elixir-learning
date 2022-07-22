@@ -1,0 +1,201 @@
+# Evision DNN
+
+```elixir
+Mix.install([
+  {:download, "~> 0.0.4"},
+  {:evision, "~> 0.1.0-dev", github: "cocoa-xu/evision", branch: "main"},
+  {:kino, "~> 0.6.2"},
+  {:nx, "~> 0.2.1", [env: :prod, repo: "hexpm", hex: "nx", optional: true]}
+])
+```
+
+## Alias
+
+```elixir
+alias Evision, as: OpenCV
+```
+
+## Helper
+
+```elixir
+defmodule Helper do
+  def download!(url, save_as) do
+    unless File.exists?(save_as) do
+      Download.from(url, path: save_as)
+    end
+
+    :ok
+  end
+
+  def show_image(mat) do
+    OpenCV.imencode!(".jpg", mat)
+    |> IO.iodata_to_binary()
+    |> Kino.Image.new(:png)
+  end
+end
+```
+
+## Download model
+
+```elixir
+weights_path = "/data/yolov3.weights"
+cfg_path = "/data/yolov3.cfg"
+label_path = "/data/label.txt"
+
+"https://pjreddie.com/media/files/yolov3.weights"
+|> Helper.download!(weights_path)
+
+"https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
+|> Helper.download!(cfg_path)
+
+"https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
+|> Helper.download!(label_path)
+```
+
+## Load model
+
+```elixir
+net = OpenCV.DNN.readNetModel!(weights_path, config: cfg_path, framework: "")
+```
+
+```elixir
+out_names = OpenCV.DNN.Net.getUnconnectedOutLayersNames!(net)
+```
+
+```elixir
+label_list =
+  File.stream!(label_path)
+  |> Enum.map(&String.trim/1)
+```
+
+## Download image
+
+```elixir
+image_path = "/data/dog.jpg"
+
+"https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
+|> Helper.download!(image_path)
+```
+
+## Load image
+
+```elixir
+mat = OpenCV.imread!(image_path)
+
+Helper.show_image(mat)
+```
+
+```elixir
+{height, width, _} = OpenCV.Mat.shape!(mat)
+```
+
+## Detect objects
+
+```elixir
+blob = OpenCV.DNN.blobFromImage!(mat, size: [608, 608], swapRB: true, crop: false)
+
+net =
+  OpenCV.DNN.Net.setInput!(
+    net,
+    blob,
+    name: "",
+    scalefactor: 1 / 255,
+    mean: [0, 0, 0]
+  )
+
+predictions = OpenCV.DNN.Net.forward!(net, outBlobNames: out_names)
+```
+
+## Format predictions
+
+```elixir
+score_threshould = 0.8
+
+formed_predictions =
+  predictions
+  |> Enum.map(fn prediction ->
+    OpenCV.Nx.to_nx(prediction)
+  end)
+  |> Nx.concatenate()
+  |> Nx.to_batched_list(1)
+  |> Enum.filter(fn t ->
+    t[0][4]
+    |> Nx.to_number()
+    |> Kernel.>(score_threshould)
+  end)
+  |> Enum.map(fn t ->
+    class_score_list = t[0][5..-1//1]
+    class_id = class_score_list |> Nx.argmax() |> Nx.to_number()
+    class_score = class_score_list[class_id] |> Nx.to_number()
+    score = t[0][4] |> Nx.to_number() |> Kernel.*(class_score)
+
+    center_x = t[0][0] |> Nx.to_number()
+    center_y = t[0][1] |> Nx.to_number()
+    box_width = t[0][2] |> Nx.to_number()
+    box_height = t[0][3] |> Nx.to_number()
+    min_x = center_x - box_width / 2
+    min_y = center_y - box_height / 2
+    max_x = center_x + box_width / 2
+    max_y = center_y + box_height / 2
+
+    box = [min_x, min_y, max_x, max_y]
+
+    %{
+      box: box,
+      score: score,
+      class: class_id
+    }
+  end)
+```
+
+## Non Max Suppression
+
+```elixir
+box_list = Enum.map(formed_predictions, & &1.box)
+score_list = Enum.map(formed_predictions, & &1.score)
+class_list = Enum.map(formed_predictions, & &1.class)
+```
+
+```elixir
+index_list = OpenCV.DNN.nmsBoxes!(box_list, score_list, 0.8, 0.7)
+```
+
+```elixir
+selected_predictions =
+  index_list
+  |> Enum.map(fn index ->
+    Enum.at(formed_predictions, index)
+  end)
+```
+
+## Draw predictions
+
+```elixir
+selected_predictions
+|> Enum.reduce(mat, fn prediction, drawed_mat ->
+  box = prediction.box
+  left = Enum.at(box, 0) |> Kernel.*(width) |> trunc()
+  top = Enum.at(box, 1) |> Kernel.*(height) |> trunc()
+  right = Enum.at(box, 2) |> Kernel.*(width) |> trunc()
+  bottom = Enum.at(box, 3) |> Kernel.*(height) |> trunc()
+
+  label = Enum.at(label_list, prediction.class)
+
+  drawed_mat
+  |> OpenCV.rectangle!(
+    [left, top],
+    [right, bottom],
+    [255, 0, 0],
+    thickness: 4
+  )
+  |> OpenCV.putText!(
+    label,
+    [left + 6, top + 26],
+    OpenCV.cv_FONT_HERSHEY_SIMPLEX(),
+    0.8,
+    [0, 0, 255],
+    thickness: 2
+  )
+end)
+|> Helper.show_image()
+```
