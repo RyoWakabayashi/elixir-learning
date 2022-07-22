@@ -64,7 +64,8 @@ out_names = OpenCV.DNN.Net.getUnconnectedOutLayersNames!(net)
 
 ```elixir
 label_list =
-  File.stream!(label_path)
+  label_path
+  |> File.stream!()
   |> Enum.map(&String.trim/1)
 ```
 
@@ -94,22 +95,21 @@ Helper.show_image(mat)
 ```elixir
 blob = OpenCV.DNN.blobFromImage!(mat, size: [608, 608], swapRB: true, crop: false)
 
-net =
-  OpenCV.DNN.Net.setInput!(
-    net,
+predictions =
+  net
+  |> OpenCV.DNN.Net.setInput!(
     blob,
     name: "",
     scalefactor: 1 / 255,
     mean: [0, 0, 0]
   )
-
-predictions = OpenCV.DNN.Net.forward!(net, outBlobNames: out_names)
+  |> OpenCV.DNN.Net.forward!(outBlobNames: out_names)
 ```
 
 ## Format predictions
 
 ```elixir
-score_threshould = 0.8
+score_threshold = 0.8
 
 formed_predictions =
   predictions
@@ -121,7 +121,7 @@ formed_predictions =
   |> Enum.filter(fn t ->
     t[0][4]
     |> Nx.to_number()
-    |> Kernel.>(score_threshould)
+    |> Kernel.>(score_threshold)
   end)
   |> Enum.map(fn t ->
     class_score_list = t[0][5..-1//1]
@@ -153,19 +153,14 @@ formed_predictions =
 ```elixir
 box_list = Enum.map(formed_predictions, & &1.box)
 score_list = Enum.map(formed_predictions, & &1.score)
-class_list = Enum.map(formed_predictions, & &1.class)
+
+nms_threshold = 0.7
+
+index_list = OpenCV.DNN.nmsBoxes!(box_list, score_list, score_threshold, nms_threshold)
 ```
 
 ```elixir
-index_list = OpenCV.DNN.nmsBoxes!(box_list, score_list, 0.8, 0.7)
-```
-
-```elixir
-selected_predictions =
-  index_list
-  |> Enum.map(fn index ->
-    Enum.at(formed_predictions, index)
-  end)
+selected_predictions = Enum.map(index_list, &Enum.at(formed_predictions, &1))
 ```
 
 ## Draw predictions
