@@ -3,6 +3,7 @@
 ```elixir
 Mix.install([
   {:explorer, "~> 0.2.0"},
+  {:kino, "~> 0.6.2"},
   {:kino_vega_lite, "~> 0.1.1"},
   {:nx, "~> 0.3.0-dev", github: "elixir-nx/nx", branch: "main", sparse: "nx"}
 ])
@@ -68,7 +69,9 @@ wine_df = Explorer.Datasets.wine()
 データフレームをテーブル表示する
 
 ```elixir
-DataFrame.table(wine_df, limit: :infinity)
+wine_df
+|> DataFrame.to_rows()
+|> Kino.DataTable.new()
 ```
 
 クラスが3種類であることを確認する
@@ -141,7 +144,8 @@ cols
 end)
 |> add_stats_label.()
 |> DataFrame.new()
-|> DataFrame.table(limit: :infinity)
+|> DataFrame.to_rows()
+|> Kino.DataTable.new()
 ```
 
 ## Histogram
@@ -366,7 +370,8 @@ standardized_wine_df =
   end)
 
 standardized_wine_df
-|> DataFrame.table(limit: :infinity)
+|> DataFrame.to_rows()
+|> Kino.DataTable.new()
 ```
 
 ## Correlation matrix
@@ -428,7 +433,8 @@ covariance_df =
   |> DataFrame.new()
 
 covariance_df
-|> DataFrame.table(limit: :infinity)
+|> DataFrame.to_rows()
+|> Kino.DataTable.new(keys: ["x" | cols])
 ```
 
 直感的に分かりづらいため、ヒートマップにして表示する
@@ -525,7 +531,8 @@ contribution_rate_df =
   |> DataFrame.new()
 
 contribution_rate_df
-|> DataFrame.table(limit: :infinity)
+|> DataFrame.to_rows()
+|> Kino.DataTable.new()
 ```
 
 累積寄与率を折れ線グラフで表示する
@@ -596,7 +603,8 @@ pca_wine_df =
   |> DataFrame.new()
 
 pca_wine_df
-|> DataFrame.table(limit: :infinity)
+|> DataFrame.to_rows()
+|> Kino.DataTable.new()
 ```
 
 散布図にすると、クラス毎にまとまっていることが分かる
