@@ -131,7 +131,7 @@ feats = Axon.predict(model, params, image_tensor)
 feats =
   feats
   |> Nx.transpose(axes: [0, 2, 3, 1])
-  |> Nx.reshape({1, num_y_blocks, num_x_blocks, 5, 85})
+  |> Nx.reshape({1, num_y_blocks, num_x_blocks, num_anchors, num_classes + 5})
 ```
 
 ```elixir
@@ -162,7 +162,7 @@ conv_tensor =
 
 ```elixir
 box_xy =
-  feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 0..1]]
+  feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..(num_anchors - 1), 0..1]]
   |> Nx.logistic()
   |> Nx.add(conv_index)
   |> Nx.divide(conv_tensor)
@@ -170,7 +170,7 @@ box_xy =
 
 ```elixir
 box_wh =
-  feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 2..3]]
+  feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..(num_anchors - 1), 2..3]]
   |> Nx.exp()
   |> Nx.multiply(anchors_tensor)
   |> Nx.divide(conv_tensor)
@@ -191,21 +191,40 @@ box_maxes =
 ```elixir
 box_list =
   Nx.concatenate([
-    box_mins[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 0..0]],
-    box_mins[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 1..1]],
-    box_maxes[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 0..0]],
-    box_maxes[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 1..1]]
+    box_mins[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..(num_anchors - 1), 0..0]],
+    box_mins[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..(num_anchors - 1), 1..1]],
+    box_maxes[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..(num_anchors - 1), 0..0]],
+    box_maxes[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..(num_anchors - 1), 1..1]]
   ])
   |> Nx.transpose(axes: [4, 1, 2, 3, 0])
 ```
 
 ```elixir
 box_confidence =
-  Nx.logistic(feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 4..4]])
+  Nx.logistic(
+    feats[
+      [
+        0..0,
+        0..(num_y_blocks - 1),
+        0..(num_x_blocks - 1),
+        0..(num_anchors - 1),
+        4..4
+      ]
+    ]
+  )
 ```
 
 ```elixir
-box_class_probs = feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 5..84]]
+box_class_probs =
+  feats[
+    [
+      0..0,
+      0..(num_y_blocks - 1),
+      0..(num_x_blocks - 1),
+      0..(num_anchors - 1),
+      5..(num_classes + 4)
+    ]
+  ]
 ```
 
 ```elixir
@@ -219,8 +238,8 @@ exp_sum =
   box_class_probs
   |> Nx.exp()
   |> Nx.sum(axes: [4])
-  |> Nx.reshape({1, num_y_blocks, num_x_blocks, 5, 1})
-  |> Nx.broadcast({1, num_y_blocks, num_x_blocks, 5, 80})
+  |> Nx.reshape({1, num_y_blocks, num_x_blocks, num_anchors, 1})
+  |> Nx.broadcast({1, num_y_blocks, num_x_blocks, num_anchors, num_classes})
 ```
 
 ```elixir
@@ -252,14 +271,14 @@ box_scores = Nx.multiply(box_confidence, box_class_probs)
 box_classes =
   box_scores
   |> Nx.argmax(axis: -1)
-  |> Nx.reshape({1, 13, 13, 5, 1})
+  |> Nx.reshape({1, num_y_blocks, num_x_blocks, num_anchors, 1})
 ```
 
 ```elixir
 box_class_scores =
   box_scores
   |> Nx.reduce_max(axes: [-1])
-  |> Nx.reshape({1, num_y_blocks, num_x_blocks, 5, 1})
+  |> Nx.reshape({1, num_y_blocks, num_x_blocks, num_anchors, 1})
 ```
 
 ```elixir
@@ -267,7 +286,7 @@ score_threshold = 0.5
 ```
 
 ```elixir
-prediction_mask = Nx.greater(box_class_scores, 0.5)
+prediction_mask = Nx.greater(box_class_scores, score_threshold)
 ```
 
 ```elixir
@@ -282,7 +301,7 @@ joined =
     ],
     axis: 4
   )
-  |> Nx.reshape({num_y_blocks * num_x_blocks * 5, 8})
+  |> Nx.reshape({num_y_blocks * num_x_blocks * num_anchors, 8})
 ```
 
 ```elixir
