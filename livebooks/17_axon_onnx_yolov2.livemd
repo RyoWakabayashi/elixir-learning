@@ -118,15 +118,15 @@ image_tensor =
 ## Predict
 
 ```elixir
-num_x_blocks = 13
-num_y_blocks = 13
-```
-
-```elixir
 feats = Axon.predict(model, params, image_tensor)
 ```
 
 ## Parse results
+
+```elixir
+num_x_blocks = 13
+num_y_blocks = 13
+```
 
 ```elixir
 feats =
