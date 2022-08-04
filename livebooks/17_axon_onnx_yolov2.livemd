@@ -108,7 +108,7 @@ nx_channels = Nx.axis_size(image_tensor, 2)
 image_tensor =
   case nx_channels do
     3 -> image_tensor
-    4 -> Nx.slice(image_tensor, [0, 0, 0], [418, 418, 3])
+    4 -> Nx.slice(image_tensor, [0, 0, 0], [416, 416, 3])
   end
   |> Nx.divide(255)
   |> Nx.transpose(axes: [2, 0, 1])
