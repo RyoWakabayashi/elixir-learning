@@ -1,0 +1,432 @@
+# AxonOnnx YOLOv2
+
+```elixir
+Mix.install([
+  {:exla, "~> 0.2"},
+  {:axon_onnx, "~> 0.1"},
+  {:stb_image, "~> 0.5"},
+  {:download, "~> 0.0"},
+  {:jason, "~> 1.3"},
+  {:kino, "~> 0.6"}
+])
+```
+
+## Set EXLA as Nx backend
+
+```elixir
+EXLA.set_as_nx_default([:tpu, :cuda, :rocm, :host])
+```
+
+## Helper
+
+```elixir
+defmodule Helper do
+  def download!(url, save_as) do
+    unless File.exists?(save_as) do
+      Download.from(url, path: save_as)
+    end
+
+    save_as
+  end
+
+  def show_image(image_path) do
+    image_path
+    |> File.read!()
+    |> Kino.Image.new(:jpeg)
+  end
+end
+```
+
+## Load models
+
+```elixir
+classes_path = "/data/coco.names"
+
+classes =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
+  |> Helper.download!(classes_path)
+  |> File.stream!()
+  |> Enum.map(&String.trim/1)
+```
+
+```elixir
+num_classes = Enum.count(classes)
+```
+
+```elixir
+model_path = "/data/yolov2.onnx"
+
+{model, params} =
+  "https://media.githubusercontent.com/media/onnx/models/main/vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx"
+  |> Helper.download!(model_path)
+  |> AxonOnnx.import()
+```
+
+## Anchors
+
+```elixir
+anchors =
+  Nx.tensor([
+    [0.57273, 0.677385],
+    [1.87446, 2.06253],
+    [3.33843, 5.47434],
+    [7.88282, 3.52778],
+    [9.77052, 9.16828]
+  ])
+```
+
+```elixir
+num_anchors =
+  anchors
+  |> Nx.shape()
+  |> elem(0)
+```
+
+```elixir
+anchors_tensor = Nx.reshape(anchors, {1, 1, 1, num_anchors, 2})
+```
+
+## Load image
+
+```elixir
+image_path = "/data/dog.jpg"
+
+image_tensor =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
+  |> Helper.download!(image_path)
+  |> File.read!()
+  |> StbImage.read_binary!()
+  |> StbImage.resize(416, 416)
+  |> StbImage.to_nx()
+
+Helper.show_image(image_path)
+```
+
+```elixir
+nx_channels = Nx.axis_size(image_tensor, 2)
+
+image_tensor =
+  case nx_channels do
+    3 -> image_tensor
+    4 -> Nx.slice(image_tensor, [0, 0, 0], [418, 418, 3])
+  end
+  |> Nx.divide(255)
+  |> Nx.transpose(axes: [2, 0, 1])
+  |> Nx.new_axis(0)
+```
+
+## Predict
+
+```elixir
+num_x_blocks = 13
+num_y_blocks = 13
+```
+
+```elixir
+feats = Axon.predict(model, params, image_tensor)
+```
+
+## Parse results
+
+```elixir
+feats =
+  feats
+  |> Nx.transpose(axes: [0, 2, 3, 1])
+  |> Nx.reshape({1, num_y_blocks, num_x_blocks, 5, 85})
+```
+
+```elixir
+conv_height_index =
+  Nx.iota({num_y_blocks})
+  |> Nx.tile([num_x_blocks])
+
+conv_width_index =
+  Nx.iota({num_x_blocks})
+  |> Nx.reshape({1, num_x_blocks})
+  |> Nx.tile([num_y_blocks, 1])
+  |> Nx.transpose()
+  |> Nx.flatten()
+
+conv_index =
+  Nx.stack([conv_height_index, conv_width_index])
+  |> Nx.transpose()
+  |> Nx.reshape({1, num_x_blocks, num_y_blocks, 1, 2})
+  |> Nx.as_type({:f, 32})
+```
+
+```elixir
+conv_tensor =
+  Nx.tensor([num_y_blocks, num_x_blocks])
+  |> Nx.reshape({1, 1, 1, 1, 2})
+  |> Nx.as_type({:f, 32})
+```
+
+```elixir
+box_xy =
+  feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 0..1]]
+  |> Nx.logistic()
+  |> Nx.add(conv_index)
+  |> Nx.divide(conv_tensor)
+```
+
+```elixir
+box_wh =
+  feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 2..3]]
+  |> Nx.exp()
+  |> Nx.multiply(anchors_tensor)
+  |> Nx.divide(conv_tensor)
+```
+
+```elixir
+box_mins =
+  box_xy
+  |> Nx.subtract(Nx.divide(box_wh, 2.0))
+```
+
+```elixir
+box_maxes =
+  box_xy
+  |> Nx.add(Nx.divide(box_wh, 2))
+```
+
+```elixir
+box_list =
+  Nx.concatenate([
+    box_mins[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 0..0]],
+    box_mins[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 1..1]],
+    box_maxes[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 0..0]],
+    box_maxes[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 1..1]]
+  ])
+  |> Nx.transpose(axes: [4, 1, 2, 3, 0])
+```
+
+```elixir
+box_confidence =
+  Nx.logistic(feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 4..4]])
+```
+
+```elixir
+box_class_probs = feats[[0..0, 0..(num_y_blocks - 1), 0..(num_x_blocks - 1), 0..4, 5..84]]
+```
+
+```elixir
+exp =
+  box_class_probs
+  |> Nx.exp()
+```
+
+```elixir
+exp_sum =
+  box_class_probs
+  |> Nx.exp()
+  |> Nx.sum(axes: [4])
+  |> Nx.reshape({1, num_y_blocks, num_x_blocks, 5, 1})
+  |> Nx.broadcast({1, num_y_blocks, num_x_blocks, 5, 80})
+```
+
+```elixir
+box_class_probs = Nx.divide(exp, exp_sum)
+```
+
+```elixir
+box_class_probs[0][0][0][0]
+|> Nx.to_flat_list()
+|> Enum.sum()
+|> IO.inspect()
+
+box_class_probs[0][0][0][1]
+|> Nx.to_flat_list()
+|> Enum.sum()
+|> IO.inspect()
+
+box_class_probs[0][0][0][-1]
+|> Nx.to_flat_list()
+|> Enum.sum()
+|> IO.inspect()
+```
+
+```elixir
+box_scores = Nx.multiply(box_confidence, box_class_probs)
+```
+
+```elixir
+box_classes =
+  box_scores
+  |> Nx.argmax(axis: -1)
+  |> Nx.reshape({1, 13, 13, 5, 1})
+```
+
+```elixir
+box_class_scores =
+  box_scores
+  |> Nx.reduce_max(axes: [-1])
+  |> Nx.reshape({1, num_y_blocks, num_x_blocks, 5, 1})
+```
+
+```elixir
+score_threshold = 0.5
+```
+
+```elixir
+prediction_mask = Nx.greater(box_class_scores, 0.5)
+```
+
+```elixir
+joined =
+  Nx.concatenate(
+    [
+      prediction_mask,
+      box_confidence,
+      box_class_scores,
+      box_classes,
+      box_list
+    ],
+    axis: 4
+  )
+  |> Nx.reshape({num_y_blocks * num_x_blocks * 5, 8})
+```
+
+```elixir
+masked_index_list =
+  prediction_mask
+  |> Nx.to_flat_list()
+  |> Enum.with_index()
+  |> Enum.filter(fn {value, _} -> value == 1 end)
+  |> Enum.map(&elem(&1, 1))
+  |> Nx.tensor()
+```
+
+```elixir
+selected_predictions = Nx.take(joined, masked_index_list)
+```
+
+```elixir
+formed_predictions =
+  selected_predictions
+  |> Nx.to_batched_list(1)
+  |> Enum.map(fn t ->
+    %{
+      box: t[0][[4..7]] |> Nx.to_flat_list(),
+      score: t[0][2] |> Nx.to_number(),
+      class: t[0][3] |> Nx.to_number() |> trunc()
+    }
+  end)
+```
+
+## NMS
+
+```elixir
+iou_nx = fn a, b, a_area, b_area ->
+  num_b = Nx.shape(b) |> elem(0)
+  # xmin
+  abx_mn = Nx.max(a[0], b[[0..(num_b - 1), 0]])
+  # ymin
+  aby_mn = Nx.max(a[1], b[[0..(num_b - 1), 1]])
+  # xmax
+  abx_mx = Nx.min(a[2], b[[0..(num_b - 1), 2]])
+  # ymax
+  aby_mx = Nx.min(a[3], b[[0..(num_b - 1), 3]])
+  w = Nx.subtract(abx_mx, abx_mn)
+  h = Nx.subtract(aby_mx, aby_mn)
+  intersect = Nx.multiply(w, h)
+
+  Nx.divide(intersect, Nx.subtract(Nx.add(a_area, b_area), intersect))
+end
+```
+
+```elixir
+box_list =
+  formed_predictions
+  |> Enum.map(& &1.box)
+  |> Nx.tensor()
+
+score_list =
+  formed_predictions
+  |> Enum.map(& &1.score)
+  |> Nx.tensor()
+
+nms_threshold = 0.7
+```
+
+```elixir
+nms = fn bboxes, scores, iou_threshold ->
+  num_boxes = Nx.shape(bboxes) |> elem(0)
+
+  areas =
+    Nx.multiply(
+      Nx.subtract(bboxes[[0..(num_boxes - 1), 2]], bboxes[[0..(num_boxes - 1), 0]]),
+      Nx.subtract(bboxes[[0..(num_boxes - 1), 3]], bboxes[[0..(num_boxes - 1), 1]])
+    )
+
+  bboxes
+  |> Nx.to_batched_list(1)
+  |> Enum.with_index()
+  |> Enum.map(fn {box, index} ->
+    box[0]
+    |> iou_nx.(bboxes, areas[index], areas)
+    |> Nx.greater(iou_threshold)
+    |> Nx.to_flat_list()
+  end)
+  |> Enum.uniq()
+  |> Enum.map(fn mask_list ->
+    duplicated_index_list =
+      mask_list
+      |> Enum.with_index()
+      |> Enum.filter(fn {value, _} -> value == 1 end)
+      |> Enum.map(&elem(&1, 1))
+
+    max_index =
+      scores
+      |> Nx.take(duplicated_index_list |> Nx.tensor())
+      |> Nx.argmax()
+      |> Nx.to_number()
+
+    Enum.at(duplicated_index_list, max_index)
+  end)
+  |> Enum.uniq()
+end
+```
+
+```elixir
+index_list = nms.(box_list, score_list, nms_threshold)
+```
+
+```elixir
+selected_predictions = Enum.map(index_list, &Enum.at(formed_predictions, &1))
+```
+
+## Visualize results
+
+```elixir
+image_tensor =
+  image_path
+  |> File.read!()
+  |> StbImage.read_binary!()
+  |> StbImage.to_nx()
+```
+
+```elixir
+{height, width, _} = Nx.shape(image_tensor)
+```
+
+```elixir
+croped_list =
+  selected_predictions
+  |> Enum.map(fn prediction ->
+    classes
+    |> Enum.at(prediction.class)
+    |> IO.inspect()
+
+    box = prediction.box
+    left = Enum.at(box, 0) |> Kernel.*(width) |> trunc()
+    top = Enum.at(box, 1) |> Kernel.*(height) |> trunc()
+    right = Enum.at(box, 2) |> Kernel.*(width) |> trunc()
+    bottom = Enum.at(box, 3) |> Kernel.*(height) |> trunc()
+
+    image_tensor[[top..bottom, left..right, 0..2]]
+    |> StbImage.from_nx()
+    |> StbImage.to_binary(:jpg)
+    |> Kino.Image.new(:jpeg)
+    |> Kino.render()
+  end)
+```
