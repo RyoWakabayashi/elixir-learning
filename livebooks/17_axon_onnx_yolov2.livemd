@@ -124,8 +124,7 @@ feats = Axon.predict(model, params, image_tensor)
 ## Parse results
 
 ```elixir
-num_x_blocks = 13
-num_y_blocks = 13
+{_, _, num_y_blocks, num_x_blocks} = Nx.shape(feats)
 ```
 
 ```elixir
