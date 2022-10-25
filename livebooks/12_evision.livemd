@@ -1,28 +1,18 @@
 # evision
 
-## 依存パッケージ
-
 ```elixir
 Mix.install([
   {:download, "~> 0.0.4"},
-  {:evision, "~> 0.1.0-dev", github: "cocoa-xu/evision", branch: "main"},
-  {:kino, "~> 0.5.2"},
-  {:nx, "~> 0.1", [env: :prod, repo: "hexpm", hex: "nx", optional: true]}
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.7"},
+  {:nx, "~> 0.3"}
 ])
 ```
 
-```elixir
-alias Evision, as: OpenCV
-```
+## 準備
 
 ```elixir
-defmodule Helper do
-  def show_image(mat) do
-    OpenCV.imencode!(".png", mat)
-    |> IO.iodata_to_binary()
-    |> Kino.Image.new(:png)
-  end
-end
+alias Evision, as: OpenCV
 ```
 
 ## 画像のダウンロード
@@ -45,31 +35,26 @@ lenna
 ## 画像の読込
 
 ```elixir
-{:ok, mat} = OpenCV.imread(lenna)
+mat = OpenCV.imread(lenna)
 ```
 
 ```elixir
-{:ok, size} = OpenCV.Mat.shape(mat)
-```
-
-```elixir
-Helper.show_image(mat)
+size = OpenCV.Mat.shape(mat)
 ```
 
 ## リサイズ
 
 ```elixir
-{:ok, resized_mat} = OpenCV.resize(mat, [_width = 256, _height = 128])
-{:ok, {128, 256, 3}} = OpenCV.Mat.shape(resized_mat)
-Helper.show_image(resized_mat)
+resized_mat =
+  mat
+  |> OpenCV.resize({256, 128})
 ```
 
 ## グレースケール
 
 ```elixir
 lenna
-|> OpenCV.imread!(flags: OpenCV.cv_IMREAD_GRAYSCALE())
-|> Helper.show_image()
+|> OpenCV.imread(flags: OpenCV.cv_IMREAD_GRAYSCALE())
 ```
 
 ## 二値化
@@ -77,94 +62,76 @@ lenna
 ```elixir
 {threshold, mono_mat} =
   lenna
-  |> OpenCV.imread!(flags: OpenCV.cv_IMREAD_GRAYSCALE())
-  |> OpenCV.threshold!(127, 255, OpenCV.cv_THRESH_BINARY())
+  |> OpenCV.imread(flags: OpenCV.cv_IMREAD_GRAYSCALE())
+  |> OpenCV.threshold(127, 255, OpenCV.cv_THRESH_BINARY())
 
-{:ok, {512, 512}} = OpenCV.Mat.shape(mono_mat)
-```
+IO.inspect(threshold)
 
-```elixir
-Helper.show_image(mono_mat)
-```
-
-```elixir
-lenna
-|> OpenCV.imread!(flags: OpenCV.cv_IMREAD_GRAYSCALE())
-|> OpenCV.threshold!(127, 255, OpenCV.cv_THRESH_BINARY())
-|> elem(1)
-|> Helper.show_image()
+mono_mat
 ```
 
 ## 並進
 
 ```elixir
-{:ok, affine} =
+affine =
   [
     [1, 0, 100],
     [0, 1, 50]
   ]
   |> Nx.tensor(type: {:f, 32})
-  |> OpenCV.Nx.to_mat()
+  |> OpenCV.Mat.from_nx()
 ```
 
 ```elixir
 lenna
-|> OpenCV.imread!()
-|> OpenCV.warpAffine!(affine, [512, 512])
-|> Helper.show_image()
+|> OpenCV.imread()
+|> OpenCV.warpAffine(affine, {512, 512})
 ```
 
 ## 回転
 
 ```elixir
-{:ok, affine} = OpenCV.getRotationMatrix2D([512 / 2, 512 / 2], 90, 1)
-```
+affine = OpenCV.getRotationMatrix2D({512 / 2, 512 / 2}, 90, 1)
 
-```elixir
 lenna
-|> OpenCV.imread!()
-|> OpenCV.warpAffine!(affine, [512, 512])
-|> Helper.show_image()
+|> OpenCV.imread()
+|> OpenCV.warpAffine(affine, {512, 512})
 ```
 
 ## ブラー
 
 ```elixir
 lenna
-|> OpenCV.imread!()
-|> OpenCV.blur!([9, 9])
-|> Helper.show_image()
+|> OpenCV.imread()
+|> OpenCV.blur({9, 9})
 ```
 
 ## メディアンブラー
 
 ```elixir
 lenna
-|> OpenCV.imread!()
-|> OpenCV.medianBlur!(9)
-|> Helper.show_image()
+|> OpenCV.imread()
+|> OpenCV.medianBlur(9)
 ```
 
 ## ガウシアンブラー
 
 ```elixir
 lenna
-|> OpenCV.imread!()
-|> OpenCV.gaussianBlur!([9, 9], 5, [])
-|> Helper.show_image()
+|> OpenCV.imread()
+|> OpenCV.gaussianBlur({9, 9}, 5)
 ```
 
 ## 図形描画
 
 ```elixir
 lenna
-|> OpenCV.imread!()
-|> OpenCV.rectangle!([50, 10], [125, 60], [255, 0, 0])
-|> OpenCV.rectangle!([250, 60], [325, 110], [0, 255, 0], thickness: -1)
-|> OpenCV.rectangle!([150, 120], [225, 320], [0, 0, 255],
+|> OpenCV.imread()
+|> OpenCV.rectangle({50, 10}, {125, 60}, {255, 0, 0})
+|> OpenCV.rectangle({250, 60}, {325, 110}, {0, 255, 0}, thickness: -1)
+|> OpenCV.rectangle({150, 120}, {225, 320}, {0, 0, 255},
   thickness: 5,
   lineType: OpenCV.cv_LINE_4()
 )
-|> OpenCV.ellipse!([300, 300], [100, 200], 30, 0, 360, [255, 255, 0], thickness: 3)
-|> Helper.show_image()
+|> OpenCV.ellipse({300, 300}, {100, 200}, 30, 0, 360, {255, 255, 0}, thickness: 3)
 ```

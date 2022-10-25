@@ -3,9 +3,9 @@
 ```elixir
 Mix.install([
   {:download, "~> 0.0.4"},
-  {:evision, "~> 0.1.0-dev", github: "cocoa-xu/evision", branch: "main"},
-  {:kino, "~> 0.6.2"},
-  {:nx, "~> 0.2.1", [env: :prod, repo: "hexpm", hex: "nx", optional: true]}
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.7"},
+  {:nx, "~> 0.3"}
 ])
 ```
 
@@ -25,12 +25,6 @@ defmodule Helper do
     end
 
     :ok
-  end
-
-  def show_image(mat) do
-    OpenCV.imencode!(".jpg", mat)
-    |> IO.iodata_to_binary()
-    |> Kino.Image.new(:png)
   end
 end
 ```
@@ -55,11 +49,11 @@ label_path = "/data/label.txt"
 ## Load model
 
 ```elixir
-net = OpenCV.DNN.readNetModel!(weights_path, config: cfg_path, framework: "")
+net = OpenCV.DNN.readNet(weights_path, config: cfg_path, framework: "")
 ```
 
 ```elixir
-out_names = OpenCV.DNN.Net.getUnconnectedOutLayersNames!(net)
+out_names = OpenCV.DNN.Net.getUnconnectedOutLayersNames(net)
 ```
 
 ```elixir
@@ -81,29 +75,27 @@ image_path = "/data/dog.jpg"
 ## Load image
 
 ```elixir
-mat = OpenCV.imread!(image_path)
-
-Helper.show_image(mat)
+mat = OpenCV.imread(image_path)
 ```
 
 ```elixir
-{height, width, _} = OpenCV.Mat.shape!(mat)
+{height, width, _} = OpenCV.Mat.shape(mat)
 ```
 
 ## Detect objects
 
 ```elixir
-blob = OpenCV.DNN.blobFromImage!(mat, size: [608, 608], swapRB: true, crop: false)
+blob = OpenCV.DNN.blobFromImage(mat, size: {608, 608}, swapRB: true, crop: false)
 
 predictions =
   net
-  |> OpenCV.DNN.Net.setInput!(
+  |> OpenCV.DNN.Net.setInput(
     blob,
     name: "",
     scalefactor: 1 / 255,
-    mean: [0, 0, 0]
+    mean: {0, 0, 0}
   )
-  |> OpenCV.DNN.Net.forward!(outBlobNames: out_names)
+  |> OpenCV.DNN.Net.forward(outBlobNames: out_names)
 ```
 
 ## Format predictions
@@ -114,10 +106,10 @@ score_threshold = 0.8
 formed_predictions =
   predictions
   |> Enum.map(fn prediction ->
-    OpenCV.Nx.to_nx(prediction)
+    OpenCV.Mat.to_nx(prediction, Nx.BinaryBackend)
   end)
   |> Nx.concatenate()
-  |> Nx.to_batched_list(1)
+  |> Nx.to_batched(1)
   |> Enum.filter(fn t ->
     t[0][4]
     |> Nx.to_number()
@@ -138,7 +130,7 @@ formed_predictions =
     max_x = center_x + box_width / 2
     max_y = center_y + box_height / 2
 
-    box = [min_x, min_y, max_x, max_y]
+    box = {min_x, min_y, max_x, max_y}
 
     %{
       box: box,
@@ -156,7 +148,7 @@ score_list = Enum.map(formed_predictions, & &1.score)
 
 nms_threshold = 0.7
 
-index_list = OpenCV.DNN.nmsBoxes!(box_list, score_list, score_threshold, nms_threshold)
+index_list = OpenCV.DNN.nmsBoxes(box_list, score_list, score_threshold, nms_threshold)
 ```
 
 ```elixir
@@ -168,7 +160,7 @@ selected_predictions = Enum.map(index_list, &Enum.at(formed_predictions, &1))
 ```elixir
 selected_predictions
 |> Enum.reduce(mat, fn prediction, drawed_mat ->
-  box = prediction.box
+  box = Tuple.to_list(prediction.box)
   left = Enum.at(box, 0) |> Kernel.*(width) |> trunc()
   top = Enum.at(box, 1) |> Kernel.*(height) |> trunc()
   right = Enum.at(box, 2) |> Kernel.*(width) |> trunc()
@@ -177,20 +169,19 @@ selected_predictions
   label = Enum.at(label_list, prediction.class)
 
   drawed_mat
-  |> OpenCV.rectangle!(
-    [left, top],
-    [right, bottom],
-    [255, 0, 0],
+  |> OpenCV.rectangle(
+    {left, top},
+    {right, bottom},
+    {255, 0, 0},
     thickness: 4
   )
-  |> OpenCV.putText!(
+  |> OpenCV.putText(
     label,
-    [left + 6, top + 26],
+    {left + 6, top + 26},
     OpenCV.cv_FONT_HERSHEY_SIMPLEX(),
     0.8,
-    [0, 0, 255],
+    {0, 0, 255},
     thickness: 2
   )
 end)
-|> Helper.show_image()
 ```

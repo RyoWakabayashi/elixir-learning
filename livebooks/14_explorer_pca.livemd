@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:explorer, "~> 0.2.0"},
-  {:kino, "~> 0.6.2"},
-  {:kino_vega_lite, "~> 0.1.1"},
-  {:nx, "~> 0.3.0-dev", github: "elixir-nx/nx", branch: "main", sparse: "nx"}
+  {:explorer, "~> 0.3"},
+  {:kino, "~> 0.7"},
+  {:kino_vega_lite, "~> 0.1"},
+  {:nx, "~> 0.3"}
 ])
 ```
 
@@ -78,7 +78,7 @@ wine_df
 
 ```elixir
 wine_df
-|> DataFrame.distinct(columns: ["class"])
+|> DataFrame.distinct(["class"])
 |> DataFrame.pull("class")
 ```
 
@@ -206,7 +206,9 @@ Vl.new(width: 300, height: 300 * Enum.count(cols))
 ```elixir
 get_class_values = fn df, col, class ->
   df
-  |> DataFrame.filter(Series.equal(df["class"], class))
+  |> DataFrame.filter_with(fn in_df ->
+    Series.equal(in_df["class"], class)
+  end)
   |> get_values.(col)
 end
 

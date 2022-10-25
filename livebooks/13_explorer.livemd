@@ -2,8 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:explorer, "~> 0.2.0"},
-  {:kino, "~> 0.6.2"}
+  {:explorer, "~> 0.3"},
+  {:kino, "~> 0.7"}
 ])
 ```
 
@@ -34,14 +34,14 @@ population_df
 
 ```elixir
 population_df
-|> DataFrame.distinct(columns: ["年齢層"])
+|> DataFrame.distinct(["年齢層"])
 |> DataFrame.to_columns()
 |> Map.get("年齢層")
 ```
 
 ```elixir
 population_df
-|> DataFrame.filter(&Series.equal(&1["都道府県"], "東京都"))
+|> DataFrame.filter_with(&Series.equal(&1["都道府県"], "東京都"))
 |> DataFrame.select(["年齢層", "性別", "人口（千人）"])
 |> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
@@ -49,8 +49,12 @@ population_df
 
 ```elixir
 population_df
-|> DataFrame.mutate("人口（千人）": &Series.cast(&1["人口（千人）"], :float))
-|> DataFrame.filter(&Series.equal(&1["都道府県"], "東京都"))
+|> DataFrame.mutate_with(fn df ->
+  [
+    "人口（千人）": Series.cast(df["人口（千人）"], :float)
+  ]
+end)
+|> DataFrame.filter_with(&Series.equal(&1["都道府県"], "東京都"))
 |> DataFrame.select(["年齢層", "性別", "人口（千人）"])
 |> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
@@ -63,8 +67,12 @@ end
 
 population_df
 |> DataFrame.mutate("人口（千人）": &Series.transform(&1["人口（千人）"], trim_comma))
-|> DataFrame.mutate("人口（千人）": &Series.cast(&1["人口（千人）"], :float))
-|> DataFrame.filter(&Series.equal(&1["都道府県"], "東京都"))
+|> DataFrame.mutate_with(fn df ->
+  [
+    "人口（千人）": Series.cast(df["人口（千人）"], :float)
+  ]
+end)
+|> DataFrame.filter_with(&Series.equal(&1["都道府県"], "東京都"))
 |> DataFrame.select(["年齢層", "性別", "人口（千人）"])
 |> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
@@ -74,13 +82,25 @@ population_df
 population_df =
   population_df
   |> DataFrame.mutate("人口（千人）": &Series.transform(&1["人口（千人）"], trim_comma))
-  |> DataFrame.mutate("人口（千人）": &Series.cast(&1["人口（千人）"], :float))
-  |> DataFrame.mutate("人口（千人）": &Series.multiply(&1["人口（千人）"], 1000))
-  |> DataFrame.mutate("人口（千人）": &Series.cast(&1["人口（千人）"], :integer))
+  |> DataFrame.mutate_with(fn df ->
+    [
+      "人口（千人）": Series.cast(df["人口（千人）"], :float)
+    ]
+  end)
+  |> DataFrame.mutate_with(fn df ->
+    [
+      "人口（千人）": Series.multiply(df["人口（千人）"], 1000)
+    ]
+  end)
+  |> DataFrame.mutate_with(fn df ->
+    [
+      "人口（千人）": Series.cast(df["人口（千人）"], :integer)
+    ]
+  end)
   |> DataFrame.rename("人口（千人）": "人口")
 
 population_df
-|> DataFrame.filter(&Series.equal(&1["都道府県"], "東京都"))
+|> DataFrame.filter_with(&Series.equal(&1["都道府県"], "東京都"))
 |> DataFrame.select(["年齢層", "性別", "人口"])
 |> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
@@ -88,9 +108,9 @@ population_df
 
 ```elixir
 population_df
-|> DataFrame.filter(&Series.equal(&1["年齢層"], "15歳未満"))
-|> DataFrame.filter(&Series.equal(&1["性別"], "男性"))
-|> DataFrame.filter(&Series.greater(&1["人口"], 300_000))
+|> DataFrame.filter_with(&Series.equal(&1["年齢層"], "15歳未満"))
+|> DataFrame.filter_with(&Series.equal(&1["性別"], "男性"))
+|> DataFrame.filter_with(&Series.greater(&1["人口"], 300_000))
 |> DataFrame.select(["都道府県", "人口"])
 |> DataFrame.arrange(desc: "人口")
 |> DataFrame.to_rows()
@@ -99,7 +119,11 @@ population_df
 
 ```elixir
 population_df
-|> DataFrame.mutate(人口: &Series.cast(&1["人口"], :integer))
+|> DataFrame.mutate_with(fn df ->
+  [
+    "人口（千人）": Series.cast(df["人口"], :integer)
+  ]
+end)
 |> DataFrame.pivot_wider("年齢層", "人口")
 |> DataFrame.to_rows()
 |> Kino.DataTable.new()
@@ -111,7 +135,11 @@ sum_df =
   |> DataFrame.group_by(["都道府県"])
   |> DataFrame.summarise(人口: [:sum])
   |> DataFrame.rename(人口_sum: "人口")
-  |> DataFrame.mutate(人口: &Series.cast(&1["人口"], :float))
+  |> DataFrame.mutate_with(fn df ->
+    [
+      "人口（千人）": Series.cast(df["人口"], :float)
+    ]
+  end)
 
 sum_df
 |> DataFrame.arrange(desc: "人口")
@@ -125,11 +153,27 @@ sex_ratio_df =
   |> DataFrame.group_by(["都道府県", "性別"])
   |> DataFrame.summarise(人口: [:sum])
   |> DataFrame.rename(人口_sum: "人口")
-  |> DataFrame.mutate(人口: &Series.cast(&1["人口"], :float))
+  |> DataFrame.mutate_with(fn df ->
+    [
+      人口: Series.cast(df["人口"], :float)
+    ]
+  end)
   |> DataFrame.pivot_wider("性別", "人口")
-  |> DataFrame.mutate(合計: &Series.add(&1["男性"], &1["女性"]))
-  |> DataFrame.mutate(男性率: &Series.divide(&1["男性"], &1["合計"]))
-  |> DataFrame.mutate(女性率: &Series.divide(&1["女性"], &1["合計"]))
+  |> DataFrame.mutate_with(fn df ->
+    [
+      合計: Series.add(df["男性"], df["女性"])
+    ]
+  end)
+  |> DataFrame.mutate_with(fn df ->
+    [
+      男性率: Series.divide(df["男性"], df["合計"])
+    ]
+  end)
+  |> DataFrame.mutate_with(fn df ->
+    [
+      女性率: Series.divide(df["女性"], df["合計"])
+    ]
+  end)
   |> DataFrame.select(["都道府県", "男性率", "女性率"])
 
 sex_ratio_df
@@ -144,11 +188,27 @@ elderly_rate_df =
   |> DataFrame.group_by(["都道府県", "年齢層"])
   |> DataFrame.summarise(人口: [:sum])
   |> DataFrame.rename(人口_sum: "人口")
-  |> DataFrame.mutate(人口: &Series.cast(&1["人口"], :float))
+  |> DataFrame.mutate_with(fn df ->
+    [
+      人口: Series.cast(df["人口"], :float)
+    ]
+  end)
   |> DataFrame.pivot_wider("年齢層", "人口")
-  |> DataFrame.mutate(合計: &Series.add(&1["15歳未満"], &1["15～64歳"]))
-  |> DataFrame.mutate(合計: &Series.add(&1["合計"], &1["65歳以上"]))
-  |> DataFrame.mutate(高齢者率: &Series.divide(&1["65歳以上"], &1["合計"]))
+  |> DataFrame.mutate_with(fn df ->
+    [
+      合計: Series.add(df["15歳未満"], df["15～64歳"])
+    ]
+  end)
+  |> DataFrame.mutate_with(fn df ->
+    [
+      合計: Series.add(df["合計"], df["65歳以上"])
+    ]
+  end)
+  |> DataFrame.mutate_with(fn df ->
+    [
+      高齢者率: Series.divide(df["65歳以上"], df["合計"])
+    ]
+  end)
   |> DataFrame.select(["都道府県", "高齢者率"])
 
 elderly_rate_df

@@ -2,13 +2,11 @@
 
 # Nx による画像処理
 
-## 依存パッケージのインストール
-
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.2.0", github: "elixir-nx/nx", branch: "main", sparse: "nx"},
-    {:kino, "~> 0.3.1"},
+    {:nx, "~> 0.3"},
+    {:kino, "~> 0.7"},
     {:download, "~> 0.0.4"},
     {:pixels, "~> 0.2.1"},
     {:pngex, "~> 0.1.1"}
@@ -20,29 +18,27 @@ Mix.install(
 <!-- livebook:{"output":true} -->
 
 ```
-* Getting nx (https://github.com/elixir-nx/nx.git - origin/main)
-remote: Enumerating objects: 12914, done.        
-remote: Counting objects: 100% (337/337), done.        
-remote: Compressing objects: 100% (212/212), done.        
-remote: Total 12914 (delta 179), reused 246 (delta 121), pack-reused 12577        
 Resolving Hex dependencies...
 Dependency resolution completed:
 New:
   certifi 2.9.0
-  complex 0.4.0
+  complex 0.4.2
   download 0.0.4
   elixir_make 0.6.3
   hackney 1.18.1
-  httpoison 1.8.1
+  httpoison 1.8.2
   idna 6.1.1
-  kino 0.3.1
+  kino 0.7.0
   metrics 1.0.1
   mimerl 1.2.0
+  nx 0.3.0
   parse_trans 3.3.1
   pixels 0.2.1
   pngex 0.1.1
   ssl_verify_fun 1.1.6
+  table 0.1.2
   unicode_util_compat 0.7.0
+* Getting nx (Hex package)
 * Getting kino (Hex package)
 * Getting download (Hex package)
 * Getting pixels (Hex package)
@@ -57,6 +53,7 @@ New:
 * Getting parse_trans (Hex package)
 * Getting ssl_verify_fun (Hex package)
 * Getting unicode_util_compat (Hex package)
+* Getting table (Hex package)
 * Getting complex (Hex package)
 ===> Analyzing applications...
 ===> Compiling parse_trans
@@ -65,9 +62,6 @@ Compiling 4 files (.ex)
 Generated pngex app
 ===> Analyzing applications...
 ===> Compiling mimerl
-==> kino
-Compiling 14 files (.ex)
-Generated kino app
 ===> Analyzing applications...
 ===> Compiling metrics
 ===> Analyzing applications...
@@ -77,6 +71,12 @@ Generated kino app
 ==> ssl_verify_fun
 Compiling 7 files (.erl)
 Generated ssl_verify_fun app
+==> table
+Compiling 5 files (.ex)
+Generated table app
+==> kino
+Compiling 36 files (.ex)
+Generated kino app
 ==> elixir_make
 Compiling 1 file (.ex)
 Generated elixir_make app
@@ -85,7 +85,6 @@ Compiling 2 files (.ex)
 Generated complex app
 ==> nx
 Compiling 24 files (.ex)
-Compiling lib/nx/binary_backend.ex (it's taking more than 10s)
 Generated nx app
 ===> Analyzing applications...
 ===> Compiling certifi
@@ -101,12 +100,12 @@ warning: System.cwd/0 is deprecated. Use File.cwd/0 instead
 
 Generated download app
 ==> pixels
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/pixels_jpeg.o c_src/pixels_jpeg.c
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/pixels_nif.o c_src/pixels_nif.c
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/pixels_png.o c_src/pixels_png.c
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/ext/lodepng.o c_src/ext/lodepng.c
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.1.5/include" -fPIC -o c_src/ext/ujpeg.o c_src/ext/ujpeg.c
-cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -Wl,--no-whole-archive -shared -o /home/livebook/.cache/mix/installs/elixir-1.13.2-erts-12.1.5/f5e9b445e2c0fde8217e6781b8f718d6/_build/dev/lib/pixels/priv/pixels_nif.so
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_jpeg.o c_src/pixels_jpeg.c
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_nif.o c_src/pixels_nif.c
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_png.o c_src/pixels_png.c
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/ext/lodepng.o c_src/ext/lodepng.c
+cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/ext/ujpeg.o c_src/ext/ujpeg.c
+cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -Wl,--no-whole-archive -shared -o /home/livebook/.cache/mix/installs/elixir-1.14.0-erts-12.3.2.2/c77e54fc719bc3841cc7d0d20130bb52/_build/dev/lib/pixels/priv/pixels_nif.so
 Compiling 3 files (.ex)
 Generated pixels app
 ```
@@ -242,11 +241,11 @@ lenna
 ```
 {:ok,
  %Pixels{
+   width: 512,
+   height: 512,
    data: <<226, 137, 125, 255, 226, 137, 125, 255, 223, 137, 133, 255, 223, 136, 128, 255, 226, 138,
      120, 255, 226, 129, 116, 255, 228, 138, 123, 255, 227, 134, 124, 255, 227, 140, 127, 255, 225,
-     136, 119, 255, 228, 135, 126, 255, 225, 134, 121, ...>>,
-   height: 512,
-   width: 512
+     136, 119, 255, 228, 135, 126, 255, 225, ...>>
  }}
 ```
 
@@ -288,12 +287,12 @@ rgba =
 # ここから画像加工処理
 rgb =
   rgba
-  |> Nx.slice_axis(0, 3, -1)
+  |> Nx.slice_along_axis(0, 3, axis: -1)
   |> Nx.map(&Nx.subtract(255, &1))
 
 a =
   rgba
-  |> Nx.slice_axis(4, 1, -1)
+  |> Nx.slice_along_axis(4, 1, axis: -1)
 
 new_rgba = Nx.concatenate([rgb, a], axis: -1)
 # ここまで画像加工処理
@@ -301,17 +300,6 @@ new_rgba = Nx.concatenate([rgb, a], axis: -1)
 changed =
   new_rgba
   |> Nx.to_flat_list()
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-warning: Nx.slice_axis/4 is deprecated. Use slice_along_axis/4 instead
-  /home/livebook/11_Image.livemd#cell:4
-
-warning: Nx.slice_axis/4 is deprecated. Use slice_along_axis/4 instead
-  /home/livebook/11_Image.livemd#cell:9
-
 ```
 
 <!-- livebook:{"output":true} -->
