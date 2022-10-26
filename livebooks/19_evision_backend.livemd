@@ -1,0 +1,61 @@
+# Evision.Backend
+
+```elixir
+Mix.install([
+  {:benchee, "~> 1.1"},
+  {:nx, "~> 0.4"},
+  {:exla, "~> 0.4"},
+  {:torchx, "~> 0.4"},
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.7"}
+])
+```
+
+## Section
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {Nx.BinaryBackend, device: :cpu})
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {EXLA.Backend, device: :cpu})
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {Torchx.Backend, device: :cpu})
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {Evision.Backend, device: :cpu})
+Nx.add(tensor, tensor)
+```
+
+```elixir
+bench = fn backend ->
+  tensor =
+    {200, 200}
+    |> Nx.iota(type: {:f, 64}, backend: {backend, device: :cpu})
+
+  Nx.add(tensor, tensor)
+end
+```
+
+```elixir
+bench.(Nx.BinaryBackend)
+```
+
+```elixir
+bench.(Evision.Backend)
+```
+
+```elixir
+Benchee.run(%{
+  "binary" => fn -> bench.(Nx.BinaryBackend) end,
+  "exla" => fn -> bench.(EXLA.Backend) end,
+  "torchx" => fn -> bench.(Torchx.Backend) end,
+  "evision" => fn -> bench.(Evision.Backend) end
+})
+```

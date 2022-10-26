@@ -1,0 +1,50 @@
+# Untitled notebook
+
+```elixir
+Mix.install([
+  {:benchee, "~> 1.1"},
+  {:nx, "~> 0.4"},
+  {:exla, "~> 0.4"},
+  {:torchx, "~> 0.4"},
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.7"}
+])
+```
+
+## Section
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {Nx.BinaryBackend, device: :gpu})
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {EXLA.Backend, device: :gpu})
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: Torchx.Backend)
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: Evision.Backend)
+Nx.add(tensor, tensor)
+```
+
+```elixir
+bench = fn backend ->
+  tensor = Nx.iota({200, 200}, type: {:f, 64}, backend: backend)
+  Nx.add(tensor, tensor)
+end
+```
+
+```elixir
+Benchee.run(%{
+  "binary" => fn -> bench.({Nx.BinaryBackend, device: :gpu}) end,
+  "exla" => fn -> bench.({EXLA.Backend, device: :gpu}) end,
+  "torchx" => fn -> bench.(Torchx.Backend) end,
+  "evision" => fn -> bench.(Evision.Backend) end
+})
+```
