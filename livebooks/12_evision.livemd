@@ -5,7 +5,7 @@ Mix.install([
   {:download, "~> 0.0.4"},
   {:evision, "~> 0.1"},
   {:kino, "~> 0.7"},
-  {:nx, "~> 0.3"}
+  {:nx, "~> 0.4"}
 ])
 ```
 
@@ -80,9 +80,7 @@ affine =
   ]
   |> Nx.tensor(type: {:f, 32})
   |> OpenCV.Mat.from_nx()
-```
 
-```elixir
 lenna
 |> OpenCV.imread()
 |> OpenCV.warpAffine(affine, {512, 512})

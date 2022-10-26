@@ -5,7 +5,7 @@ Mix.install([
   {:explorer, "~> 0.3"},
   {:kino, "~> 0.7"},
   {:kino_vega_lite, "~> 0.1"},
-  {:nx, "~> 0.3"}
+  {:nx, "~> 0.4"}
 ])
 ```
 
@@ -359,8 +359,12 @@ standardize = fn df, column ->
     |> Series.std()
 
   df
-  |> DataFrame.mutate(%{column => &Series.subtract(&1[column], mean)})
-  |> DataFrame.mutate(%{column => &Series.divide(&1[column], std)})
+  |> DataFrame.mutate_with(fn in_df ->
+    %{column => Series.subtract(in_df[column], mean)}
+  end)
+  |> DataFrame.mutate_with(fn in_df ->
+    %{column => Series.divide(in_df[column], std)}
+  end)
 end
 ```
 

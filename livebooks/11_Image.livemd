@@ -5,7 +5,7 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.3"},
+    {:nx, "~> 0.4"},
     {:kino, "~> 0.7"},
     {:download, "~> 0.0.4"},
     {:pixels, "~> 0.2.1"},
@@ -31,7 +31,7 @@ New:
   kino 0.7.0
   metrics 1.0.1
   mimerl 1.2.0
-  nx 0.3.0
+  nx 0.4.0
   parse_trans 3.3.1
   pixels 0.2.1
   pngex 0.1.1
@@ -84,7 +84,7 @@ Generated elixir_make app
 Compiling 2 files (.ex)
 Generated complex app
 ==> nx
-Compiling 24 files (.ex)
+Compiling 27 files (.ex)
 Generated nx app
 ===> Analyzing applications...
 ===> Compiling certifi
@@ -105,7 +105,7 @@ cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pix
 cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_png.o c_src/pixels_png.c
 cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/ext/lodepng.o c_src/ext/lodepng.c
 cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/ext/ujpeg.o c_src/ext/ujpeg.c
-cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -Wl,--no-whole-archive -shared -o /home/livebook/.cache/mix/installs/elixir-1.14.0-erts-12.3.2.2/c77e54fc719bc3841cc7d0d20130bb52/_build/dev/lib/pixels/priv/pixels_nif.so
+cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -Wl,--no-whole-archive -shared -o /home/livebook/.cache/mix/installs/elixir-1.14.0-erts-12.3.2.2/20141305a5cbc6c60f6d48320d820f08/_build/dev/lib/pixels/priv/pixels_nif.so
 Compiling 3 files (.ex)
 Generated pixels app
 ```
