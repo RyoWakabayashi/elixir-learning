@@ -14,22 +14,22 @@ Mix.install([
 ## Section
 
 ```elixir
-tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {Nx.BinaryBackend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: {:f, 64}, backend: {Nx.BinaryBackend, device: :cpu})
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {EXLA.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: {:f, 64}, backend: {EXLA.Backend, device: :cpu})
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {Torchx.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: {:f, 64}, backend: {Torchx.Backend, device: :cpu})
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {Evision.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: {:f, 64}, backend: {Evision.Backend, device: :cpu})
 Nx.add(tensor, tensor)
 ```
 
