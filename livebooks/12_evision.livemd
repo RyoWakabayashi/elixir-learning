@@ -35,11 +35,56 @@ lenna
 ## 画像の読込
 
 ```elixir
+[
+  [
+    [255, 0, 0],
+    [255, 128, 0],
+    [255, 255, 0]
+  ],
+  [
+    [0, 255, 0],
+    [0, 255, 128],
+    [0, 255, 255]
+  ],
+  [
+    [0, 0, 255],
+    [128, 0, 255],
+    [255, 0, 255]
+  ]
+]
+|> Nx.tensor(type: {:u, 8})
+|> OpenCV.Mat.from_nx_2d()
+|> OpenCV.resize({300, 300}, interpolation: OpenCV.cv_INTER_AREA())
+```
+
+```elixir
 mat = OpenCV.imread(lenna)
 ```
 
 ```elixir
 size = OpenCV.Mat.shape(mat)
+```
+
+```elixir
+mat
+|> OpenCV.Mat.to_nx()
+```
+
+```elixir
+mat
+|> OpenCV.Mat.to_nx(Nx.BinaryBackend)
+|> Nx.transpose(axes: [1, 0, 2])
+|> OpenCV.Mat.from_nx_2d()
+|> dbg
+```
+
+```elixir
+mat
+|> OpenCV.Mat.to_nx(Nx.BinaryBackend)
+|> Nx.mean(axes: [2])
+|> Nx.broadcast({512, 512, 3}, axes: [0, 1])
+|> OpenCV.Mat.from_nx_2d()
+|> dbg
 ```
 
 ## リサイズ

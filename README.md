@@ -66,7 +66,7 @@ LiveBook を起動する
 Docker 上で実行している場合は以下のコマンドで docker コンテナ内に入る
 
 ```bash
-docker exec -it elixir-learning-livebook-1 /bin/bash
+docker exec -it livebook /bin/bash
 ```
 
 ### ノードの起動
