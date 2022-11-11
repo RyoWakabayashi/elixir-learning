@@ -1,0 +1,102 @@
+# Tellus から台風情報を取得する
+
+```elixir
+Mix.install([
+  {:httpoison, "~> 1.8"},
+  {:json, "~> 1.4"},
+  {:kino, "~> 0.7"},
+  {:kino_maplibre, "~> 0.1.3"}
+])
+```
+
+## 情報の設定
+
+```elixir
+# Tellus のトークンを入力する
+token_input = Kino.Input.text("Token")
+```
+
+```elixir
+# 台風情報の商品ID
+typhoon_product_id = "c34f78fc-3b20-4a0a-a692-c402a0d8cdbe"
+```
+
+## Tellus の認証
+
+```elixir
+auth_url = "https://www.tellusxdp.com/api/manager/v2/auth/token/"
+json_header = {"Content-Type", "application/json"}
+
+get_product_info = fn product_id ->
+  request_body = JSON.encode!(%{product_id: product_id})
+  auth_header = {"Authorization", "Bearer " <> Kino.Input.read(token_input)}
+
+  auth_url
+  |> HTTPoison.post!(request_body, [auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+end
+```
+
+```elixir
+typhoon_product_info = get_product_info.(typhoon_product_id)
+```
+
+```elixir
+# 認証ヘッダーの設定
+auth_header = {"Authorization", "Bearer " <> typhoon_product_info["token"]}
+```
+
+## 台風一覧の取得
+
+```elixir
+typhoon_events_url = typhoon_product_info["base_url"] <> "/archive/typhoon/events.json"
+
+typhoon_events =
+  typhoon_events_url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+```
+
+## 台風情報の取得
+
+```elixir
+get_typhoon_points = fn event_id ->
+  url = typhoon_product_info["base_url"] <> "/archive/typhoon/" <> event_id <> "_point.json"
+
+  url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+end
+```
+
+```elixir
+typhoon_points = get_typhoon_points.("TC2111")
+```
+
+## 台風情報の地図へのプロット
+
+```elixir
+marker_list =
+  typhoon_points["features"]
+  |> Enum.map(fn feature ->
+    coordinates = feature["geometry"]["coordinates"]
+
+    %{
+      "lat" => Enum.at(coordinates, 1),
+      "lng" => Enum.at(coordinates, 0)
+    }
+  end)
+```
+
+<!-- livebook:{"attrs":{"center":"140, 35","layers":[{"cluster_colors":["#51bbd6","#f1f075","#f28cb1"],"cluster_max":750,"cluster_min":100,"coordinates_format":"columns","layer_color":"#18862e","layer_id":"ニパルタック","layer_opacity":0.5,"layer_radius":8,"layer_source":"marker_list","layer_source_query":null,"layer_source_query_strict":null,"layer_type":"circle","source_coordinates":"lng","source_latitude":"lat","source_longitude":"lng","source_type":"table"}],"ml_alias":"Elixir.MapLibre","style":"default","zoom":3},"kind":"Elixir.KinoMapLibre.MapCell","livebook_object":"smart_cell"} -->
+
+```elixir
+MapLibre.new(center: {140.0, 35.0}, zoom: 3)
+|> MapLibre.add_table_source("marker_list", marker_list, {:lng_lat, ["lng", "lat"]})
+|> MapLibre.add_layer(
+  id: "ニパルタック",
+  source: "marker_list",
+  type: :circle,
+  paint: [circle_color: "#18862e", circle_radius: 8, circle_opacity: 0.5]
+)
+```
