@@ -21,6 +21,10 @@ token_input = Kino.Input.text("Token")
 typhoon_product_id = "c34f78fc-3b20-4a0a-a692-c402a0d8cdbe"
 ```
 
+このノートブックではゲヒルン株式会社の台風情報APIを使用しています
+
+©Gehirn Inc.
+
 ## Tellus の認証
 
 ```elixir
