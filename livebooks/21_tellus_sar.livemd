@@ -1,0 +1,369 @@
+# Tellus からSAR情報を取得する
+
+```elixir
+Mix.install([
+  {:evision, "~> 0.1"},
+  {:httpoison, "~> 1.8"},
+  {:json, "~> 1.4"},
+  {:kino, "~> 0.7"},
+  {:kino_maplibre, "~> 0.1.3"}
+])
+```
+
+## 情報の設定
+
+```elixir
+# Tellus のトークンを入力する
+token_input = Kino.Input.text("Token")
+```
+
+```elixir
+# SAR情報の商品ID
+sar_product_id = "6a2ae4fc-2a62-4483-861a-906c716add07"
+```
+
+```elixir
+base_url = "https://tellusar.tellusxdp.com"
+```
+
+```elixir
+satellite_id = "asnaro2"
+```
+
+このノートブックではASNARO-2のデータを使用しています
+
+Original data provided by NEC
+
+## Tellus の認証
+
+```elixir
+auth_url = "https://www.tellusxdp.com/api/manager/v2/auth/token/"
+json_header = {"Content-Type", "application/json"}
+
+get_auth_header = fn product_id ->
+  request_body = JSON.encode!(%{product_id: product_id})
+  auth_header = {"Authorization", "Bearer " <> Kino.Input.read(token_input)}
+
+  auth_url
+  |> HTTPoison.post!(request_body, [auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(&{"Authorization", "Bearer " <> &1["token"]})
+end
+```
+
+## シーン一覧の取得
+
+```elixir
+auth_header = get_auth_header.(sar_product_id)
+
+scenes_url = "#{base_url}/api/v2/#{satellite_id}/search"
+
+scenes =
+  scenes_url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+```
+
+```elixir
+# 東京近郊のデータ
+scenes["data"]["scenes"]
+|> Enum.filter(&(&1["left_bottom_lat"] >= 35 && &1["left_bottom_lat"] <= 36))
+```
+
+```elixir
+scene_id = "AS200534028728-190103"
+```
+
+```elixir
+auth_header = get_auth_header.(sar_product_id)
+
+scenes_info_url = "#{base_url}/api/v2/#{satellite_id}/search/#{scene_id}"
+
+scenes_info =
+  scenes_info_url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+```
+
+```elixir
+auth_header = get_auth_header.(sar_product_id)
+
+scenes_after_url = "#{base_url}/api/v2/#{satellite_id}/search/#{scene_id}/afters"
+
+scenes_after =
+  scenes_after_url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+```
+
+## 差分干渉データ作成依頼
+
+```elixir
+after_scene_id = "AS200555328728-190117"
+```
+
+```elixir
+auth_header = get_auth_header.(sar_product_id)
+
+work_url = "#{base_url}/api/v2/works"
+
+work_body = %{
+  "satellite" => satellite_id,
+  "before_scene_id" => scene_id,
+  "after_scene_id" => after_scene_id,
+  "polarisation" => "HH",
+  "nlook_rg" => 5,
+  "nlook_az" => 7,
+  "filter" => 0,
+  "beam_number" => 1
+}
+
+work =
+  work_url
+  |> HTTPoison.post!(JSON.encode!(work_body), [auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+```
+
+```elixir
+work_id = work["data"]["work_id"]
+```
+
+```elixir
+auth_header = get_auth_header.(sar_product_id)
+
+work_status_url = "#{base_url}/api/v2/works/#{work_id}"
+
+work_status =
+  work_status_url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+```
+
+## PNGの取得
+
+```elixir
+z = 11
+```
+
+```elixir
+lat_lon_to_tile = fn zoom, lat, lon ->
+  tile_count = 2 ** zoom
+
+  x_tile =
+    ((lon + 180) / 360 * tile_count)
+    |> floor()
+
+  y_tile =
+    (lat * :math.pi() / 180)
+    |> then(&(:math.tan(&1) + 1 / :math.cos(&1)))
+    |> :math.log()
+    |> then(&((1 - &1 / :math.pi()) / 2 * tile_count))
+    |> floor()
+
+  {x_tile, y_tile}
+end
+```
+
+```elixir
+scenes_info["data"]
+```
+
+```elixir
+lat = (scenes_info["data"]["left_bottom_lat"] + scenes_info["data"]["right_top_lat"]) / 2
+lon = (scenes_info["data"]["left_bottom_lon"] + scenes_info["data"]["right_top_lon"]) / 2
+
+{x, y} = lat_lon_to_tile.(z, lat, lon)
+```
+
+```elixir
+get_png = fn type, work_id, z, x, y ->
+  auth_header = get_auth_header.(sar_product_id)
+
+  png_url = "#{base_url}/api/v2/works/#{work_id}/pngs/#{type}s/#{z}/#{x}/#{y}.png"
+
+  %HTTPoison.Response{body: body} =
+    png_url
+    |> HTTPoison.get!([auth_header])
+
+  img_path = "sar_#{type}_#{work_id}_#{z}_#{x}_#{y}.png"
+
+  File.write!(img_path, body)
+
+  img_path
+  |> Evision.imread()
+  |> Kino.render()
+
+  img_path
+end
+```
+
+```elixir
+before_img_path = get_png.("before", work_id, z, x, y)
+```
+
+```elixir
+after_img_path = get_png.("after", work_id, z, x, y)
+```
+
+```elixir
+coherence_img_path = get_png.("coherence", work_id, z, x, y)
+```
+
+```elixir
+diff_img_path = get_png.("fringe_diff", work_id, z, x, y)
+```
+
+## TIFF画像の取得
+
+```elixir
+get_tif = fn type, work_id ->
+  auth_header = get_auth_header.(sar_product_id)
+
+  tiff_url = "#{base_url}/api/v2/works/#{work_id}/tifs/#{type}.tif"
+
+  %HTTPoison.Response{body: body} =
+    tiff_url
+    |> HTTPoison.get!([auth_header])
+
+  tiff_path = "sar_#{type}_#{work_id}.tif"
+
+  File.write!(tiff_path, body)
+
+  tiff_path
+  |> Evision.imread()
+  |> Kino.render()
+
+  tiff_path
+end
+```
+
+```elixir
+get_tif.("fringe_diff", work_id)
+```
+
+## 地図へのオーバーレイ
+
+```elixir
+get_red_image = fn img_path ->
+  r =
+    Evision.imread(img_path)
+    |> Evision.Mat.to_nx(Nx.BinaryBackend)
+    |> Nx.slice([0, 0, 0], [256, 256, 1])
+    |> Nx.transpose(axes: [2, 0, 1])
+
+  bg =
+    0
+    |> Nx.broadcast({256, 256, 2})
+    |> Nx.transpose(axes: [2, 0, 1])
+
+  [bg, r]
+  |> Nx.concatenate()
+  |> Nx.transpose(axes: [1, 2, 0])
+  |> Nx.as_type({:f, 64})
+  |> Evision.Mat.from_nx_2d()
+end
+```
+
+```elixir
+red_mat = get_red_image.(before_img_path)
+```
+
+```elixir
+get_data_url = fn mat ->
+  Evision.imencode(".png", mat)
+  |> Base.encode64()
+  |> then(&"data:image/png;base64,#{&1}")
+end
+```
+
+```elixir
+r_img_base64 = get_data_url.(red_mat)
+```
+
+```elixir
+tile_to_lat_lon = fn zoom, x_tile, y_tile ->
+  tile_count = 2 ** zoom
+
+  lon_deg = x_tile / tile_count * 360 - 180
+
+  lat_deg =
+    (:math.pi() * (1 - 2 * y_tile / tile_count))
+    |> :math.sinh()
+    |> :math.atan()
+    |> Kernel.*(180 / :math.pi())
+
+  {lat_deg, lon_deg}
+end
+```
+
+```elixir
+{bottom_lat, left_lon} = tile_to_lat_lon.(z, x, y)
+```
+
+```elixir
+{top_lat, right_lon} = tile_to_lat_lon.(z, x + 1, y + 1)
+```
+
+```elixir
+alias MapLibre, as: Ml
+```
+
+```elixir
+show_map_overlay = fn z, {bottom_lat, left_lon, top_lat, right_lon}, img_base64 ->
+  center = {(left_lon + right_lon) / 2, (bottom_lat + top_lat) / 2}
+
+  # タイルの中心を地図の中心にする
+  Ml.new(
+    center: center,
+    zoom: z,
+    style: :terrain
+  )
+  # 画像をタイルの座標に配置する
+  |> Ml.add_source(
+    "sar-source",
+    type: :image,
+    url: img_base64,
+    coordinates: [
+      [left_lon, bottom_lat],
+      [right_lon, bottom_lat],
+      [right_lon, top_lat],
+      [left_lon, top_lat]
+    ]
+  )
+  # 画像をレイヤーとして地図に重ね、透過する
+  |> Ml.add_layer(
+    id: "overlay",
+    source: "sar-source",
+    type: :raster,
+    layout: %{
+      "visibility" => "visible"
+    },
+    paint: %{
+      "raster-opacity" => 0.5
+    }
+  )
+end
+```
+
+```elixir
+show_map_overlay.(10, {bottom_lat, left_lon, top_lat, right_lon}, r_img_base64)
+```
+
+```elixir
+z = 14
+{x, y} = lat_lon_to_tile.(z, (bottom_lat + top_lat) / 2, (left_lon + right_lon) / 2)
+```
+
+```elixir
+before_img_path = get_png.("before", work_id, z, x, y)
+
+r_img_base64 =
+  before_img_path
+  |> get_red_image.()
+  |> get_data_url.()
+
+{bottom_lat, left_lon} = tile_to_lat_lon.(z, x, y)
+{top_lat, right_lon} = tile_to_lat_lon.(z, x + 1, y + 1)
+
+show_map_overlay.(13, {bottom_lat, left_lon, top_lat, right_lon}, r_img_base64)
+```
