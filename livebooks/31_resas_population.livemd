@@ -1,0 +1,240 @@
+# RESAS から人口構成を取得する
+
+```elixir
+Mix.install([
+  {:httpoison, "~> 1.8"},
+  {:json, "~> 1.4"},
+  {:explorer, "~> 0.3"},
+  {:kino, "~> 0.7"},
+  {:kino_vega_lite, "~> 0.1.4"}
+])
+```
+
+## 情報の設定
+
+このノートブックはRESAS（地域経済分析システム）のデータを加工して作成しています
+
+```elixir
+# RESAS のAPIキーを入力する
+api_key_input = Kino.Input.text("API_KEY")
+```
+
+```elixir
+base_url = "https://opendata.resas-portal.go.jp"
+```
+
+```elixir
+json_header = {"Content-Type", "application/json"}
+```
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+```
+
+## RESAS の認証
+
+```elixir
+auth_header = {"X-API-KEY", Kino.Input.read(api_key_input)}
+```
+
+## 都道府県一覧の取得
+
+```elixir
+prefectures_url = "#{base_url}/api/v1/prefectures"
+
+prefectures =
+  prefectures_url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+```
+
+```elixir
+prefectures_df = DataFrame.new(prefectures["result"])
+```
+
+```elixir
+Kino.DataTable.new(prefectures_df, sorting_enabled: true)
+```
+
+```elixir
+oita_pref_code =
+  prefectures_df
+  # "prefName" が "大分県" の行を抽出
+  |> DataFrame.filter_with(&Series.equal(&1["prefName"], "大分県"))
+  # "prefCode" の列を選択
+  |> DataFrame.pull("prefCode")
+  # 先頭のデータを取得
+  |> Series.first()
+  |> dbg()
+```
+
+## 市区町村一覧の取得
+
+```elixir
+get_cities = fn pref_code ->
+  query =
+    case pref_code do
+      "" ->
+        ""
+
+      pref_code ->
+        "?prefCode=#{pref_code}"
+    end
+
+  cities_url = "#{base_url}/api/v1/cities#{query}"
+
+  cities_url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(& &1["result"])
+end
+```
+
+```elixir
+all_cities_df =
+  ""
+  |> get_cities.()
+  |> DataFrame.new()
+
+all_cities_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+oita_cities_df =
+  oita_pref_code
+  |> get_cities.()
+  |> DataFrame.new()
+
+oita_cities_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+oita_city_code =
+  oita_cities_df
+  |> DataFrame.filter_with(&Series.equal(&1["cityName"], "大分市"))
+  |> DataFrame.pull("cityCode")
+  |> Series.first()
+  |> dbg()
+```
+
+## 特別区・行政区のある都道府県
+
+bigCityFlag: 特別区・行政区フラグ
+
+* 0:一般の市区町村
+* 1:政令指定都市の区
+* 2:政令指定都市の市
+* 3:東京都23区
+
+```elixir
+oita_cities_df
+|> DataFrame.filter_with(&Series.not_equal(&1["bigCityFlag"], "0"))
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+all_cities_df
+# bigCityFlag が 0 でない行を抽出する
+|> DataFrame.filter_with(&Series.not_equal(&1["bigCityFlag"], "0"))
+# 都道府県コードで重複排除する
+|> DataFrame.distinct(["prefCode"])
+# 都道府県一覧データフレームと結合する
+|> DataFrame.join(prefectures_df)
+|> Kino.DataTable.new(sorting_enabled: true)
+|> dbg()
+```
+
+## 人口構成の取得
+
+```elixir
+get_population_composition = fn pref_code, city_code ->
+  query =
+    "?prefCode=#{pref_code}&cityCode=" <>
+      case city_code do
+        "" ->
+          "-"
+
+        city_code ->
+          city_code
+      end
+
+  url = "#{base_url}/api/v1/population/composition/perYear#{query}"
+
+  url
+  |> HTTPoison.get!([auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(& &1["result"]["data"])
+end
+```
+
+```elixir
+population_composition = get_population_composition.(oita_pref_code, "")
+```
+
+```elixir
+population_composition_df =
+  population_composition
+  |> Enum.flat_map(fn data ->
+    data["data"]
+    |> Enum.map(fn datum ->
+      Map.merge(datum, %{"label" => data["label"]})
+    end)
+  end)
+  |> DataFrame.new()
+
+population_composition_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+<!-- livebook:{"attrs":{"chart_title":"大分県人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"population_composition_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+VegaLite.new(width: 700, height: 400, title: "大分県人口構成推移")
+|> VegaLite.data_from_values(population_composition_df, only: ["year", "value", "label"])
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "year", type: :quantitative)
+|> VegaLite.encode_field(:y, "value", type: :quantitative)
+|> VegaLite.encode_field(:color, "label", type: :nominal)
+```
+
+```elixir
+oita_city_population_composition_df =
+  oita_pref_code
+  |> get_population_composition.(oita_city_code)
+  |> Enum.flat_map(fn data ->
+    data["data"]
+    |> Enum.map(fn datum ->
+      Map.merge(datum, %{"label" => data["label"]})
+    end)
+  end)
+  |> DataFrame.new()
+
+oita_city_population_composition_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+<!-- livebook:{"attrs":{"chart_title":"大分市人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"oita_city_population_composition_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+VegaLite.new(width: 700, height: 400, title: "大分市人口構成推移")
+|> VegaLite.data_from_values(oita_city_population_composition_df,
+  only: ["year", "value", "label"]
+)
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "year", type: :quantitative)
+|> VegaLite.encode_field(:y, "value", type: :quantitative)
+|> VegaLite.encode_field(:color, "label", type: :nominal)
+```
+
+<!-- livebook:{"attrs":{"chart_title":null,"height":null,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"oita_city_population_composition_df","x_field":"label","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":null},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+VegaLite.new()
+|> VegaLite.data_from_values(oita_city_population_composition_df, only: ["label", "value"])
+|> VegaLite.mark(:point)
+|> VegaLite.encode_field(:x, "label", type: :nominal)
+|> VegaLite.encode_field(:y, "value", type: :quantitative)
+```
