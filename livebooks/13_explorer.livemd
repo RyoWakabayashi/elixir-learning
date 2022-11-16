@@ -28,7 +28,6 @@ DataFrame.table(population_df, limit: :infinity)
 
 ```elixir
 population_df
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -43,7 +42,6 @@ population_df
 population_df
 |> DataFrame.filter_with(&Series.equal(&1["都道府県"], "東京都"))
 |> DataFrame.select(["年齢層", "性別", "人口（千人）"])
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -56,7 +54,6 @@ population_df
 end)
 |> DataFrame.filter_with(&Series.equal(&1["都道府県"], "東京都"))
 |> DataFrame.select(["年齢層", "性別", "人口（千人）"])
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -74,7 +71,6 @@ population_df
 end)
 |> DataFrame.filter_with(&Series.equal(&1["都道府県"], "東京都"))
 |> DataFrame.select(["年齢層", "性別", "人口（千人）"])
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -102,7 +98,6 @@ population_df =
 population_df
 |> DataFrame.filter_with(&Series.equal(&1["都道府県"], "東京都"))
 |> DataFrame.select(["年齢層", "性別", "人口"])
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -113,7 +108,6 @@ population_df
 |> DataFrame.filter_with(&Series.greater(&1["人口"], 300_000))
 |> DataFrame.select(["都道府県", "人口"])
 |> DataFrame.arrange(desc: "人口")
-|> DataFrame.to_rows()
 |> Kino.DataTable.new()
 ```
 
@@ -125,7 +119,6 @@ population_df
   ]
 end)
 |> DataFrame.pivot_wider("年齢層", "人口")
-|> DataFrame.to_rows()
 |> Kino.DataTable.new()
 ```
 
@@ -143,7 +136,6 @@ sum_df =
 
 sum_df
 |> DataFrame.arrange(desc: "人口")
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -178,7 +170,6 @@ sex_ratio_df =
 
 sex_ratio_df
 |> DataFrame.arrange(desc: "男性率")
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -213,7 +204,6 @@ elderly_rate_df =
 
 elderly_rate_df
 |> DataFrame.arrange(desc: "高齢者率")
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -223,7 +213,6 @@ assets_df = DataFrame.from_csv!("/home/livebook/assets_20151216.csv")
 
 ```elixir
 assets_df
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -241,7 +230,6 @@ assets_df =
   |> parse_float.("負債現在高")
 
 assets_df
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -253,7 +241,6 @@ joined_df =
   |> DataFrame.join(assets_df, how: :left)
 
 joined_df
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -264,7 +251,6 @@ DataFrame.to_csv(joined_df, "/tmp/joined.csv")
 ```elixir
 joined_df
 |> DataFrame.arrange(desc: "高齢者率")
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
@@ -367,7 +353,6 @@ end)
 |> Map.merge(%{"x" => cols})
 |> DataFrame.new()
 |> DataFrame.select(["x" | cols])
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(keys: ["x" | cols], sorting_enabled: true)
 ```
 
@@ -388,6 +373,5 @@ end)
 |> Map.merge(%{"x" => cols})
 |> DataFrame.new()
 |> DataFrame.select(["x" | cols])
-|> DataFrame.to_rows()
 |> Kino.DataTable.new(keys: ["x" | cols], sorting_enabled: true)
 ```

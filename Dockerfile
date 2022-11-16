@@ -1,4 +1,4 @@
-FROM livebook/livebook:0.7.1
+FROM livebook/livebook:0.7.2
 
 RUN mix local.hex --force \
   && mix archive.install hex phx_new --force \
