@@ -36,6 +36,8 @@ qq =
   |> dbg()
 ```
 
+## データテーブルに表示する
+
 ```elixir
 qq
 |> Enum.map(&%{List.first(&1) => &1})
