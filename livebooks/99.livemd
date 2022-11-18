@@ -1,0 +1,46 @@
+# 九九
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.4"},
+  {:kino, "~> 0.7"}
+])
+```
+
+## Enum
+
+```elixir
+qq =
+  1..9
+  |> Enum.to_list()
+  |> then(fn list ->
+    Enum.map(list, fn x ->
+      Enum.map(list, fn y ->
+        x * y
+      end)
+    end)
+  end)
+  |> dbg()
+```
+
+## Nx
+
+```elixir
+qq =
+  {1, 9}
+  |> Nx.iota()
+  |> Nx.add(1)
+  |> then(&Nx.dot(Nx.transpose(&1), &1))
+  |> Nx.to_flat_list()
+  |> Enum.chunk_every(9)
+  |> dbg()
+```
+
+```elixir
+qq
+|> Enum.map(&%{List.first(&1) => &1})
+|> then(&[%{0 => Enum.at(&1, 0)[1]} | &1])
+|> Enum.reduce(fn x, merged -> Map.merge(merged, x) end)
+|> Kino.DataTable.new()
+|> dbg()
+```

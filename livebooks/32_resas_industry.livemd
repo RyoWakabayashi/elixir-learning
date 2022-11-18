@@ -1,0 +1,506 @@
+# RESAS から産業構造を取得する
+
+```elixir
+Mix.install([
+  {:httpoison, "~> 1.8"},
+  {:json, "~> 1.4"},
+  {:explorer, "~> 0.3"},
+  {:nx, "~> 0.4"},
+  {:kino, "~> 0.7"},
+  {:kino_vega_lite, "~> 0.1.4"}
+])
+```
+
+## 情報の設定
+
+このノートブックはRESAS（地域経済分析システム）のデータを加工して作成しています
+
+```elixir
+# RESAS のAPIキーを入力する
+api_key_input = Kino.Input.text("API_KEY")
+```
+
+```elixir
+base_url = "https://opendata.resas-portal.go.jp"
+```
+
+```elixir
+json_header = {"Content-Type", "application/json"}
+```
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+alias VegaLite, as: Vl
+```
+
+## RESAS の認証
+
+```elixir
+auth_header = {"X-API-KEY", Kino.Input.read(api_key_input)}
+```
+
+## 都道府県一覧の取得
+
+```elixir
+prefectures_url = "#{base_url}/api/v1/prefectures"
+
+prefectures_df =
+  prefectures_url
+  |> HTTPoison.get!([auth_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(&DataFrame.new(&1["result"]))
+
+prefectures_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+oita_pref_code =
+  prefectures_df
+  |> DataFrame.filter_with(&Series.equal(&1["prefName"], "大分県"))
+  |> DataFrame.pull("prefCode")
+  |> Series.first()
+```
+
+## 産業一覧の取得
+
+```elixir
+# 大分類
+industries_broad_df =
+  "#{base_url}/api/v1/industries/broad"
+  |> HTTPoison.get!([auth_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(&DataFrame.new(&1["result"]))
+
+industries_broad_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+# 中分類
+get_industries_middle = fn sic_code ->
+  "#{base_url}/api/v1/industries/middle?sicCode=#{sic_code}"
+  |> HTTPoison.get!([auth_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(&DataFrame.new(&1["result"]))
+end
+
+industries_middle_df =
+  industries_broad_df
+  |> DataFrame.pull("sicCode")
+  |> Series.to_list()
+  |> Enum.map(&get_industries_middle.(&1))
+  |> Enum.filter(&(DataFrame.n_rows(&1) > 0))
+  |> DataFrame.concat_rows()
+
+industries_middle_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+# 小分類
+get_industries_narrow = fn simc_code ->
+  "#{base_url}/api/v1/industries/narrow?simcCode=#{simc_code}"
+  |> HTTPoison.get!([auth_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(&DataFrame.new(&1["result"]))
+end
+
+industries_narrow_df =
+  industries_middle_df
+  |> DataFrame.pull("simcCode")
+  |> Series.to_list()
+  |> Enum.map(&get_industries_narrow.(&1))
+  |> Enum.filter(&(DataFrame.n_rows(&1) > 0))
+  |> DataFrame.concat_rows()
+
+industries_narrow_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+## 地域別特化係数の取得
+
+```elixir
+get_industry_power = fn year, pref_code, area_type, disp_type, sic_code, simc_code ->
+  query =
+    "?year=#{year}" <>
+      "&prefCode=#{pref_code}" <>
+      "&areaType=#{area_type}" <>
+      "&dispType=#{disp_type}" <>
+      "&sicCode=#{sic_code}" <>
+      "&simcCode=#{simc_code}"
+
+  url = "#{base_url}/api/v1/industry/power/forArea#{query}"
+
+  url
+  |> HTTPoison.get!([auth_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(& &1["result"])
+end
+```
+
+```elixir
+industry_power = get_industry_power.("2016", oita_pref_code, "1", "1", "A", "01")
+```
+
+```elixir
+prefectures_industry_power_df =
+  industry_power["prefectures"]
+  |> DataFrame.new()
+
+prefectures_industry_power_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+<!-- livebook:{"attrs":{"chart_title":"都道府県別農業特化係数（付加価値額）","height":400,"layers":[{"chart_type":"bar","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"prefectures_industry_power_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":null},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+Vl.new(height: 400, title: "都道府県別農業特化係数（付加価値額）")
+|> Vl.data_from_values(prefectures_industry_power_df, only: ["prefName", "value"])
+|> Vl.mark(:bar)
+|> Vl.encode_field(:x, "prefName", type: :nominal)
+|> Vl.encode_field(:y, "value", type: :quantitative)
+```
+
+```elixir
+industries_middle_df
+|> DataFrame.select(["sicCode", "simcCode"])
+|> DataFrame.to_rows()
+```
+
+```elixir
+prefectures_industry_power_df =
+  industries_middle_df
+  |> DataFrame.select(["sicCode", "simcCode"])
+  |> DataFrame.to_rows()
+  |> Enum.map(fn industry ->
+    get_industry_power.(
+      "2016",
+      oita_pref_code,
+      "1",
+      "1",
+      industry["sicCode"],
+      industry["simcCode"]
+    )
+    |> then(& &1["prefectures"])
+    |> Enum.filter(&(&1 != nil))
+    |> Enum.map(fn datum ->
+      Map.merge(datum, %{"sicCode" => industry["sicCode"], "simcCode" => industry["simcCode"]})
+    end)
+  end)
+  |> Enum.map(&DataFrame.new(&1))
+  |> Enum.filter(&(DataFrame.n_rows(&1) > 0))
+  |> DataFrame.concat_rows()
+  |> DataFrame.join(industries_broad_df)
+  |> DataFrame.join(industries_middle_df)
+
+prefectures_industry_power_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+target_df =
+  prefectures_industry_power_df
+  |> DataFrame.filter_with(&Series.equal(&1["simcCode"], "81"))
+
+target_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+<!-- livebook:{"attrs":{"chart_title":"教育，学習支援業特化係数","height":400,"layers":[{"chart_type":"bar","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":null},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+Vl.new(height: 400, title: "教育，学習支援業特化係数")
+|> Vl.data_from_values(target_df, only: ["prefName", "value"])
+|> Vl.mark(:bar)
+|> Vl.encode_field(:x, "prefName", type: :nominal)
+|> Vl.encode_field(:y, "value", type: :quantitative)
+```
+
+```elixir
+target_df =
+  prefectures_industry_power_df
+  |> DataFrame.filter_with(&Series.equal(&1["simcCode"], "50"))
+
+target_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"bar","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":null},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+Vl.new(height: 400)
+|> Vl.data_from_values(target_df, only: ["prefName", "value"])
+|> Vl.mark(:bar)
+|> Vl.encode_field(:x, "prefName", type: :nominal)
+|> Vl.encode_field(:y, "value", type: :quantitative)
+```
+
+```elixir
+target_df =
+  prefectures_industry_power_df
+  |> DataFrame.filter_with(&Series.equal(&1["simcCode"], "62"))
+
+target_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"bar","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":700},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+Vl.new(width: 700, height: 400)
+|> Vl.data_from_values(target_df, only: ["prefName", "value"])
+|> Vl.mark(:bar)
+|> Vl.encode_field(:x, "prefName", type: :nominal)
+|> Vl.encode_field(:y, "value", type: :quantitative)
+```
+
+## ピボット
+
+```elixir
+pivot_df =
+  prefectures_industry_power_df
+  |> DataFrame.select(["prefCode", "prefName", "simcCode", "value"])
+  |> DataFrame.pivot_wider("simcCode", "value")
+
+pivot_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+cols =
+  prefectures_industry_power_df
+  |> DataFrame.distinct(["simcCode"])
+  |> DataFrame.pull("simcCode")
+  |> Series.to_list()
+```
+
+```elixir
+# 欠損値の補完
+pivot_df =
+  cols
+  |> Enum.reduce(pivot_df, fn col, df ->
+    DataFrame.mutate_with(df, &%{col => Series.fill_missing(&1[col], 0.0)})
+  end)
+
+pivot_df
+|> Kino.DataTable.new()
+```
+
+```elixir
+get_values = fn df, col ->
+  df
+  |> DataFrame.pull(col)
+  |> Series.to_list()
+end
+```
+
+```elixir
+histgram = fn df, col, size ->
+  x = get_values.(df, col)
+  y = List.duplicate(1, DataFrame.n_rows(df))
+
+  Vl.new(width: size, height: size, title: col)
+  |> Vl.data_from_values(x: x, y: y)
+  |> Vl.mark(:bar)
+  |> Vl.encode_field(
+    :x,
+    "x",
+    type: :quantitative,
+    bin: %{maxbins: 20},
+    title: col
+  )
+  |> Vl.encode_field(
+    :y,
+    "y",
+    type: :quantitative,
+    aggregate: :count
+  )
+end
+```
+
+```elixir
+histgram.(pivot_df, "01", 300)
+```
+
+```elixir
+scatter = fn df, x_col, y_col, size ->
+  x = get_values.(df, x_col)
+  y = get_values.(df, y_col)
+
+  Vl.new(width: size, height: size)
+  |> Vl.data_from_values(x: x, y: y)
+  |> Vl.mark(:point)
+  |> Vl.encode_field(:x, "x",
+    type: :quantitative,
+    scale: [domain: [Enum.min(x), Enum.max(x)]],
+    title: x_col
+  )
+  |> Vl.encode_field(:y, "y",
+    type: :quantitative,
+    scale: [domain: [Enum.min(y), Enum.max(y)]],
+    title: y_col
+  )
+end
+```
+
+```elixir
+scatter.(pivot_df, "01", "02", 300)
+```
+
+```elixir
+cols =
+  prefectures_industry_power_df
+  |> DataFrame.distinct(["sicCode", "simcCode"])
+  |> DataFrame.group_by(["sicCode"])
+  |> DataFrame.summarise(simcCode: [:first])
+  |> DataFrame.pull("simcCode_first")
+  |> Series.to_list()
+```
+
+```elixir
+graphs =
+  cols
+  |> Enum.map(fn col_1 ->
+    h_graphs =
+      cols
+      |> Enum.map(fn col_2 ->
+        cond do
+          col_1 == col_2 ->
+            histgram.(pivot_df, col_1, 100)
+
+          true ->
+            scatter.(pivot_df, col_1, col_2, 100)
+        end
+      end)
+
+    Vl.new(width: 100 * Enum.count(cols), height: 100)
+    |> Vl.concat(h_graphs, :horizontal)
+  end)
+
+Vl.new(width: 100 * Enum.count(cols), height: 100 * Enum.count(cols))
+|> Vl.concat(graphs, :vertical)
+```
+
+```elixir
+standardize = fn df, column ->
+  mean =
+    pivot_df
+    |> DataFrame.pull(column)
+    |> Series.mean()
+
+  std =
+    pivot_df
+    |> DataFrame.pull(column)
+    |> Series.std()
+
+  df
+  |> DataFrame.mutate_with(fn in_df ->
+    %{column => Series.subtract(in_df[column], mean)}
+  end)
+  |> DataFrame.mutate_with(fn in_df ->
+    %{column => Series.divide(in_df[column], std)}
+  end)
+end
+```
+
+```elixir
+standardized_df =
+  cols
+  |> Enum.reduce(pivot_df, fn col, df ->
+    standardize.(df, col)
+  end)
+
+standardized_df
+|> Kino.DataTable.new()
+```
+
+```elixir
+df_to_tensor = fn df ->
+  df
+  |> DataFrame.names()
+  |> Enum.map(fn col ->
+    standardized_df
+    |> DataFrame.pull(col)
+    |> Series.to_tensor()
+  end)
+  |> Nx.concatenate()
+  |> Nx.reshape({DataFrame.n_columns(df), DataFrame.n_rows(df)})
+end
+
+standardized_tensor =
+  standardized_df
+  |> DataFrame.select(cols)
+  |> df_to_tensor.()
+  |> Nx.transpose()
+```
+
+```elixir
+covariance_tensor =
+  standardized_tensor
+  |> Nx.transpose()
+  |> Nx.dot(standardized_tensor)
+  |> Nx.divide(DataFrame.n_rows(standardized_df))
+```
+
+```elixir
+add_cols_label = fn list, cols_ ->
+  [{"x", cols_} | list]
+end
+
+covariance_df =
+  cols
+  |> Stream.with_index()
+  |> Enum.map(fn {col, index} ->
+    {col, Nx.to_flat_list(covariance_tensor[index])}
+  end)
+  |> add_cols_label.(cols)
+  |> DataFrame.new()
+
+covariance_df
+|> Kino.DataTable.new(keys: ["x" | cols])
+```
+
+```elixir
+heatmap =
+  cols
+  |> Stream.with_index()
+  |> Enum.map(fn {col_1, index_1} ->
+    cols
+    |> Stream.with_index()
+    |> Enum.map(fn {col_2, index_2} ->
+      covariance =
+        covariance_tensor[index_1][index_2]
+        |> Nx.to_number()
+
+      %{
+        x: col_1,
+        y: col_2,
+        covariance: covariance
+      }
+    end)
+  end)
+  |> List.flatten()
+```
+
+```elixir
+Vl.new(width: 800, height: 800)
+|> Vl.data_from_values(heatmap)
+|> Vl.mark(:rect)
+|> Vl.encode_field(:x, "x", type: :nominal)
+|> Vl.encode_field(:y, "y", type: :nominal)
+|> Vl.encode_field(
+  :fill,
+  "covariance",
+  type: :quantitative,
+  scale: [
+    domain: [-1, 1],
+    scheme: :blueorange
+  ]
+)
+```
+
+```elixir
+scatter.(pivot_df, "50", "62", 300)
+```

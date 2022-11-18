@@ -24,10 +24,6 @@ base_url = "https://opendata.resas-portal.go.jp"
 ```
 
 ```elixir
-json_header = {"Content-Type", "application/json"}
-```
-
-```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
 ```
@@ -45,7 +41,7 @@ prefectures_url = "#{base_url}/api/v1/prefectures"
 
 prefectures =
   prefectures_url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
 ```
 
@@ -85,7 +81,7 @@ get_cities = fn pref_code ->
   cities_url = "#{base_url}/api/v1/cities#{query}"
 
   cities_url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
   |> then(& &1["result"])
 end
@@ -164,7 +160,7 @@ get_population_composition = fn pref_code, city_code ->
   url = "#{base_url}/api/v1/population/composition/perYear#{query}"
 
   url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
   |> then(& &1["result"]["data"])
 end
@@ -227,14 +223,4 @@ VegaLite.new(width: 700, height: 400, title: "大分市人口構成推移")
 |> VegaLite.encode_field(:x, "year", type: :quantitative)
 |> VegaLite.encode_field(:y, "value", type: :quantitative)
 |> VegaLite.encode_field(:color, "label", type: :nominal)
-```
-
-<!-- livebook:{"attrs":{"chart_title":null,"height":null,"layers":[{"chart_type":"point","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"oita_city_population_composition_df","x_field":"label","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":null},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
-
-```elixir
-VegaLite.new()
-|> VegaLite.data_from_values(oita_city_population_composition_df, only: ["label", "value"])
-|> VegaLite.mark(:point)
-|> VegaLite.encode_field(:x, "label", type: :nominal)
-|> VegaLite.encode_field(:y, "value", type: :quantitative)
 ```
