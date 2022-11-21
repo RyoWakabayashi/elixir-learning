@@ -13,7 +13,7 @@ Mix.install([
 
 ```elixir
 # Tellus のトークンを入力する
-token_input = Kino.Input.text("Token")
+token_input = Kino.Input.password("Token")
 ```
 
 ```elixir
@@ -53,11 +53,11 @@ auth_header = {"Authorization", "Bearer " <> typhoon_product_info["token"]}
 ## 台風一覧の取得
 
 ```elixir
-typhoon_events_url = typhoon_product_info["base_url"] <> "/archive/typhoon/events.json"
+typhoon_events_url = "#{typhoon_product_info["base_url"]}/archive/typhoon/events.json"
 
 typhoon_events =
   typhoon_events_url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
 ```
 
@@ -65,10 +65,10 @@ typhoon_events =
 
 ```elixir
 get_typhoon_points = fn event_id ->
-  url = typhoon_product_info["base_url"] <> "/archive/typhoon/" <> event_id <> "_point.json"
+  url = "#{typhoon_product_info["base_url"]}/archive/typhoon/" <> event_id <> "_point.json"
 
   url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
 end
 ```
@@ -98,7 +98,7 @@ marker_list =
 MapLibre.new(center: {140.0, 35.0}, zoom: 3)
 |> MapLibre.add_table_source("marker_list", marker_list, {:lng_lat, ["lng", "lat"]})
 |> MapLibre.add_layer(
-  id: "ニパルタック",
+  id: "marker_list_circle_1",
   source: "marker_list",
   type: :circle,
   paint: [circle_color: "#18862e", circle_radius: 8, circle_opacity: 0.5]

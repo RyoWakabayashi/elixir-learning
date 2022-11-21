@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:evision, "~> 0.1"},
+  {:evision, "0.1.18"},
   {:httpoison, "~> 1.8"},
   {:json, "~> 1.4"},
   {:kino, "~> 0.7"},
@@ -14,7 +14,7 @@ Mix.install([
 
 ```elixir
 # Tellus のトークンを入力する
-token_input = Kino.Input.text("Token")
+token_input = Kino.Input.password("Token")
 ```
 
 ```elixir
@@ -60,7 +60,7 @@ scenes_url = "#{base_url}/api/v2/#{satellite_id}/search"
 
 scenes =
   scenes_url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
 ```
 
@@ -81,7 +81,7 @@ scenes_info_url = "#{base_url}/api/v2/#{satellite_id}/search/#{scene_id}"
 
 scenes_info =
   scenes_info_url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
 ```
 
@@ -92,7 +92,7 @@ scenes_after_url = "#{base_url}/api/v2/#{satellite_id}/search/#{scene_id}/afters
 
 scenes_after =
   scenes_after_url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
 ```
 
@@ -135,7 +135,7 @@ work_status_url = "#{base_url}/api/v2/works/#{work_id}"
 
 work_status =
   work_status_url
-  |> HTTPoison.get!([auth_header, json_header])
+  |> HTTPoison.get!([auth_header])
   |> then(&JSON.decode!(&1.body))
 ```
 

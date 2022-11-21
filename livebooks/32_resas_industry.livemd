@@ -17,7 +17,7 @@ Mix.install([
 
 ```elixir
 # RESAS のAPIキーを入力する
-api_key_input = Kino.Input.text("API_KEY")
+api_key_input = Kino.Input.password("API_KEY")
 ```
 
 ```elixir
@@ -38,6 +38,7 @@ alias VegaLite, as: Vl
 
 ```elixir
 auth_header = {"X-API-KEY", Kino.Input.read(api_key_input)}
+"dummy"
 ```
 
 ## 都道府県一覧の取得
@@ -227,29 +228,10 @@ target_df
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
-<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"bar","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":null},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":"各種商品卸売業特化係数","height":400,"layers":[{"chart_type":"bar","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":null},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-Vl.new(height: 400)
-|> Vl.data_from_values(target_df, only: ["prefName", "value"])
-|> Vl.mark(:bar)
-|> Vl.encode_field(:x, "prefName", type: :nominal)
-|> Vl.encode_field(:y, "value", type: :quantitative)
-```
-
-```elixir
-target_df =
-  prefectures_industry_power_df
-  |> DataFrame.filter_with(&Series.equal(&1["simcCode"], "62"))
-
-target_df
-|> Kino.DataTable.new(sorting_enabled: true)
-```
-
-<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"bar","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":700},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
-
-```elixir
-Vl.new(width: 700, height: 400)
+Vl.new(height: 400, title: "各種商品卸売業特化係数")
 |> Vl.data_from_values(target_df, only: ["prefName", "value"])
 |> Vl.mark(:bar)
 |> Vl.encode_field(:x, "prefName", type: :nominal)
@@ -349,49 +331,99 @@ end
 scatter.(pivot_df, "01", "02", 300)
 ```
 
+## 一人当たり地方税
+
 ```elixir
-cols =
-  prefectures_industry_power_df
-  |> DataFrame.distinct(["sicCode", "simcCode"])
-  |> DataFrame.group_by(["sicCode"])
-  |> DataFrame.summarise(simcCode: [:first])
-  |> DataFrame.pull("simcCode_first")
-  |> Series.to_list()
+get_local_tax = fn pref_code ->
+  query =
+    "?prefCode=#{pref_code}" <>
+      "&cityCode=-"
+
+  url = "#{base_url}/api/v1/municipality/taxes/perYear#{query}"
+
+  url
+  |> HTTPoison.get!([auth_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(& &1["result"]["data"])
+end
 ```
 
 ```elixir
-graphs =
-  cols
-  |> Enum.map(fn col_1 ->
-    h_graphs =
-      cols
-      |> Enum.map(fn col_2 ->
-        cond do
-          col_1 == col_2 ->
-            histgram.(pivot_df, col_1, 100)
-
-          true ->
-            scatter.(pivot_df, col_1, col_2, 100)
-        end
-      end)
-
-    Vl.new(width: 100 * Enum.count(cols), height: 100)
-    |> Vl.concat(h_graphs, :horizontal)
+local_tax_df =
+  prefectures_df
+  |> DataFrame.pull("prefCode")
+  |> Series.to_list()
+  |> Enum.flat_map(fn pref_code ->
+    pref_code
+    |> get_local_tax.()
+    |> Enum.map(&Map.merge(&1, %{"prefCode" => pref_code}))
   end)
+  |> DataFrame.new()
+  |> DataFrame.join(prefectures_df)
 
-Vl.new(width: 100 * Enum.count(cols), height: 100 * Enum.count(cols))
-|> Vl.concat(graphs, :vertical)
+local_tax_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+target_df = DataFrame.filter_with(local_tax_df, &Series.equal(&1["prefCode"], oita_pref_code))
+```
+
+<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":600},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+Vl.new(width: 600, height: 400)
+|> Vl.data_from_values(target_df, only: ["year", "value"])
+|> Vl.mark(:line)
+|> Vl.encode_field(:x, "year", type: :quantitative)
+|> Vl.encode_field(:y, "value", type: :quantitative)
+```
+
+```elixir
+target_df = DataFrame.filter_with(local_tax_df, &Series.equal(&1["year"], 2019))
+```
+
+<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"bar","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":800},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+
+```elixir
+Vl.new(width: 800, height: 400)
+|> Vl.data_from_values(target_df, only: ["prefName", "value"])
+|> Vl.mark(:bar)
+|> Vl.encode_field(:x, "prefName", type: :nominal)
+|> Vl.encode_field(:y, "value", type: :quantitative)
+```
+
+```elixir
+target_df =
+  local_tax_df
+  |> DataFrame.filter_with(&Series.equal(&1["year"], 2019))
+  |> DataFrame.mutate(value: &Series.cast(&1["value"], :float))
+  |> DataFrame.select(["prefCode", "value"])
+  |> DataFrame.rename(["prefCode", "localTax"])
+  |> DataFrame.join(pivot_df)
+```
+
+```elixir
+scatter.(target_df, "localTax", "01", 300)
+```
+
+```elixir
+cols =
+  prefectures_industry_power_df
+  |> DataFrame.distinct(["simcCode"])
+  |> DataFrame.pull("simcCode")
+  |> Series.to_list()
 ```
 
 ```elixir
 standardize = fn df, column ->
   mean =
-    pivot_df
+    target_df
     |> DataFrame.pull(column)
     |> Series.mean()
 
   std =
-    pivot_df
+    target_df
     |> DataFrame.pull(column)
     |> Series.std()
 
@@ -406,9 +438,13 @@ end
 ```
 
 ```elixir
+cols = ["localTax" | cols]
+```
+
+```elixir
 standardized_df =
   cols
-  |> Enum.reduce(pivot_df, fn col, df ->
+  |> Enum.reduce(target_df, fn col, df ->
     standardize.(df, col)
   end)
 
@@ -467,25 +503,21 @@ heatmap =
   cols
   |> Stream.with_index()
   |> Enum.map(fn {col_1, index_1} ->
-    cols
-    |> Stream.with_index()
-    |> Enum.map(fn {col_2, index_2} ->
-      covariance =
-        covariance_tensor[index_1][index_2]
-        |> Nx.to_number()
+    covariance =
+      covariance_tensor[0][index_1]
+      |> Nx.to_number()
 
-      %{
-        x: col_1,
-        y: col_2,
-        covariance: covariance
-      }
-    end)
+    %{
+      x: "localTax",
+      y: col_1,
+      covariance: covariance
+    }
   end)
   |> List.flatten()
 ```
 
 ```elixir
-Vl.new(width: 800, height: 800)
+Vl.new(width: 100, height: 1600)
 |> Vl.data_from_values(heatmap)
 |> Vl.mark(:rect)
 |> Vl.encode_field(:x, "x", type: :nominal)
@@ -502,5 +534,36 @@ Vl.new(width: 800, height: 800)
 ```
 
 ```elixir
-scatter.(pivot_df, "50", "62", 300)
+# 通信業
+target_df
+|> DataFrame.filter_with(&Series.not_equal(&1["prefCode"], 13))
+|> scatter.("localTax", "37", 300)
+```
+
+```elixir
+# 金融商品取引業，商品先物取引業
+target_df
+|> DataFrame.filter_with(&Series.not_equal(&1["prefCode"], 13))
+|> scatter.("localTax", "65", 300)
+```
+
+```elixir
+# 医療業
+target_df
+|> DataFrame.filter_with(&Series.not_equal(&1["prefCode"], 13))
+|> scatter.("localTax", "83", 300)
+```
+
+```elixir
+# 社会保険・社会福祉・介護事業
+target_df
+|> DataFrame.filter_with(&Series.not_equal(&1["prefCode"], 13))
+|> scatter.("localTax", "85", 300)
+```
+
+```elixir
+# 郵便局
+target_df
+|> DataFrame.filter_with(&Series.not_equal(&1["prefCode"], 13))
+|> scatter.("localTax", "86", 300)
 ```

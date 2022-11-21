@@ -16,7 +16,7 @@ Mix.install([
 
 ```elixir
 # RESAS のAPIキーを入力する
-api_key_input = Kino.Input.text("API_KEY")
+api_key_input = Kino.Input.password("API_KEY")
 ```
 
 ```elixir
@@ -32,6 +32,7 @@ alias Explorer.Series
 
 ```elixir
 auth_header = {"X-API-KEY", Kino.Input.read(api_key_input)}
+"dummy"
 ```
 
 ## 都道府県一覧の取得
