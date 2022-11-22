@@ -1,0 +1,140 @@
+# Explorer 欠損値補完
+
+```elixir
+Mix.install([
+  {:explorer, "~> 0.3"},
+  {:kino, "~> 0.7"}
+])
+```
+
+## Section
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+```
+
+```elixir
+df =
+  %{
+    x: [nil, 2.0, 3.0, nil, 5.0, 6.0, 7.0],
+    y: [0.9, 1.8, 3.3, 3.7, nil, nil, nil]
+  }
+  |> DataFrame.new()
+
+df
+|> Kino.DataTable.new()
+```
+
+```elixir
+filled_df =
+  df
+  # データの全列に対して補完
+  |> DataFrame.to_series()
+  |> Enum.reduce(df, fn {col, _}, df ->
+    # 対象列について、 nil の場合は 0.0 にする
+    DataFrame.mutate_with(df, &%{col => Series.fill_missing(&1[col], 0.0)})
+  end)
+
+filled_df
+|> Kino.DataTable.new()
+```
+
+```elixir
+fill_df = fn target_df, value ->
+  target_df
+  |> DataFrame.to_series()
+  |> Enum.reduce(target_df, fn {col, _}, merged_df ->
+    DataFrame.mutate_with(merged_df, &%{col => Series.fill_missing(&1[col], value)})
+  end)
+end
+```
+
+```elixir
+df
+|> fill_df.(:forward)
+|> Kino.DataTable.new()
+```
+
+```elixir
+df
+|> fill_df.(:backward)
+|> Kino.DataTable.new()
+```
+
+```elixir
+df
+|> fill_df.(:max)
+|> Kino.DataTable.new()
+```
+
+```elixir
+df
+|> fill_df.(:min)
+|> Kino.DataTable.new()
+```
+
+```elixir
+df
+|> fill_df.(:mean)
+|> Kino.DataTable.new()
+```
+
+```elixir
+df =
+  %{
+    float: [0.9, 1.8, 3.3, 3.7, nil, nil, 7.2],
+    int: [1, 2, 3, nil, 5, 6, 7],
+    bool: [nil, true, false, nil, true, true, false],
+    str: ["a", nil, "c", "d", nil, "e", nil],
+    date: [~D[2022-01-01], ~D[2000-01-03], nil, nil, nil, nil, ~D[2000-02-01]],
+    datetime: [
+      nil,
+      ~N[2022-01-01 00:01:00],
+      ~N[2022-01-01 00:02:00],
+      nil,
+      nil,
+      ~N[2022-02-01 00:02:00],
+      nil
+    ]
+  }
+  |> DataFrame.new()
+
+df
+|> Kino.DataTable.new()
+```
+
+```elixir
+filled_df =
+  df
+  |> DataFrame.to_series()
+  |> Enum.reduce(df, fn {col, series}, df ->
+    DataFrame.mutate_with(df, fn lazy ->
+      fill_value =
+        case Series.dtype(series) do
+          :float ->
+            0.0
+
+          :integer ->
+            0
+
+          :string ->
+            ""
+
+          :date ->
+            ~D[2022-01-01]
+
+          :datetime ->
+            ~N[2022-01-01 00:01:00]
+
+          :boolean ->
+            :min
+        end
+
+      %{col => Series.fill_missing(lazy[col], fill_value)}
+    end)
+  end)
+
+filled_df
+|> Kino.DataTable.new()
+```
