@@ -1,0 +1,430 @@
+# Qiita 記事データ分析
+
+```elixir
+Mix.install([
+  {:httpoison, "~> 1.8"},
+  {:json, "~> 1.4"},
+  {:explorer, "~> 0.3"},
+  {:kino, "~> 0.7"},
+  {:kino_vega_lite, "~> 0.1.4"}
+])
+```
+
+## 情報の設定
+
+```elixir
+# Qiita のアクセストークンを入力する
+token_input = Kino.Input.password("TOKEN")
+```
+
+```elixir
+base_url = "https://qiita.com/api/v2"
+```
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+alias VegaLite, as: Vl
+```
+
+```elixir
+auth_header = {"Authorization", "Bearer #{Kino.Input.read(token_input)}"}
+"dummy"
+```
+
+## 記事一覧を取得する
+
+```elixir
+articles =
+  "#{base_url}/authenticated_user/items"
+  |> HTTPoison.get!([auth_header])
+  |> then(&JSON.decode!(&1.body))
+```
+
+```elixir
+Enum.count(articles)
+```
+
+再帰的に全件取得するため、モジュールを定義する
+
+```elixir
+defmodule Qiita do
+  @moduledoc """
+  Qiita API を呼び出す
+  """
+
+  @base_url "https://qiita.com/api/v2"
+
+  @doc """
+  1ページ分の記事一覧を取得する
+
+  ## パラメータ
+
+    - page: ページ番号
+    - auth_header: 認証ヘッダー
+
+  """
+  @spec get_articles(integer, tuple) :: list
+  def get_articles(page, auth_header) do
+    "#{@base_url}/authenticated_user/items?page=#{page}"
+    |> HTTPoison.get!([auth_header])
+    |> then(&JSON.decode!(&1.body))
+  end
+
+  @doc """
+  再帰的に記事一覧を取得する
+
+  ## パラメータ
+
+    - page: ページ番号
+    - auth_header: 認証ヘッダー
+
+  """
+  @spec get_articles_cyclic(integer, tuple) :: list
+  def get_articles_cyclic(page, auth_header) do
+    IO.inspect("get page #{page}")
+    articles = get_articles(page, auth_header)
+
+    case articles do
+      # 空であれば次ページを取得しない
+      [] ->
+        IO.inspect("stop")
+        articles
+
+      # 空以外の場合は次ページを取得する
+      _ ->
+        articles ++ get_articles_cyclic(page + 1, auth_header)
+    end
+  end
+
+  @doc """
+  記事一覧を全件取得する
+
+  ## パラメータ
+
+    - page: ページ番号
+    - auth_header: 認証ヘッダー
+
+  """
+  @spec get_all_articles(tuple) :: list
+  def get_all_articles(auth_header) do
+    get_articles_cyclic(1, auth_header)
+  end
+end
+```
+
+```elixir
+# 1ページ分取得
+Qiita.get_articles(1, auth_header)
+```
+
+```elixir
+# 全件取得
+all_articles = Qiita.get_all_articles(auth_header)
+```
+
+```elixir
+Enum.count(all_articles)
+```
+
+## 記事一覧をデータフレーム化する
+
+```elixir
+qiita_df =
+  all_articles
+  |> Enum.map(fn item ->
+    %{
+      "title" => item["title"],
+      # 限定公開フラグ
+      "private" => item["private"],
+      # 作成日 日付は NaiveDateTime に変換する
+      "created_at" => NaiveDateTime.from_iso8601!(item["created_at"]),
+      # 閲覧数
+      "page_views_count" => item["page_views_count"],
+      # いいね数
+      "likes_count" => item["likes_count"],
+      # いいね率 = いいね数 / 閲覧数
+      "likes_rate" => item["likes_count"] / item["page_views_count"],
+      # ストック数
+      "stocks_count" => item["stocks_count"],
+      # ストック率 = ストック数 / 閲覧数
+      "stocks_rate" => item["stocks_count"] / item["page_views_count"],
+      # タグ 複数のため、 `、` で結合する
+      "tags" => item["tags"] |> Enum.map(& &1["name"]) |> Enum.join(","),
+      # 生地の長さ（文字数）
+      "length" => item["body"] |> String.length()
+    }
+  end)
+  |> DataFrame.new()
+  |> DataFrame.select([
+    "title",
+    "private",
+    "created_at",
+    "page_views_count",
+    "likes_count",
+    "likes_rate",
+    "stocks_count",
+    "stocks_rate",
+    "tags",
+    "length"
+  ])
+
+qiita_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+## 記事一覧を分析する
+
+```elixir
+qiita_df
+|> DataFrame.group_by(["private"])
+|> DataFrame.summarise(
+  page_views_count: [:sum, :mean, :max, :min],
+  likes_count: [:sum, :mean, :max, :min],
+  stocks_count: [:sum, :mean, :max, :min]
+)
+|> DataFrame.filter_with(&Series.equal(&1["private"], false))
+|> DataFrame.select(["private"], :drop)
+|> DataFrame.to_columns()
+|> dbg()
+```
+
+```elixir
+qiita_df
+|> DataFrame.arrange(desc: "page_views_count")
+|> DataFrame.select(["title", "page_views_count", "likes_count", "stocks_count"])
+|> Kino.DataTable.new()
+```
+
+```elixir
+qiita_df
+|> DataFrame.arrange(desc: "likes_count")
+|> DataFrame.select(["title", "likes_count", "page_views_count", "stocks_count"])
+|> Kino.DataTable.new()
+```
+
+```elixir
+qiita_df
+|> DataFrame.arrange(desc: "stocks_count")
+|> DataFrame.select(["title", "stocks_count", "likes_count", "page_views_count"])
+|> Kino.DataTable.new()
+```
+
+```elixir
+qiita_df
+|> DataFrame.arrange(desc: "likes_rate")
+|> DataFrame.select(["title", "likes_rate", "likes_count", "page_views_count"])
+|> Kino.DataTable.new()
+```
+
+```elixir
+qiita_df
+|> DataFrame.arrange(desc: "stocks_rate")
+|> DataFrame.select(["title", "stocks_rate", "stocks_count", "page_views_count"])
+|> Kino.DataTable.new()
+```
+
+## グラフ化する
+
+```elixir
+get_values = fn df, col ->
+  df
+  |> DataFrame.pull(col)
+  |> Series.to_list()
+end
+```
+
+```elixir
+x = get_values.(qiita_df, "title")
+y = get_values.(qiita_df, "page_views_count")
+
+Vl.new(width: 800, height: 400)
+|> Vl.data_from_values(x: x, y: y)
+|> Vl.mark(:bar)
+|> Vl.encode_field(
+  :x,
+  "x",
+  type: :nominal,
+  title: "title",
+  # 閲覧数の降順に並べる
+  sort: %{"field" => "y", "order" => "descending"}
+)
+|> Vl.encode_field(
+  :y,
+  "y",
+  type: :quantitative,
+  title: "page_views_count"
+)
+```
+
+```elixir
+x = get_values.(qiita_df, "title")
+y = get_values.(qiita_df, "likes_count")
+
+Vl.new(width: 800, height: 400)
+|> Vl.data_from_values(x: x, y: y)
+|> Vl.mark(:bar)
+|> Vl.encode_field(
+  :x,
+  "x",
+  type: :nominal,
+  title: "title",
+  sort: %{"field" => "y", "order" => "descending"}
+)
+|> Vl.encode_field(
+  :y,
+  "y",
+  type: :quantitative,
+  title: "likes_count"
+)
+```
+
+```elixir
+x = get_values.(qiita_df, "created_at")
+y = get_values.(qiita_df, "page_views_count")
+
+Vl.new(width: 800, height: 400)
+|> Vl.data_from_values(x: x, y: y)
+|> Vl.mark(:line)
+|> Vl.encode_field(
+  :x,
+  "x",
+  type: :temporal,
+  title: "created_at"
+)
+|> Vl.encode_field(
+  :y,
+  "y",
+  type: :quantitative,
+  title: "page_views_count"
+)
+```
+
+```elixir
+x = get_values.(qiita_df, "length")
+y = get_values.(qiita_df, "stocks_count")
+
+Vl.new(width: 800, height: 400)
+|> Vl.data_from_values(x: x, y: y)
+|> Vl.mark(:point)
+|> Vl.encode_field(
+  :x,
+  "x",
+  type: :quantitative,
+  title: "length"
+)
+|> Vl.encode_field(
+  :y,
+  "y",
+  type: :quantitative,
+  title: "likes_count"
+)
+```
+
+## タグを分析する
+
+```elixir
+qiita_tag_df =
+  all_articles
+  |> Enum.flat_map(fn item ->
+    item["tags"]
+    |> Enum.map(fn tag ->
+      %{
+        "tag" => tag["name"],
+        "title" => item["title"],
+        "page_views_count" => item["page_views_count"],
+        "likes_count" => item["likes_count"],
+        "stocks_count" => item["stocks_count"]
+      }
+    end)
+  end)
+  |> DataFrame.new()
+  |> DataFrame.select(["title", "tag", "page_views_count", "likes_count", "stocks_count"])
+
+qiita_tag_df
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+qiita_tag_summarised_df =
+  qiita_tag_df
+  |> DataFrame.group_by(["tag"])
+  |> DataFrame.summarise(
+    page_views_count: [:count, :sum, :mean],
+    likes_count: [:sum, :mean],
+    stocks_count: [:sum, :mean]
+  )
+
+qiita_tag_summarised_df
+|> Kino.DataTable.new()
+```
+
+```elixir
+x = get_values.(qiita_tag_summarised_df, "tag")
+y = get_values.(qiita_tag_summarised_df, "page_views_count_count")
+
+Vl.new(width: 800, height: 400)
+|> Vl.data_from_values(x: x, y: y)
+|> Vl.mark(:bar)
+|> Vl.encode_field(
+  :x,
+  "x",
+  type: :nominal,
+  title: "tag",
+  sort: %{"field" => "y", "order" => "descending"}
+)
+|> Vl.encode_field(
+  :y,
+  "y",
+  type: :quantitative,
+  title: "count"
+)
+```
+
+```elixir
+plot_tag_bar = fn col, agg ->
+  x = get_values.(qiita_tag_summarised_df, "tag")
+  y = get_values.(qiita_tag_summarised_df, "#{col}_#{agg}")
+
+  Vl.new(width: 800, height: 400)
+  |> Vl.data_from_values(x: x, y: y)
+  |> Vl.mark(:bar)
+  |> Vl.encode_field(
+    :x,
+    "x",
+    type: :nominal,
+    title: "tag",
+    sort: %{"field" => "y", "order" => "descending"}
+  )
+  |> Vl.encode_field(
+    :y,
+    "y",
+    type: :quantitative,
+    title: "#{col}_#{agg}"
+  )
+end
+```
+
+```elixir
+plot_tag_bar.("page_views_count", "sum")
+```
+
+```elixir
+plot_tag_bar.("page_views_count", "mean")
+```
+
+```elixir
+plot_tag_bar.("likes_count", "sum")
+```
+
+```elixir
+plot_tag_bar.("likes_count", "mean")
+```
+
+```elixir
+plot_tag_bar.("stocks_count", "sum")
+```
+
+```elixir
+plot_tag_bar.("stocks_count", "mean")
+```
