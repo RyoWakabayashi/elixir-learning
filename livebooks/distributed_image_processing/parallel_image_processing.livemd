@@ -3,7 +3,7 @@
 ```elixir
 Mix.install([
   {:download, "~> 0.0.4"},
-  {:evision, "~> 0.1"},
+  {:evision, "0.1.18"},
   {:kino, "~> 0.7"},
   {:nx, "~> 0.4"},
   {:flow, "~> 1.2"},
@@ -29,12 +29,25 @@ mat = Evision.imread(lenna)
 ## 単体処理
 
 ```elixir
-mat
-|> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
-|> elem(1)
+proc = fn mat ->
+  mat
+  |> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
+  |> elem(1)
+  |> Evision.rectangle({50, 10}, {125, 60}, {255, 0, 0})
+  |> Evision.rectangle({250, 60}, {325, 110}, {0, 255, 0}, thickness: -1)
+  |> Evision.rectangle({150, 120}, {225, 320}, {0, 0, 255},
+    thickness: 5,
+    lineType: Evision.cv_LINE_4()
+  )
+  |> Evision.ellipse({300, 300}, {100, 200}, 30, 0, 360, {255, 255, 0}, thickness: 3)
+end
 ```
 
-## 画像を拡大コピー
+```elixir
+proc.(mat)
+```
+
+## 画像をコピー
 
 ```elixir
 src_file_ext = Path.extname(lenna)
@@ -52,96 +65,96 @@ src_file_paths =
   |> List.duplicate(copy_count)
   |> Enum.zip(src_files)
   |> Enum.map(fn {img, dst_file} ->
-    Evision.imwrite(dst_file, Evision.resize(img, {1024, 1024}))
+    Evision.imwrite(dst_file, img)
     dst_file
   end)
 ```
 
 ```elixir
+# コピーしたファイル先頭2件を読込
 src_file_paths
 |> Enum.slice(0..1)
+|> IO.inspect()
+|> Enum.map(&Evision.imread(&1))
+|> Enum.map(&Kino.render(&1))
+```
+
+## 逐次処理
+
+```elixir
+# 存在するファイルを取得
+stream =
+  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
+  |> Stream.map(&{&1, "#{src_file_basename}_#{&1}#{src_file_ext}"})
+  |> Stream.take_while(fn {_, filename} -> File.exists?(filename) end)
 ```
 
 ```elixir
-# コピーしたファイル先頭3件を読込
-src_file_paths
-|> Enum.slice(0..2)
-|> Enum.map(&Evision.imread(&1))
-|> Enum.map(&Kino.render(&1))
+# Enum.map で処理
+enum_proc = fn stream ->
+  stream
+  |> Enum.map(fn {_, filename} ->
+    {
+      filename,
+      filename |> Evision.imread() |> proc.()
+    }
+  end)
+end
+```
+
+```elixir
+imgs_tuple = enum_proc.(stream)
+```
+
+```elixir
+# 先頭2件を表示
+imgs_tuple
+|> Enum.slice(0..1)
+|> Enum.map(fn {filename, img} ->
+  IO.inspect(filename)
+  Kino.render(img)
+end)
 ```
 
 ## 並列処理
 
 ```elixir
-dst_files =
-  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&"#{src_file_basename}_b_#{&1}#{src_file_ext}")
-
-# 存在するファイルを取得
-imgs =
-  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&{&1, "#{src_file_basename}_#{&1}#{src_file_ext}"})
-  |> Stream.take_while(fn {_, f} -> File.exists?(f) end)
-  # 並列実行
-  |> Flow.from_enumerable()
-  |> Flow.map(fn {c, f} -> {c, Evision.imread(f)} end)
-  |> Flow.map(fn {f, img} ->
+# Flow.map で処理
+flow_proc = fn stream, stages ->
+  stream
+  |> Flow.from_enumerable(stages: stages, max_demand: 1)
+  |> Flow.map(fn {_, filename} ->
     {
-      f,
-      # 画像処理
-      Evision.threshold(img, 127, 255, Evision.cv_THRESH_BINARY()) |> elem(1)
+      filename,
+      filename |> Evision.imread() |> proc.()
     }
   end)
-  # カウンターによる並び替え
-  |> Enum.sort(fn {f1, _}, {f2, _} -> f1 < f2 end)
-
-# 先頭3件を表示
-imgs
-|> Enum.slice(0..2)
-|> Enum.map(fn {_, img} -> Kino.render(img) end)
-```
-
-## ベンチマーク
-
-```elixir
-enum_proc = fn ->
-  # 存在するファイルを取得
-  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&{&1, "#{src_file_basename}_#{&1}#{src_file_ext}"})
-  |> Stream.take_while(fn {_, f} -> File.exists?(f) end)
-  |> Enum.map(fn {c, f} -> {c, Evision.imread(f)} end)
-  |> Enum.map(fn {f, img} ->
-    {
-      f,
-      # 画像処理
-      Evision.threshold(img, 127, 255, Evision.cv_THRESH_BINARY()) |> elem(1)
-    }
-  end)
+  |> Enum.to_list()
 end
 ```
 
 ```elixir
-flow_proc = fn ->
-  # 存在するファイルを取得
-  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&{&1, "#{src_file_basename}_#{&1}#{src_file_ext}"})
-  |> Stream.take_while(fn {_, f} -> File.exists?(f) end)
-  # 並列実行
-  |> Flow.from_enumerable()
-  |> Flow.map(fn {c, f} -> {c, Evision.imread(f)} end)
-  |> Flow.map(fn {f, img} ->
-    {
-      f,
-      # 画像処理
-      Evision.threshold(img, 127, 255, Evision.cv_THRESH_BINARY()) |> elem(1)
-    }
-  end)
-end
+imgs_tuple = flow_proc.(stream, 4)
 ```
+
+```elixir
+# 先頭2件を表示
+imgs_tuple
+|> Enum.slice(0..1)
+|> Enum.map(fn {filename, img} ->
+  IO.inspect(filename)
+  Kino.render(img)
+end)
+```
+
+## 速度比較
 
 ```elixir
 Benchee.run(%{
-  "enum" => fn -> enum_proc.() end,
-  "flow" => fn -> flow_proc.() end
+  "enum" => fn -> enum_proc.(stream) end,
+  "flow 1" => fn -> flow_proc.(stream, 1) end,
+  "flow 2" => fn -> flow_proc.(stream, 2) end,
+  "flow 4" => fn -> flow_proc.(stream, 4) end,
+  "flow 8" => fn -> flow_proc.(stream, 8) end
 })
 ```
