@@ -151,7 +151,7 @@ qiita_df =
       "stocks_rate" => item["stocks_count"] / item["page_views_count"],
       # タグ 複数のため、 `、` で結合する
       "tags" => item["tags"] |> Enum.map(& &1["name"]) |> Enum.join(","),
-      # 生地の長さ（文字数）
+      # 記事の長さ（文字数）
       "length" => item["body"] |> String.length()
     }
   end)
