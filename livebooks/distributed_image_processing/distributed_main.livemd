@@ -1,0 +1,353 @@
+# 分散処理 メイン
+
+```elixir
+Mix.install(
+  [
+    {:download, "~> 0.0.4"},
+    {:evision, "~> 0.1"},
+    {:kino, "~> 0.7"},
+    {:nx, "~> 0.4"},
+    {:flow, "~> 1.2"},
+    {:benchee, "~> 1.1"}
+  ],
+  system_env: [
+    {"EVISION_PRECOMPILED_CACHE_DIR", "/tmp/.cache"}
+  ]
+)
+```
+
+## 画像ダウンロード
+
+```elixir
+# 再実行時、Download.from()でeexistエラーになるのを防止
+File.rm("Lenna_%28test_image%29.png")
+
+lenna =
+  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
+  |> elem(1)
+```
+
+```elixir
+mat = Evision.imread(lenna)
+```
+
+## 処理内容
+
+ノード間でデータをやり取りするため、バイナリにする
+
+```elixir
+img = Evision.Mat.to_nx(mat)
+
+type = Nx.type(img)
+shape = Nx.shape(img)
+binary = Nx.to_binary(img)
+```
+
+閾値処理をした後、どのノードで処理したか分かるようにノード名を入れる
+
+```elixir
+dst_binary =
+  binary
+  # reconstruction of an image
+  |> Nx.from_binary(type)
+  |> Nx.reshape(shape)
+  |> Evision.Mat.from_nx_2d()
+  # 閾値処理
+  # image processing
+  |> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
+  |> elem(1)
+  # 文字を描画
+  |> Evision.putText(
+    Node.self() |> Atom.to_string(),
+    {10, 30},
+    Evision.cv_FONT_HERSHEY_SIMPLEX(),
+    1.0,
+    {0, 0, 0},
+    [{:thickness, 2}]
+  )
+  |> Evision.Mat.to_nx()
+  |> Nx.to_binary()
+  |> dbg()
+```
+
+バイナリーで返ってきた処理結果をマトリックスに戻す
+
+```elixir
+dst_img =
+  dst_binary
+  |> Nx.from_binary(type)
+  |> Nx.reshape(shape)
+  |> Evision.Mat.from_nx_2d()
+```
+
+## ノード接続確認
+
+```elixir
+Node.list(:connected)
+```
+
+```elixir
+worker_1_input = Kino.Input.text("WORKER_1_NODE_NAME")
+```
+
+```elixir
+worker_1_atom =
+  worker_1_input
+  |> Kino.Input.read()
+  |> String.to_atom()
+```
+
+```elixir
+Node.connect(worker_1_atom)
+```
+
+```elixir
+Node.list(:connected)
+```
+
+```elixir
+Node.disconnect(worker_1_atom)
+```
+
+```elixir
+Node.list(:connected)
+```
+
+## 画像をコピー
+
+```elixir
+src_file_ext = Path.extname(lenna)
+src_file_basename = Path.basename(lenna, src_file_ext)
+
+src_files =
+  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
+  |> Stream.map(&"#{src_file_basename}_#{&1}#{src_file_ext}")
+
+# コピー枚数
+copy_count = 32
+
+src_file_paths =
+  mat
+  |> List.duplicate(copy_count)
+  |> Enum.zip(src_files)
+  |> Enum.map(fn {img, dst_file} ->
+    Evision.imwrite(dst_file, img)
+    dst_file
+  end)
+```
+
+## 処理の定義
+
+上記の処理内容を分散処理するため、モジュールとして定義する
+
+```elixir
+defmodule DistributedImageProcessing do
+  def distribute(workers, images_stream) do
+    # ワーカーノードに接続する
+    Enum.each(workers, &Node.connect/1)
+
+    # worker_stream is generated repeatedly
+    worker_stream =
+      Stream.repeatedly(fn -> workers end)
+      |> Stream.flat_map(& &1)
+
+    sender_pid = self()
+
+    worker_stream
+    |> Stream.zip(images_stream)
+    |> Flow.from_enumerable(stages: 4, max_demand: 1)
+    |> Flow.map(fn {worker, image} ->
+      IO.puts("enter spawn_link")
+
+      {
+        Node.spawn_link(worker, fn ->
+          # worker receives an image from main
+          receive do
+            {:img, sender_pid, img} ->
+              # call process_image
+              {dst_file, img} = process_image(img)
+
+              # An image should be converted into binary, shape and type before sending.
+              binary = Nx.to_binary(img)
+              shape = Nx.shape(img)
+              type = Nx.type(img)
+
+              send(sender_pid, {dst_file, type, shape, binary})
+              IO.puts("respond")
+          end
+        end),
+        image
+      }
+    end)
+    |> Flow.map(fn {pid, src_file} ->
+      IO.puts("enter reader")
+
+      img =
+        src_file
+        |> Evision.imread()
+        |> Evision.Mat.to_nx()
+
+      # An image should be converted into binary, shape and type before sending.
+      binary = Nx.to_binary(img)
+      shape = Nx.shape(img)
+      type = Nx.type(img)
+
+      send(pid, {:img, sender_pid, {src_file, type, shape, binary}})
+    end)
+    |> Enum.to_list()
+    |> Enum.map(fn _ ->
+      IO.puts("enter receiver")
+
+      receive do
+        {dst_file, type, shape, binary} ->
+          save_image({dst_file, type, shape, binary})
+      end
+    end)
+    |> Enum.to_list()
+  end
+
+  def process_image({src_file, type, shape, binary}) do
+    IO.puts("enter processor")
+
+    # file name conversion
+    src_file_ext = Path.extname(src_file)
+    src_file_basename = Path.basename(src_file, src_file_ext)
+    dst_file = "#{src_file_basename}_d#{src_file_ext}"
+
+    dst_img =
+      binary
+      # reconstruction of an image
+      |> Nx.from_binary(type)
+      |> Nx.reshape(shape)
+      |> Evision.Mat.from_nx_2d()
+      # image processing
+      |> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
+      |> elem(1)
+      |> Evision.putText(
+        Node.self() |> Atom.to_string(),
+        {10, 30},
+        Evision.cv_FONT_HERSHEY_SIMPLEX(),
+        1.0,
+        {0, 0, 0},
+        [{:thickness, 2}]
+      )
+      |> Evision.Mat.to_nx()
+
+    {dst_file, dst_img}
+  end
+
+  def save_image({dst_file, type, shape, binary}) do
+    img =
+      binary
+      |> Nx.from_binary(type)
+      |> Nx.reshape(shape)
+      |> Evision.Mat.from_nx_2d()
+
+    Evision.imwrite(dst_file, img)
+
+    dst_file
+  end
+end
+```
+
+### 自身のノードで1つだけ実行
+
+```elixir
+{lenna, type, shape, binary}
+|> DistributedImageProcessing.process_image()
+|> then(fn {dst_file, dst_img} ->
+  {dst_file, Nx.type(dst_img), Nx.shape(dst_img), Nx.to_binary(dst_img)}
+end)
+|> DistributedImageProcessing.save_image()
+|> Evision.imread()
+|> dbg()
+```
+
+### ワーカーノード1つで1枚だけ実行
+
+```elixir
+[worker_1_atom]
+|> DistributedImageProcessing.distribute([lenna])
+|> Enum.at(0)
+|> Evision.imread()
+```
+
+### ワーカーノード1つで32枚実行
+
+```elixir
+# 存在するファイルを取得
+images_stream =
+  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
+  |> Stream.map(&"#{src_file_basename}_#{&1}#{src_file_ext}")
+  |> Stream.take_while(fn filename -> File.exists?(filename) end)
+```
+
+```elixir
+[worker_1_atom]
+|> DistributedImageProcessing.distribute(images_stream)
+|> Enum.slice(0..2)
+|> Enum.map(fn dst_filename ->
+  dst_filename
+  |> Evision.imread()
+  |> Kino.render()
+end)
+```
+
+### ワーカーノード4つで分散処理
+
+```elixir
+worker_2_input = Kino.Input.text("WORKER_2_NODE_NAME")
+```
+
+```elixir
+worker_3_input = Kino.Input.text("WORKER_3_NODE_NAME")
+```
+
+```elixir
+worker_4_input = Kino.Input.text("WORKER_4_NODE_NAME")
+```
+
+```elixir
+workers =
+  [worker_1_input, worker_2_input, worker_3_input, worker_4_input]
+  |> Enum.map(fn input ->
+    input
+    |> Kino.Input.read()
+    |> String.to_atom()
+  end)
+```
+
+```elixir
+workers
+|> DistributedImageProcessing.distribute(images_stream)
+|> Enum.slice(0..5)
+|> Enum.map(fn dst_filename ->
+  dst_filename
+  |> Evision.imread()
+  |> Kino.render()
+end)
+```
+
+## 速度比較
+
+```elixir
+distributed = fn worker_input_list ->
+  worker_input_list
+  |> Enum.map(fn input ->
+    input
+    |> Kino.Input.read()
+    |> String.to_atom()
+  end)
+  |> DistributedImageProcessing.distribute(images_stream)
+end
+```
+
+```elixir
+Benchee.run(%{
+  "1 worker" => fn -> distributed.([worker_1_input]) end,
+  "2 workers" => fn -> distributed.([worker_1_input, worker_2_input]) end,
+  "4 workers" => fn ->
+    distributed.([worker_1_input, worker_2_input, worker_3_input, worker_4_input])
+  end
+})
+```
