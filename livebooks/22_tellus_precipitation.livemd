@@ -66,12 +66,7 @@ precipitation = get_precipitation.(131.62, 33.23, 20_190_909)
 ```
 
 ```elixir
-precipitation["prec"] |> Enum.count()
-```
-
-```elixir
-# 別府市
-precipitation = get_precipitation.(131.50, 33.23, 20_190_909)
+Enum.count(precipitation["prec"])
 ```
 
 ```elixir
@@ -124,7 +119,7 @@ max_prec =
 ```elixir
 alpha =
   prec_tensor
-  |> Nx.multiply(max_prec / 256)
+  |> Nx.multiply(255 / max_prec)
   |> Nx.slice_along_axis(0, 1, axis: 2)
 ```
 
@@ -133,14 +128,14 @@ alpha =
 ```
 
 ```elixir
-rgb =
+bgr =
   [255, 0, 0]
   |> Nx.tensor()
   |> Nx.tile([w, h, 1])
 ```
 
 ```elixir
-[rgb, alpha]
+[bgr, alpha]
 |> Nx.concatenate(axis: 2)
 |> Evision.Mat.from_nx_2d()
 |> Evision.resize({w * 10, h * 10})
@@ -154,11 +149,11 @@ get_mat = fn hour ->
     prec_tensor
     |> Nx.slice_along_axis(hour, 1, axis: 2)
 
-  [rgb, alpha]
+  [bgr, alpha]
   |> Nx.concatenate(axis: 2)
   |> Evision.Mat.from_nx_2d()
   |> Evision.resize({56 * 10, 20 * 10})
-  |> Evision.convertScaleAbs(alpha: 5)
+  |> Evision.convertScaleAbs(alpha: 3)
 end
 ```
 
