@@ -1,0 +1,242 @@
+# Tellus から降水量を取得する
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.4"},
+  {:evision, "~> 0.1"},
+  {:httpoison, "~> 1.8"},
+  {:json, "~> 1.4"},
+  {:kino, "~> 0.7"},
+  {:kino_maplibre, "~> 0.1.3"}
+])
+```
+
+## 情報の設定
+
+```elixir
+# Tellus のトークンを入力する
+token_input = Kino.Input.password("Token")
+```
+
+```elixir
+# 降水量データの商品ID
+rain_product_id = "51f86de1-777f-43e6-821f-a2c1c737cb8b"
+```
+
+```elixir
+base_url = "https://sbs.tellus-tools.com"
+```
+
+このノートブックではTellusの降水観測情報API(試用版)を使用しています
+
+©島津ビジネスシステムズ
+
+## Tellus の認証
+
+```elixir
+auth_url = "https://www.tellusxdp.com/api/manager/v2/auth/token/"
+json_header = {"Content-Type", "application/json"}
+
+get_auth_header = fn product_id ->
+  request_body = JSON.encode!(%{product_id: product_id})
+  auth_header = {"Authorization", "Bearer " <> Kino.Input.read(token_input)}
+
+  auth_url
+  |> HTTPoison.post!(request_body, [auth_header, json_header])
+  |> then(&JSON.decode!(&1.body))
+  |> then(&{"Authorization", "Bearer " <> &1["token"]})
+end
+```
+
+## 降水量の取得
+
+```elixir
+get_precipitation = fn lon, lat, ddate ->
+  auth_header = get_auth_header.(rain_product_id)
+
+  "#{base_url}/tellus/wif82af3w39s/rap_af.php?lon=#{lon}&lat=#{lat}&ddate=#{ddate}"
+  |> HTTPoison.get!([auth_header])
+  |> then(&JSON.decode!(&1.body))
+end
+```
+
+```elixir
+# 大分市のデータ
+precipitation = get_precipitation.(131.62, 33.23, 20_190_909)
+```
+
+```elixir
+precipitation["prec"] |> Enum.count()
+```
+
+```elixir
+# 別府市
+precipitation = get_precipitation.(131.50, 33.23, 20_190_909)
+```
+
+```elixir
+# 東京23区の経度範囲
+lon_list =
+  13956..13991
+  |> Enum.map(&(&1 / 100))
+```
+
+```elixir
+# 東京23区の緯度範囲
+lat_list =
+  3552..3582
+  |> Enum.map(&(&1 / 100))
+```
+
+```elixir
+Enum.count(lon_list) * Enum.count(lat_list)
+```
+
+```elixir
+precipitation =
+  Enum.map(lon_list, fn lon ->
+    Enum.map(lat_list, fn lat ->
+      get_precipitation.(lon, lat, 20_190_909)
+      |> then(& &1["prec"])
+    end)
+  end)
+```
+
+## 降水量の可視化
+
+```elixir
+prec_tensor =
+  precipitation
+  |> Nx.tensor()
+```
+
+```elixir
+Nx.reduce_min(prec_tensor)
+```
+
+```elixir
+max_prec =
+  prec_tensor
+  |> Nx.reduce_max()
+  |> Nx.to_number()
+```
+
+```elixir
+alpha =
+  prec_tensor
+  |> Nx.multiply(max_prec / 256)
+  |> Nx.slice_along_axis(0, 1, axis: 2)
+```
+
+```elixir
+{w, h, t} = Nx.shape(prec_tensor)
+```
+
+```elixir
+rgb =
+  [255, 0, 0]
+  |> Nx.tensor()
+  |> Nx.tile([w, h, 1])
+```
+
+```elixir
+[rgb, alpha]
+|> Nx.concatenate(axis: 2)
+|> Evision.Mat.from_nx_2d()
+|> Evision.resize({w * 10, h * 10})
+|> Evision.convertScaleAbs(alpha: 3)
+|> dbg()
+```
+
+```elixir
+get_mat = fn hour ->
+  alpha =
+    prec_tensor
+    |> Nx.slice_along_axis(hour, 1, axis: 2)
+
+  [rgb, alpha]
+  |> Nx.concatenate(axis: 2)
+  |> Evision.Mat.from_nx_2d()
+  |> Evision.resize({56 * 10, 20 * 10})
+  |> Evision.convertScaleAbs(alpha: 5)
+end
+```
+
+```elixir
+0..23
+|> Enum.map(fn t ->
+  t
+  |> IO.inspect()
+  |> get_mat.()
+  |> Kino.render()
+end)
+```
+
+## 地図へのオーバーレイ
+
+```elixir
+get_data_url = fn mat ->
+  Evision.imencode(".png", mat)
+  |> Base.encode64()
+  |> then(&"data:image/png;base64,#{&1}")
+end
+```
+
+```elixir
+alias MapLibre, as: Ml
+```
+
+```elixir
+show_map_overlay = fn img_base64 ->
+  {left_lon, right_lon, bottom_lat, top_lat} = {139.56, 139.91, 35.52, 35.82}
+
+  center = {(left_lon + right_lon) / 2, (bottom_lat + top_lat) / 2}
+
+  # タイルの中心を地図の中心にする
+  Ml.new(
+    center: center,
+    zoom: 9,
+    style: :street
+  )
+  # 画像をタイルの座標に配置する
+  |> Ml.add_source(
+    "sar-source",
+    type: :image,
+    url: img_base64,
+    coordinates: [
+      [left_lon, top_lat],
+      [right_lon, top_lat],
+      [right_lon, bottom_lat],
+      [left_lon, bottom_lat]
+    ]
+  )
+  # 画像をレイヤーとして地図に重ね、透過する
+  |> Ml.add_layer(
+    id: "overlay",
+    source: "sar-source",
+    type: :raster,
+    layout: %{
+      "visibility" => "visible"
+    }
+  )
+end
+```
+
+```elixir
+5
+|> get_mat.()
+|> get_data_url.()
+|> show_map_overlay.()
+```
+
+```elixir
+0..11
+|> Enum.map(fn t ->
+  t
+  |> IO.inspect()
+  |> get_mat.()
+  |> get_data_url.()
+  |> show_map_overlay.()
+  |> Kino.render()
+end)
+```
