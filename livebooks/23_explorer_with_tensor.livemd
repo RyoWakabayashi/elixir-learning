@@ -54,6 +54,7 @@ alpha =
 ```elixir
 sample_df
 |> DataFrame.put(:a, alpha)
+|> Kino.DataTable.new()
 ```
 
 ## defn による演算
@@ -74,4 +75,5 @@ end
 ```elixir
 sample_df
 |> DataFrame.put(:mean, Helper.mean(sample_df))
+|> Kino.DataTable.new()
 ```

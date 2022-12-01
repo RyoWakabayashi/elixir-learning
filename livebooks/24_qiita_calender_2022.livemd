@@ -1,0 +1,78 @@
+# Qiita Advent Calendar 2022
+
+```elixir
+Mix.install([
+  {:req, "~> 0.3.0"},
+  {:floki, "~> 0.34.0"},
+  {:explorer, "~> 0.4"},
+  {:kino, "~> 0.7"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 準備
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+alias VegaLite, as: Vl
+require Explorer.DataFrame
+```
+
+## カレンダーデータの取得
+
+```elixir
+calendar_df =
+  "https://qiita.com/advent-calendar/2022/elixir"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Floki.parse_document!()
+  |> Floki.find("[data-js-react-on-rails-store=AppStoreWithReactOnRails]")
+  |> Enum.at(0)
+  |> elem(2)
+  |> Jason.decode!()
+  |> get_in(["adventCalendars", "tableAdventCalendars"])
+  |> Enum.at(0)
+  |> Map.fetch!("items")
+  |> Enum.frequencies_by(&get_in(&1, ["user", "urlName"]))
+  |> then(fn map ->
+    %{
+      name: Enum.map(map, fn {name, _} -> name end),
+      count: Enum.map(map, fn {_, count} -> count end)
+    }
+  end)
+  |> DataFrame.new()
+  |> dbg()
+```
+
+## データテーブルの表示
+
+```elixir
+calendar_df
+|> DataFrame.arrange(desc: count)
+|> Kino.DataTable.new()
+```
+
+## グラフの表示
+
+```elixir
+x = Series.to_list(calendar_df["name"])
+y = Series.to_list(calendar_df["count"])
+
+Vl.new(width: 800, height: 400)
+|> Vl.data_from_values(x: x, y: y)
+|> Vl.mark(:bar)
+|> Vl.encode_field(
+  :x,
+  "x",
+  type: :nominal,
+  sort: "-y",
+  title: "アカウント名"
+)
+|> Vl.encode_field(
+  :y,
+  "y",
+  type: :quantitative,
+  title: "記事数"
+)
+```
