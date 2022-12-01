@@ -1,0 +1,77 @@
+# Explorer <-> Nx
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.4"},
+  {:explorer, "~> 0.4"},
+  {:kino, "~> 0.7"}
+])
+```
+
+## エイリアス
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+```
+
+## データフレームの作成
+
+```elixir
+sample_df =
+  [
+    r: [255, 127, 0, 255, 127, 0, 255, 127, 0],
+    g: [255, 255, 255, 127, 127, 127, 0, 0, 0],
+    b: [255, 255, 0, 0, 127, 127, 255, 127, 0]
+  ]
+  |> DataFrame.new()
+
+sample_df
+|> Kino.DataTable.new()
+```
+
+## シリーズとテンソルの変換
+
+```elixir
+Series.to_tensor(sample_df["r"])
+```
+
+```elixir
+[0, 0.5, 1.0]
+|> Nx.tensor(type: :f64)
+|> Series.from_tensor()
+```
+
+## データフレームにテンソルを追加
+
+```elixir
+alpha =
+  [255]
+  |> Nx.tensor()
+  |> Nx.tile([9])
+```
+
+```elixir
+sample_df
+|> DataFrame.put(:a, alpha)
+```
+
+## defn による演算
+
+```elixir
+import Nx.Defn
+```
+
+```elixir
+defmodule Helper do
+  defn mean(tf) do
+    ((tf[:r] + tf[:g] + tf[:b]) / 3)
+    |> Nx.as_type(:f64)
+  end
+end
+```
+
+```elixir
+sample_df
+|> DataFrame.put(:mean, Helper.mean(sample_df))
+```
