@@ -1,0 +1,285 @@
+# AWS S3
+
+```elixir
+Mix.install([
+  {:ex_aws, "~> 2.0"},
+  {:ex_aws_s3, "~> 2.0"},
+  {:poison, "~> 5.0"},
+  {:hackney, "~> 1.18"},
+  {:sweet_xml, "~> 0.7"},
+  {:explorer, "~> 0.3"},
+  {:evision, "~> 0.1"},
+  {:download, "~> 0.0.4"},
+  {:kino, "~> 0.7"}
+])
+```
+
+## 準備
+
+```elixir
+alias ExAws.S3
+alias Explorer.DataFrame
+alias Explorer.Series
+require Explorer.DataFrame
+```
+
+## 認証
+
+```elixir
+access_key_id_input = Kino.Input.password("ACCESS_KEY_ID")
+```
+
+```elixir
+secret_access_key_input = Kino.Input.password("SECRET_ACCESS_KEY")
+```
+
+```elixir
+region_input = Kino.Input.text("REGION")
+```
+
+```elixir
+auth_config = [
+  access_key_id: Kino.Input.read(access_key_id_input),
+  secret_access_key: Kino.Input.read(secret_access_key_input),
+  region: Kino.Input.read(region_input)
+]
+
+"dummy"
+```
+
+## バケット一覧の取得
+
+```elixir
+S3.list_buckets()
+|> ExAws.request(auth_config)
+```
+
+```elixir
+S3.list_buckets()
+|> ExAws.request!(auth_config)
+|> then(& &1.body.buckets)
+|> DataFrame.new()
+|> DataFrame.select(["name", "creation_date"])
+|> Kino.DataTable.new()
+```
+
+## ファイル一覧の取得
+
+```elixir
+bucket_name_input = Kino.Input.text("BUCKET_ANME")
+```
+
+```elixir
+{contents, next_continuation_token} =
+  bucket_name_input
+  |> Kino.Input.read()
+  |> S3.list_objects_v2(max_keys: 20)
+  |> ExAws.request!(auth_config)
+  |> then(&{&1.body.contents, &1.body.next_continuation_token})
+```
+
+```elixir
+bucket_name_input
+|> Kino.Input.read()
+|> S3.list_objects_v2(max_keys: 20, continuation_token: next_continuation_token)
+|> ExAws.request!(auth_config)
+|> then(&{&1.body.contents, &1.body.next_continuation_token})
+```
+
+```elixir
+defmodule S3LS do
+  def get_contents(continuation_token, bucket_name, auth_config) do
+    bucket_name
+    |> S3.list_objects_v2(max_keys: 20, continuation_token: continuation_token)
+    |> ExAws.request!(auth_config)
+    |> then(&{&1.body.contents, &1.body.next_continuation_token})
+  end
+
+  def get_contents_cyclic(continuation_token, bucket_name, auth_config) do
+    {contents, next_token} = get_contents(continuation_token, bucket_name, auth_config)
+
+    case next_token do
+      # 空であれば次ページを取得しない
+      "" ->
+        contents
+
+      # 空以外の場合は次ページを取得する
+      _ ->
+        contents ++ get_contents_cyclic(next_token, bucket_name, auth_config)
+    end
+  end
+
+  def get_all_contents(bucket_name, auth_config) do
+    get_contents_cyclic(nil, bucket_name, auth_config)
+  end
+end
+```
+
+```elixir
+all_contents =
+  bucket_name_input
+  |> Kino.Input.read()
+  |> S3LS.get_all_contents(auth_config)
+```
+
+```elixir
+all_contents_df =
+  all_contents
+  |> DataFrame.new()
+  |> DataFrame.select(["key", "last_modified", "size"])
+  |> DataFrame.mutate(size: cast(size, :float))
+  |> then(fn df ->
+    DataFrame.put(
+      df,
+      "last_modified",
+      df["last_modified"]
+      |> Series.transform(fn input ->
+        NaiveDateTime.from_iso8601!(input)
+      end)
+    )
+  end)
+
+all_contents_df
+|> Kino.DataTable.new()
+```
+
+```elixir
+all_contents_df["size"]
+|> Series.sum()
+```
+
+```elixir
+all_contents_df["size"]
+|> Series.max()
+```
+
+```elixir
+all_contents_df
+|> DataFrame.filter(size > 5_000)
+|> Kino.DataTable.new()
+```
+
+```elixir
+all_contents_df
+|> DataFrame.filter(last_modified < ~N[2021-09-01 00:00:00])
+|> Kino.DataTable.new()
+```
+
+```elixir
+all_contents_df
+|> then(fn df ->
+  DataFrame.put(
+    df,
+    "dir",
+    df["key"]
+    |> Series.transform(fn input ->
+      paths = String.split(input, "/")
+
+      case Enum.count(paths) do
+        1 ->
+          ""
+
+        _ ->
+          Enum.at(paths, 0)
+      end
+    end)
+  )
+end)
+|> DataFrame.group_by(["dir"])
+|> DataFrame.summarise(
+  count: count(size),
+  size: sum(size)
+)
+|> DataFrame.arrange(desc: size)
+|> Kino.DataTable.new()
+```
+
+## ファイルアップロード
+
+### アップロード用ファイル取得
+
+```elixir
+File.rm("Lenna_%28test_image%29.png")
+
+lenna =
+  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
+  |> elem(1)
+```
+
+### ファイル指定でアップロード
+
+```elixir
+lenna
+|> S3.Upload.stream_file()
+|> S3.upload(Kino.Input.read(bucket_name_input), "lenna.png")
+|> ExAws.request!(auth_config)
+```
+
+### インメモリからアップロード
+
+```elixir
+mat = Evision.imread(lenna)
+```
+
+```elixir
+bucket_name_input
+|> Kino.Input.read()
+|> S3.put_object("lenna_2.png", Evision.imencode(".png", mat))
+|> ExAws.request!(auth_config)
+```
+
+```elixir
+bucket_name_input
+|> Kino.Input.read()
+|> S3LS.get_all_contents(auth_config)
+|> DataFrame.new()
+|> DataFrame.select(["key", "last_modified", "size"])
+|> Kino.DataTable.new()
+```
+
+## ファイルダウンロード
+
+```elixir
+bucket_name_input
+|> Kino.Input.read()
+|> S3.download_file("lenna.png", "lenna_downloaded.png")
+|> ExAws.request!(auth_config)
+```
+
+```elixir
+mat = Evision.imread("lenna_downloaded.png")
+```
+
+### インメモリにダウンロード
+
+```elixir
+bucket_name_input
+|> Kino.Input.read()
+|> S3.get_object("lenna.png")
+|> ExAws.request!(auth_config)
+|> then(&Evision.imdecode(&1.body, Evision.cv_IMREAD_COLOR()))
+```
+
+### ダウンロードして加工してアップロード
+
+```elixir
+bucket_name =
+  bucket_name_input
+  |> Kino.Input.read()
+
+bucket_name
+|> S3.get_object("lenna.png")
+|> ExAws.request!(auth_config)
+|> then(&Evision.imdecode(&1.body, Evision.cv_IMREAD_COLOR()))
+|> Evision.blur({9, 9})
+|> then(&S3.put_object(bucket_name, "lenna_blur.png", Evision.imencode(".png", &1)))
+|> ExAws.request!(auth_config)
+```
+
+```elixir
+bucket_name_input
+|> Kino.Input.read()
+|> S3.get_object("lenna_blur.png")
+|> ExAws.request!(auth_config)
+|> then(&Evision.imdecode(&1.body, Evision.cv_IMREAD_COLOR()))
+```
