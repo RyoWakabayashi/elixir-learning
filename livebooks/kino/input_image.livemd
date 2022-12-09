@@ -1,0 +1,95 @@
+# Kino.Input.image
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.4"},
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## 画像選択
+
+```elixir
+image_input = Kino.Input.image("IMAGE")
+```
+
+## 画像表示
+
+```elixir
+image = Kino.Input.read(image_input)
+```
+
+```elixir
+image.data
+|> Nx.from_binary(:u8)
+|> Nx.reshape({image.height, image.width, 3})
+|> Evision.Mat.from_nx_2d()
+|> Evision.cvtColor(Evision.cv_COLOR_RGB2BGR())
+```
+
+```elixir
+image.data
+|> Nx.from_binary(:u8)
+|> Nx.reshape({image.height, image.width, 3})
+|> Kino.Image.new()
+```
+
+## PNG指定
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :png)
+```
+
+```elixir
+image = Kino.Input.read(image_input)
+```
+
+```elixir
+image.data
+|> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+```
+
+## JPEG指定
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :jpeg)
+```
+
+```elixir
+image_input
+|> Kino.Input.read()
+|> then(& &1.data)
+|> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+```
+
+## リサイズ
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :png, size: {200, 500}, fit: :contain)
+```
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :png, size: {200, 500}, fit: :match)
+```
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :png, size: {200, 500}, fit: :pad)
+```
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :png, size: {200, 500}, fit: :crop)
+```
+
+## ダウンロード
+
+```elixir
+Kino.Download.new(
+  fn ->
+    image_input
+    |> Kino.Input.read()
+    |> then(& &1.data)
+  end,
+  filename: "resized.png"
+)
+```
