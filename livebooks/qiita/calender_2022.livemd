@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:req, "~> 0.3.0"},
-  {:floki, "~> 0.34.0"},
+  {:req, "~> 0.3"},
+  {:floki, "~> 0.34"},
   {:explorer, "~> 0.4"},
-  {:kino, "~> 0.7"},
+  {:kino, "~> 0.8"},
   {:kino_vega_lite, "~> 0.1"}
 ])
 ```
