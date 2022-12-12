@@ -4,10 +4,10 @@
 Mix.install([
   {:httpoison, "~> 1.8"},
   {:json, "~> 1.4"},
-  {:explorer, "~> 0.3"},
+  {:explorer, "~> 0.4"},
   {:nx, "~> 0.4"},
-  {:kino, "~> 0.7"},
-  {:kino_vega_lite, "~> 0.1.4"}
+  {:kino, "~> 0.8"},
+  {:kino_vega_lite, "~> 0.1"}
 ])
 ```
 
@@ -28,6 +28,7 @@ base_url = "https://opendata.resas-portal.go.jp"
 alias Explorer.DataFrame
 alias Explorer.Series
 alias VegaLite, as: Vl
+require Explorer.DataFrame
 ```
 
 ## RESAS の認証
@@ -450,15 +451,11 @@ Vl.new(width: 650, height: 400, title: "2015年都道府県別人口構成")
 ```elixir
 population_df =
   population_composition_df
-  |> DataFrame.filter_with(&Series.equal(&1["year"], 2015))
-  |> DataFrame.mutate(value: &Series.cast(&1["value"], :float))
+  |> DataFrame.filter(year == 2015)
+  |> DataFrame.mutate(value: cast(value, :float))
   |> DataFrame.select(["prefCode", "prefName", "label", "value"])
   |> DataFrame.pivot_wider("label", "value")
-  |> DataFrame.mutate_with(fn df ->
-    [
-      老年率: Series.divide(df["老年人口"], df["総人口"])
-    ]
-  end)
+  |> DataFrame.mutate(老年率: 老年人口 / 総人口)
 
 population_df
 |> Kino.DataTable.new(sorting_enabled: true)
@@ -474,8 +471,8 @@ population_df
 ```elixir
 target_df =
   local_tax_df
-  |> DataFrame.filter_with(&Series.equal(&1["year"], 2015))
-  |> DataFrame.mutate(value: &Series.cast(&1["value"], :float))
+  |> DataFrame.filter(year == 2015)
+  |> DataFrame.mutate(value: cast(value, :float))
   |> DataFrame.select(["prefCode", "value"])
   |> DataFrame.rename(["prefCode", "localTax"])
   |> DataFrame.join(population_df)
@@ -501,7 +498,7 @@ scatter.(target_df, "localTax", "総人口", 300)
 
 ```elixir
 target_df
-|> DataFrame.filter_with(&Series.not_equal(&1["prefCode"], 13))
+|> DataFrame.filter(prefCode != 13)
 |> scatter.("localTax", "総人口", 300)
 ```
 
@@ -527,7 +524,7 @@ standardize = fn df, column ->
   std =
     df
     |> DataFrame.pull(column)
-    |> Series.std()
+    |> Series.standard_deviation()
 
   df
   |> DataFrame.mutate_with(fn in_df ->

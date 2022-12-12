@@ -4,9 +4,9 @@
 Mix.install([
   {:httpoison, "~> 1.8"},
   {:json, "~> 1.4"},
-  {:explorer, "~> 0.3"},
-  {:kino, "~> 0.7"},
-  {:kino_vega_lite, "~> 0.1.4"}
+  {:explorer, "~> 0.4"},
+  {:kino, "~> 0.8"},
+  {:kino_vega_lite, "~> 0.1"}
 ])
 ```
 
@@ -25,6 +25,7 @@ base_url = "https://qiita.com/api/v2"
 alias Explorer.DataFrame
 alias Explorer.Series
 alias VegaLite, as: Vl
+require Explorer.DataFrame
 ```
 
 ```elixir
@@ -179,47 +180,56 @@ qiita_df
 qiita_df
 |> DataFrame.group_by(["private"])
 |> DataFrame.summarise(
-  page_views_count: [:sum, :mean, :max, :min],
-  likes_count: [:sum, :mean, :max, :min],
-  stocks_count: [:sum, :mean, :max, :min]
+  page_views_count_sum: sum(page_views_count),
+  page_views_count_mean: mean(page_views_count),
+  page_views_count_max: max(page_views_count),
+  page_views_count_min: min(page_views_count),
+  likes_count_sum: sum(likes_count),
+  likes_count_mean: mean(likes_count),
+  likes_count_max: max(likes_count),
+  likes_count_min: min(likes_count),
+  stocks_count_sum: sum(stocks_count),
+  stocks_count_mean: mean(stocks_count),
+  stocks_count_max: max(stocks_count),
+  stocks_count_min: min(stocks_count)
 )
-|> DataFrame.filter_with(&Series.equal(&1["private"], false))
-|> DataFrame.select(["private"], :drop)
+|> DataFrame.filter(private == false)
 |> DataFrame.to_columns()
+|> Map.drop(["private"])
 |> dbg()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: "page_views_count")
+|> DataFrame.arrange(desc: page_views_count)
 |> DataFrame.select(["title", "page_views_count", "likes_count", "stocks_count"])
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: "likes_count")
+|> DataFrame.arrange(desc: likes_count)
 |> DataFrame.select(["title", "likes_count", "page_views_count", "stocks_count"])
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: "stocks_count")
+|> DataFrame.arrange(desc: stocks_count)
 |> DataFrame.select(["title", "stocks_count", "likes_count", "page_views_count"])
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: "likes_rate")
+|> DataFrame.arrange(desc: likes_rate)
 |> DataFrame.select(["title", "likes_rate", "likes_count", "page_views_count"])
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: "stocks_rate")
+|> DataFrame.arrange(desc: stocks_rate)
 |> DataFrame.select(["title", "stocks_rate", "stocks_count", "page_views_count"])
 |> Kino.DataTable.new()
 ```
@@ -350,9 +360,13 @@ qiita_tag_summarised_df =
   qiita_tag_df
   |> DataFrame.group_by(["tag"])
   |> DataFrame.summarise(
-    page_views_count: [:count, :sum, :mean],
-    likes_count: [:sum, :mean],
-    stocks_count: [:sum, :mean]
+    page_views_count: count(page_views_count),
+    page_views_count_sum: sum(page_views_count),
+    page_views_count_mean: mean(page_views_count),
+    likes_count_sum: sum(likes_count),
+    likes_count_mean: mean(likes_count),
+    stocks_count_sum: sum(stocks_count),
+    stocks_count_mean: mean(stocks_count)
   )
 
 qiita_tag_summarised_df
@@ -361,7 +375,7 @@ qiita_tag_summarised_df
 
 ```elixir
 x = get_values.(qiita_tag_summarised_df, "tag")
-y = get_values.(qiita_tag_summarised_df, "page_views_count_count")
+y = get_values.(qiita_tag_summarised_df, "page_views_count")
 
 Vl.new(width: 800, height: 400)
 |> Vl.data_from_values(x: x, y: y)
