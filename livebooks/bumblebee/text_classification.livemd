@@ -1,0 +1,63 @@
+# Text classification
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.1"},
+    {:nx, "~> 0.4"},
+    {:exla, "~> 0.4"},
+    {:kino, "~> 0.8"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## 設定
+
+```elixir
+cache_dir = "/tmp/bumblebee_cache"
+```
+
+## モデルのダウンロード
+
+```elixir
+{:ok, bertweet} =
+  Bumblebee.load_model({
+    :hf,
+    "finiteautomata/bertweet-base-sentiment-analysis",
+    cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, tokenizer} =
+  Bumblebee.load_tokenizer({
+    :hf,
+    "vinai/bertweet-base",
+    cache_dir: cache_dir
+  })
+```
+
+## サービスの提供
+
+```elixir
+serving = Bumblebee.Text.text_classification(bertweet, tokenizer)
+```
+
+## 分類対象テキストの準備
+
+```elixir
+text_input = Kino.Input.text("TEXT", default: "I was young then.")
+```
+
+```elixir
+text = Kino.Input.read(text_input)
+```
+
+## 推論の実行
+
+```elixir
+serving
+|> Nx.Serving.run(text)
+|> then(&Kino.DataTable.new(&1.predictions))
+```
