@@ -360,7 +360,7 @@ local_tax_df
 target_df = DataFrame.filter_with(local_tax_df, &Series.equal(&1["prefCode"], oita_pref_code))
 ```
 
-<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":600},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":600},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 Vl.new(width: 600, height: 400)
@@ -419,7 +419,7 @@ target_df =
   |> DataFrame.filter_with(&Series.equal(&1["prefCode"], oita_pref_code))
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"大分県人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":700},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":"大分県人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":700},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 Vl.new(width: 700, height: 400, title: "大分県人口構成推移")
@@ -437,7 +437,7 @@ target_df =
   |> DataFrame.filter_with(&Series.not_equal(&1["label"], "総人口"))
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"2015年都道府県別人口構成","height":400,"layers":[{"chart_type":"bar","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":650},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":"2015年都道府県別人口構成","height":400,"layers":[{"chart_type":"bar","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":650},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 Vl.new(width: 650, height: 400, title: "2015年都道府県別人口構成")

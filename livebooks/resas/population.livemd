@@ -4,9 +4,9 @@
 Mix.install([
   {:httpoison, "~> 1.8"},
   {:json, "~> 1.4"},
-  {:explorer, "~> 0.3"},
-  {:kino, "~> 0.7"},
-  {:kino_vega_lite, "~> 0.1.4"}
+  {:explorer, "~> 0.4"},
+  {:kino, "~> 0.8"},
+  {:kino_vega_lite, "~> 0.1"}
 ])
 ```
 
@@ -26,6 +26,7 @@ base_url = "https://opendata.resas-portal.go.jp"
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
+require Explorer.DataFrame
 ```
 
 ## RESAS の認証
@@ -51,14 +52,14 @@ prefectures_df = DataFrame.new(prefectures["result"])
 ```
 
 ```elixir
-Kino.DataTable.new(prefectures_df, sorting_enabled: true)
+Kino.DataTable.new(prefectures_df)
 ```
 
 ```elixir
 oita_pref_code =
   prefectures_df
   # "prefName" が "大分県" の行を抽出
-  |> DataFrame.filter_with(&Series.equal(&1["prefName"], "大分県"))
+  |> DataFrame.filter(prefName == "大分県")
   # "prefCode" の列を選択
   |> DataFrame.pull("prefCode")
   # 先頭のデータを取得
@@ -111,7 +112,7 @@ oita_cities_df
 ```elixir
 oita_city_code =
   oita_cities_df
-  |> DataFrame.filter_with(&Series.equal(&1["cityName"], "大分市"))
+  |> DataFrame.filter(cityName == "大分市")
   |> DataFrame.pull("cityCode")
   |> Series.first()
   |> dbg()
@@ -128,19 +129,19 @@ bigCityFlag: 特別区・行政区フラグ
 
 ```elixir
 oita_cities_df
-|> DataFrame.filter_with(&Series.not_equal(&1["bigCityFlag"], "0"))
-|> Kino.DataTable.new(sorting_enabled: true)
+|> DataFrame.filter(bigCityFlag != "0")
+|> Kino.DataTable.new()
 ```
 
 ```elixir
 all_cities_df
 # bigCityFlag が 0 でない行を抽出する
-|> DataFrame.filter_with(&Series.not_equal(&1["bigCityFlag"], "0"))
+|> DataFrame.filter(bigCityFlag != "0")
 # 都道府県コードで重複排除する
 |> DataFrame.distinct(["prefCode"])
 # 都道府県一覧データフレームと結合する
 |> DataFrame.join(prefectures_df)
-|> Kino.DataTable.new(sorting_enabled: true)
+|> Kino.DataTable.new()
 |> dbg()
 ```
 
@@ -186,7 +187,7 @@ population_composition_df
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"大分県人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"population_composition_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":"大分県人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"population_composition_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 VegaLite.new(width: 700, height: 400, title: "大分県人口構成推移")
@@ -210,10 +211,10 @@ oita_city_population_composition_df =
   |> DataFrame.new()
 
 oita_city_population_composition_df
-|> Kino.DataTable.new(sorting_enabled: true)
+|> Kino.DataTable.new()
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"大分市人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"oita_city_population_composition_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":"大分市人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"oita_city_population_composition_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 VegaLite.new(width: 700, height: 400, title: "大分市人口構成推移")
