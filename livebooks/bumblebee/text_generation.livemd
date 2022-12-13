@@ -1,0 +1,97 @@
+# Text generation
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.1"},
+    {:nx, "~> 0.4"},
+    {:exla, "~> 0.4"},
+    {:kino, "~> 0.8"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## 設定
+
+```elixir
+cache_dir = "/tmp/bumblebee_cache"
+```
+
+## モデルのダウンロード
+
+```elixir
+{:ok, gpt2} =
+  Bumblebee.load_model({
+    :hf,
+    "gpt2",
+    cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, tokenizer} =
+  Bumblebee.load_tokenizer({
+    :hf,
+    "gpt2",
+    cache_dir: cache_dir
+  })
+```
+
+## サービスの提供
+
+```elixir
+serving = Bumblebee.Text.generation(gpt2, tokenizer, max_new_tokens: 10)
+```
+
+## 補完する文章の準備
+
+```elixir
+text_input = Kino.Input.text("TEXT", default: "Robots have gained human rights and")
+```
+
+```elixir
+text = Kino.Input.read(text_input)
+```
+
+```elixir
+serving
+|> Nx.Serving.run(text)
+|> then(& &1.results)
+```
+
+## 他のモデル
+
+```elixir
+serve_model = fn repository_id ->
+  {:ok, model} =
+    Bumblebee.load_model({
+      :hf,
+      repository_id,
+      cache_dir: cache_dir
+    })
+
+  {:ok, tokenizer} =
+    Bumblebee.load_tokenizer({
+      :hf,
+      repository_id,
+      cache_dir: cache_dir
+    })
+
+  Bumblebee.Text.generation(model, tokenizer, max_new_tokens: 10)
+end
+```
+
+```elixir
+"gpt2-medium"
+|> serve_model.()
+|> Nx.Serving.run(text)
+|> then(& &1.results)
+```
+
+```elixir
+"gpt2-large"
+|> serve_model.()
+|> Nx.Serving.run(text)
+|> then(& &1.results)
+```
