@@ -30,7 +30,9 @@ Mix.install([
   ]
 ]
 |> Nx.tensor(type: {:u, 8})
+# Evision のマトリックスに変換
 |> Evision.Mat.from_nx_2d()
+# 見やすいように拡大
 |> Evision.resize({300, 300}, interpolation: Evision.cv_INTER_AREA())
 ```
 
@@ -76,14 +78,13 @@ Evision.Mat.to_nx(img)
 ## リサイズ
 
 ```elixir
-resized_img = Evision.resize(img, {256, 128})
+Evision.resize(img, {256, 128})
 ```
 
 ## グレースケール
 
 ```elixir
-lenna_path
-|> Evision.imread(flags: Evision.cv_IMREAD_GRAYSCALE())
+Evision.imread(lenna_path, flags: Evision.cv_IMREAD_GRAYSCALE())
 ```
 
 ```elixir
