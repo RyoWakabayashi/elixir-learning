@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:explorer, "~> 0.3"},
-  {:kino, "~> 0.7"},
-  {:kino_vega_lite, "~> 0.1"},
-  {:nx, "~> 0.4"}
+  {:explorer, "~> 0.4"},
+  {:nx, "~> 0.4"},
+  {:kino, "~> 0.8"},
+  {:kino_vega_lite, "~> 0.1"}
 ])
 ```
 
@@ -15,6 +15,7 @@ Mix.install([
 alias Explorer.DataFrame
 alias Explorer.Series
 alias VegaLite, as: Vl
+require Explorer.DataFrame
 ```
 
 ## Load Datasets
@@ -118,7 +119,7 @@ get_stats = fn df, col ->
   [
     DataFrame.n_rows(df),
     Series.mean(series),
-    Series.std(series),
+    Series.standard_deviation(series),
     Series.min(series),
     Series.quantile(series, 0.25),
     Series.median(series),
@@ -354,7 +355,7 @@ standardize = fn df, column ->
   std =
     wine_df
     |> DataFrame.pull(column)
-    |> Series.std()
+    |> Series.standard_deviation()
 
   df
   |> DataFrame.mutate_with(fn in_df ->
@@ -404,7 +405,7 @@ end
 
 standardized_wine_tensor =
   standardized_wine_df
-  |> DataFrame.select(["class"], :drop)
+  |> DataFrame.select(cols)
   |> df_to_tensor.()
   |> Nx.transpose()
 ```

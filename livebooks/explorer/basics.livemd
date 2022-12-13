@@ -3,7 +3,7 @@
 ```elixir
 Mix.install([
   {:explorer, "~> 0.4"},
-  {:kino, "~> 0.7"}
+  {:kino, "~> 0.8"}
 ])
 ```
 
@@ -12,6 +12,7 @@ Mix.install([
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
+require Explorer.DataFrame
 ```
 
 ## データフレーム作成
@@ -36,14 +37,12 @@ sample_df
 
 ```elixir
 sample_df
-|> DataFrame.mutate_with(
-  &[
-    add: Series.add(&1["values"], 2),
-    subtract: Series.subtract(&1["values"], 2),
-    multiply: Series.multiply(&1["values"], 2),
-    divide: Series.divide(&1["values"], 2),
-    pow: Series.pow(&1["values"], 2)
-  ]
+|> DataFrame.mutate(
+  add: values + 2,
+  subtract: values - 2,
+  multiply: values * 2,
+  divide: values / 2,
+  pow: values ** 2
 )
 |> Kino.DataTable.new()
 ```
@@ -52,11 +51,9 @@ sample_df
 
 ```elixir
 sample_df
-|> DataFrame.mutate_with(
-  &[
-    quotient: Series.quotient(&1["values"], 2),
-    remainder: Series.remainder(&1["values"], 2)
-  ]
+|> DataFrame.mutate(
+  quotient: quotient(values, 2),
+  remainder: remainder(values, 2)
 )
 |> Kino.DataTable.new()
 ```
@@ -65,15 +62,13 @@ sample_df
 
 ```elixir
 sample_df
-|> DataFrame.mutate_with(
-  &[
-    equal: Series.equal(&1["values"], 2),
-    not_equal: Series.not_equal(&1["values"], 2),
-    greater: Series.greater(&1["values"], 2),
-    greater_equal: Series.greater_equal(&1["values"], 2),
-    less: Series.less(&1["values"], 2),
-    less_equal: Series.less_equal(&1["values"], 2)
-  ]
+|> DataFrame.mutate(
+  equal: values == 2,
+  not_equal: values != 2,
+  greater: values > 2,
+  greater_equal: values >= 2,
+  less: values < 2,
+  less_equal: values <= 2
 )
 |> Kino.DataTable.new()
 ```
@@ -82,14 +77,10 @@ sample_df
 
 ```elixir
 sample_df
-|> DataFrame.mutate_with(
-  &%{
-    "not equal" => Series.equal(&1["values"], 2) |> Series.not(),
-    "greater or equal" =>
-      Series.or(Series.greater(&1["values"], 2), Series.equal(&1["values"], 2)),
-    "greater and equal" =>
-      Series.and(Series.greater(&1["values"], 2), Series.equal(&1["values"], 2))
-  }
+|> DataFrame.mutate(
+  "not equal": Series.not(values == 2),
+  "greater or equal": Series.or(values > 2, values == 2),
+  "greater and equal": Series.and(values > 2, values == 2)
 )
 |> Kino.DataTable.new()
 ```
@@ -108,7 +99,7 @@ Series.all_equal(sample_df["labels"], sample_df["values"])
 threshold = 1
 
 sample_df
-|> DataFrame.filter_with(&Series.greater(&1["values"], threshold))
+|> DataFrame.filter(values > ^threshold)
 |> Kino.DataTable.new()
 ```
 
@@ -128,11 +119,9 @@ nil_df
 
 ```elixir
 sample_df
-|> DataFrame.mutate_with(
-  &%{
-    "is_nil" => Series.is_nil(&1["values"]),
-    "is_not_nil" => Series.is_not_nil(&1["values"])
-  }
+|> DataFrame.mutate(
+  is_nil: is_nil(values),
+  is_not_nil: is_not_nil(values)
 )
 |> Kino.DataTable.new()
 ```
@@ -153,112 +142,14 @@ fill_value =
 
 ```elixir
 nil_df
-|> DataFrame.mutate_with(
-  &[
-    labels_filled: Series.coalesce(&1["labels"], fill_label),
-    values_filled: Series.coalesce(&1["values"], fill_value)
-  ]
+|> DataFrame.mutate(
+  labels_filled: coalesce(labels, ^fill_label),
+  values_filled: coalesce(values, ^fill_value)
 )
 |> Kino.DataTable.new()
 ```
 
 ### 集計
-
-```elixir
-sample_df
-|> DataFrame.group_by("labels")
-|> DataFrame.summarise_with(
-  &[
-    count: Series.count(&1["values"]),
-    n_distinct: Series.n_distinct(&1["values"]),
-    min: Series.min(&1["values"]),
-    max: Series.max(&1["values"]),
-    sum: Series.sum(&1["values"]),
-    mean: Series.mean(&1["values"]),
-    median: Series.median(&1["values"]),
-    "quantile 1/4": Series.quantile(&1["values"], 0.25),
-    "quantile 3/4": Series.quantile(&1["values"], 0.75),
-    variance: Series.variance(&1["values"]),
-    standard_deviation: Series.standard_deviation(&1["values"])
-  ]
-)
-|> Kino.DataTable.new()
-```
-
-```elixir
-sample_df["values"]
-|> Series.frequencies()
-|> Kino.DataTable.new()
-```
-
-### 並べ替え
-
-```elixir
-sample_df
-|> DataFrame.arrange_with(&[asc: &1["values"]])
-|> Kino.DataTable.new()
-```
-
-## クエリ
-
-```elixir
-require Explorer.DataFrame
-```
-
-```elixir
-sample_df
-|> DataFrame.mutate(
-  add: values + 2,
-  subtract: values - 2,
-  multiply: values * 2,
-  divide: values / 2,
-  pow: values ** 2
-)
-|> Kino.DataTable.new()
-```
-
-```elixir
-sample_df
-|> DataFrame.mutate(
-  equal: values == 2,
-  not_equal: values != 2,
-  greater: values > 2,
-  greater_equal: values >= 2,
-  less: values < 2,
-  less_equal: values <= 2
-)
-|> Kino.DataTable.new()
-```
-
-```elixir
-sample_df
-|> DataFrame.mutate(
-  "not equal": Series.not(values == 2),
-  "greater or equal": Series.or(values > 2, values == 2),
-  "greater and equal": Series.and(values > 2, values == 2)
-)
-|> Kino.DataTable.new()
-```
-
-```elixir
-threshold = 1
-
-sample_df
-|> DataFrame.filter(values > ^threshold)
-|> Kino.DataTable.new()
-```
-
-```elixir
-sample_df
-|> DataFrame.arrange(asc: values)
-|> Kino.DataTable.new()
-```
-
-```elixir
-sample_df
-|> DataFrame.arrange(desc: labels)
-|> Kino.DataTable.new()
-```
 
 ```elixir
 sample_df
@@ -279,11 +170,25 @@ sample_df
 |> Kino.DataTable.new()
 ```
 
+```elixir
+sample_df["values"]
+|> Series.frequencies()
+|> Kino.DataTable.new()
+```
+
+### 並べ替え
+
+```elixir
+sample_df
+|> DataFrame.arrange(asc: values)
+|> Kino.DataTable.new()
+```
+
 ## CSV 読み込み
 
 ```elixir
 population_df =
-  "/home/livebook/population_20211001.csv"
+  "/home/livebook/explorer/population_20211001.csv"
   |> DataFrame.from_csv!()
   |> DataFrame.rename("人口（千人）": "人口_千人")
 ```
@@ -425,7 +330,7 @@ elderly_rate_df
 ```
 
 ```elixir
-assets_df = DataFrame.from_csv!("/home/livebook/assets_20151216.csv")
+assets_df = DataFrame.from_csv!("/home/livebook/explorer/assets_20151216.csv")
 ```
 
 ```elixir

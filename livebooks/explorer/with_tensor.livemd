@@ -4,7 +4,7 @@
 Mix.install([
   {:nx, "~> 0.4"},
   {:explorer, "~> 0.4"},
-  {:kino, "~> 0.7"}
+  {:kino, "~> 0.8"}
 ])
 ```
 
@@ -13,6 +13,7 @@ Mix.install([
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
+require Explorer.DataFrame
 ```
 
 ## データフレームの作成
