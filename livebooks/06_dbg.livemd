@@ -1,0 +1,141 @@
+# dbg party
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.4"},
+  {:evision, "~> 0.1"},
+  {:explorer, "~> 0.4"},
+  {:httpoison, "~> 1.8"},
+  {:kino, "~> 0.8"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## Section
+
+```elixir
+System.version()
+```
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+alias VegaLite, as: Vl
+require Explorer.DataFrame
+```
+
+```elixir
+"Elixir is cool!"
+|> String.trim_trailing("!")
+|> String.split()
+|> Enum.reverse()
+|> List.first()
+|> dbg()
+```
+
+```elixir
+[1, 2, 3]
+|> Enum.map(&(&1 * 3))
+|> Enum.map(&(&1 + 1))
+|> Enum.map(&(&1 * 2))
+|> dbg()
+```
+
+```elixir
+[1, 2, 3]
+|> Nx.tensor()
+|> Nx.multiply(3)
+|> Nx.tile([2, 2])
+|> Nx.mean()
+|> dbg()
+```
+
+```elixir
+image_path = "dog.jpg"
+
+img =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
+  |> HTTPoison.get!()
+  |> then(& &1.body)
+  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+```
+
+```elixir
+move =
+  [
+    [1, 0, 100],
+    [0, 1, 50]
+  ]
+  |> Nx.tensor(type: {:f, 32})
+  |> Evision.Mat.from_nx()
+
+rotation = Evision.getRotationMatrix2D({512 / 2, 512 / 2}, 70, 1)
+
+img
+|> Evision.blur({9, 9})
+|> Evision.warpAffine(move, {512, 512})
+|> Evision.warpAffine(rotation, {512, 512})
+|> Evision.rectangle({150, 120}, {225, 320}, {0, 0, 255},
+  thickness: 5,
+  lineType: Evision.cv_LINE_4()
+)
+|> Evision.ellipse({300, 300}, {100, 200}, 30, 0, 360, {255, 255, 0}, thickness: 3)
+|> dbg()
+```
+
+```elixir
+iris = Explorer.Datasets.iris()
+```
+
+```elixir
+iris
+|> DataFrame.filter(species == "Iris-virginica")
+|> DataFrame.select(["sepal_length", "sepal_width", "petal_length", "petal_width"])
+|> DataFrame.arrange(desc: sepal_width)
+|> DataFrame.rename(["ガクの長さ", "ガクの幅", "花弁の長さ", "花弁の幅"])
+|> DataFrame.to_rows()
+|> Kino.DataTable.new()
+|> dbg()
+```
+
+```elixir
+get_values = fn df, col ->
+  df
+  |> DataFrame.pull(col)
+  |> Series.to_list()
+end
+
+scatter = fn df, x_col, y_col ->
+  x = get_values.(df, x_col)
+  y = get_values.(df, y_col)
+  class = get_values.(df, "species")
+
+  Vl.new(width: 300, height: 300)
+  |> Vl.data_from_values(x: x, y: y, class: class)
+  |> Vl.mark(:point)
+  |> Vl.encode_field(:x, "x",
+    type: :quantitative,
+    scale: [domain: [Enum.min(x), Enum.max(x)]],
+    title: x_col
+  )
+  |> Vl.encode_field(:y, "y",
+    type: :quantitative,
+    scale: [domain: [Enum.min(y), Enum.max(y)]],
+    title: y_col
+  )
+  |> Vl.encode_field(:color, "class", type: :nominal)
+end
+```
+
+```elixir
+scatter.(iris, "sepal_length", "petal_length")
+```
+
+```elixir
+iris
+|> DataFrame.filter(sepal_length > 3.0)
+|> DataFrame.filter(petal_length > 3.0)
+|> DataFrame.filter(species == "Iris-virginica")
+|> scatter.("sepal_length", "petal_length")
+|> dbg()
+```
