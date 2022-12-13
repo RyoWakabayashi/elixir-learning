@@ -7,37 +7,39 @@ Mix.install([
   {:exla, "~> 0.4"},
   {:torchx, "~> 0.4"},
   {:evision, "~> 0.1"},
-  {:kino, "~> 0.7"}
+  {:kino, "~> 0.8"}
 ])
 ```
 
-## Section
+## 各バックエンドでの加算
 
 ```elixir
-tensor = Nx.tensor([1, 2, 3], type: {:f, 64}, backend: {Nx.BinaryBackend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: :f64, backend: {Nx.BinaryBackend, device: :cpu})
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1, 2, 3], type: {:f, 64}, backend: {EXLA.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: :f64, backend: {EXLA.Backend, device: :cpu})
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1, 2, 3], type: {:f, 64}, backend: {Torchx.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: :f64, backend: {Torchx.Backend, device: :cpu})
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1, 2, 3], type: {:f, 64}, backend: {Evision.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: :f64, backend: {Evision.Backend, device: :cpu})
 Nx.add(tensor, tensor)
 ```
+
+## ベンチマーク
 
 ```elixir
 bench = fn backend ->
   tensor =
     {200, 200}
-    |> Nx.iota(type: {:f, 64}, backend: {backend, device: :cpu})
+    |> Nx.iota(type: :f64, backend: {backend, device: :cpu})
 
   Nx.add(tensor, tensor)
 end

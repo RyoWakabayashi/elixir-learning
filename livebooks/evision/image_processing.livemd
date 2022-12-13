@@ -1,0 +1,299 @@
+# Evision による画像処理
+
+```elixir
+Mix.install([
+  {:httpoison, "~> 1.8"},
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.8"},
+  {:nx, "~> 0.4"}
+])
+```
+
+## 画像生成
+
+```elixir
+[
+  [
+    [255, 0, 0],
+    [255, 128, 0],
+    [255, 255, 0]
+  ],
+  [
+    [0, 255, 0],
+    [0, 255, 128],
+    [0, 255, 255]
+  ],
+  [
+    [0, 0, 255],
+    [128, 0, 255],
+    [255, 0, 255]
+  ]
+]
+|> Nx.tensor(type: {:u, 8})
+|> Evision.Mat.from_nx_2d()
+|> Evision.resize({300, 300}, interpolation: Evision.cv_INTER_AREA())
+```
+
+## 画像のダウンロード
+
+```elixir
+img_binary =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> HTTPoison.get!()
+  |> then(& &1.body)
+```
+
+```elixir
+img =
+  img_binary
+  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+```
+
+## 画像の書込
+
+```elixir
+lenna_path = "Lenna.png"
+```
+
+```elixir
+Evision.imwrite(lenna_path, img)
+```
+
+## 画像の読込
+
+```elixir
+img = Evision.imread(lenna_path)
+```
+
+```elixir
+size = Evision.Mat.shape(img)
+```
+
+```elixir
+Evision.Mat.to_nx(img)
+```
+
+## リサイズ
+
+```elixir
+resized_img = Evision.resize(img, {256, 128})
+```
+
+## グレースケール
+
+```elixir
+lenna_path
+|> Evision.imread(flags: Evision.cv_IMREAD_GRAYSCALE())
+```
+
+```elixir
+Evision.cvtColor(img, Evision.cv_COLOR_BGR2GRAY())
+```
+
+## 二値化
+
+```elixir
+{threshold, mono_img} =
+  lenna_path
+  |> Evision.imread(flags: Evision.cv_IMREAD_GRAYSCALE())
+  |> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
+
+IO.inspect(threshold)
+
+mono_img
+```
+
+## 並進
+
+```elixir
+affine =
+  [
+    [1, 0, 100],
+    [0, 1, 50]
+  ]
+  |> Nx.tensor(type: {:f, 32})
+  |> Evision.Mat.from_nx()
+
+Evision.warpAffine(img, affine, {512, 512})
+```
+
+## 回転
+
+```elixir
+affine = Evision.getRotationMatrix2D({512 / 2, 512 / 2}, 70, 1)
+
+Evision.warpAffine(img, affine, {512, 512})
+```
+
+## ぼかし
+
+```elixir
+Evision.blur(img, {9, 9})
+```
+
+```elixir
+Evision.medianBlur(img, 9)
+```
+
+```elixir
+Evision.gaussianBlur(img, {9, 9}, 5)
+```
+
+## 図形描画
+
+```elixir
+img
+# 直線
+|> Evision.line(
+  # 始点{x, y}
+  {200, 400},
+  # 終点{x, y}
+  {300, 450},
+  # 色{R, G, B}
+  {0, 255, 255},
+  # 線の太さ
+  thickness: 5
+)
+# 矢印
+|> Evision.arrowedLine(
+  # 始点{x, y}
+  {300, 200},
+  # 終点{x, y}
+  {400, 150},
+  # 色{R, G, B}
+  {255, 255, 0},
+  # 線の太さ
+  thickness: 3,
+  # 頭の大きさ
+  tipLength: 0.3
+)
+```
+
+```elixir
+img
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.cv_LINE_4()
+)
+|> Evision.rectangle(
+  # 左上{x, y}
+  {50, 120},
+  # 右下{x, y}
+  {125, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角が滑らかになる）
+  lineType: Evision.cv_LINE_AA()
+)
+|> Evision.rectangle(
+  # 左上{x, y}
+  {250, 60},
+  # 右下{x, y}
+  {325, 110},
+  # 色{R, G, B}
+  {0, 255, 0},
+  # 塗りつぶし
+  thickness: -1
+)
+```
+
+```elixir
+img
+# 円
+|> Evision.circle(
+  # 中心{x, y}
+  {100, 100},
+  # 半径
+  50,
+  # 色{R, G, B}
+  {255, 0, 0},
+  # 塗りつぶし
+  thickness: -1
+)
+# 楕円
+|> Evision.ellipse(
+  # 中心{x, y}
+  {300, 300},
+  # {長径, 短径}
+  {100, 200},
+  # 回転角度
+  30,
+  # 弧の開始角度
+  0,
+  # 弧の終了角度
+  360,
+  # 色{R, G, B}
+  {255, 255, 0},
+  # 線の太さ
+  thickness: 3
+)
+# 扇形
+|> Evision.ellipse(
+  # 中心{x, y}
+  {400, 200},
+  # {長径, 短径}
+  {100, 100},
+  # 回転角度
+  0,
+  # 弧の開始角度
+  100,
+  # 弧の終了角度
+  200,
+  # 色{R, G, B}
+  {0, 255, 0},
+  # 塗りつぶし
+  thickness: -1
+)
+```
+
+## 文字描画
+
+```elixir
+img
+|> Evision.putText(
+  # 文字列
+  "Lenna",
+  # 左下{x, y}
+  {150, 200},
+  # フォント種類
+  Evision.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+```
+
+## Nx による画像の縦横変換
+
+```elixir
+img
+|> Evision.Mat.to_nx(Nx.BinaryBackend)
+|> Nx.transpose(axes: [1, 0, 2])
+|> Evision.Mat.from_nx_2d()
+|> dbg
+```
+
+## Nx による画像のグレースケール化
+
+```elixir
+img
+|> Evision.Mat.to_nx(Nx.BinaryBackend)
+|> Nx.mean(axes: [2])
+|> Nx.broadcast({512, 512, 3}, axes: [0, 1])
+|> Evision.Mat.from_nx_2d()
+|> dbg
+```

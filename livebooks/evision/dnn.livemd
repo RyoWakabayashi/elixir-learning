@@ -2,31 +2,11 @@
 
 ```elixir
 Mix.install([
-  {:download, "~> 0.0.4"},
+  {:httpoison, "~> 1.8"},
   {:evision, "~> 0.1"},
   {:kino, "~> 0.7"},
   {:nx, "~> 0.4"}
 ])
-```
-
-## Alias
-
-```elixir
-alias Evision, as: OpenCV
-```
-
-## Helper
-
-```elixir
-defmodule Helper do
-  def download!(url, save_as) do
-    unless File.exists?(save_as) do
-      Download.from(url, path: save_as)
-    end
-
-    :ok
-  end
-end
 ```
 
 ## Download model
@@ -35,25 +15,34 @@ end
 weights_path = "/data/yolov3.weights"
 cfg_path = "/data/yolov3.cfg"
 label_path = "/data/label.txt"
+```
 
+```elixir
 "https://pjreddie.com/media/files/yolov3.weights"
-|> Helper.download!(weights_path)
+|> HTTPoison.get!(recv_timeout: 300_000)
+|> then(&File.write(weights_path, &1.body))
+```
 
+```elixir
 "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
-|> Helper.download!(cfg_path)
+|> HTTPoison.get!()
+|> then(&File.write(cfg_path, &1.body))
+```
 
+```elixir
 "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
-|> Helper.download!(label_path)
+|> HTTPoison.get!()
+|> then(&File.write(label_path, &1.body))
 ```
 
 ## Load model
 
 ```elixir
-net = OpenCV.DNN.readNet(weights_path, config: cfg_path, framework: "")
+net = Evision.DNN.readNet(weights_path, config: cfg_path, framework: "")
 ```
 
 ```elixir
-out_names = OpenCV.DNN.Net.getUnconnectedOutLayersNames(net)
+out_names = Evision.DNN.Net.getUnconnectedOutLayersNames(net)
 ```
 
 ```elixir
@@ -66,36 +55,37 @@ label_list =
 ## Download image
 
 ```elixir
-image_path = "/data/dog.jpg"
+img_path = "/data/dog.jpg"
 
 "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
-|> Helper.download!(image_path)
+|> HTTPoison.get!()
+|> then(&File.write(img_path, &1.body))
 ```
 
 ## Load image
 
 ```elixir
-mat = OpenCV.imread(image_path)
+img = Evision.imread(img_path)
 ```
 
 ```elixir
-{height, width, _} = OpenCV.Mat.shape(mat)
+{height, width, _} = Evision.Mat.shape(img)
 ```
 
 ## Detect objects
 
 ```elixir
-blob = OpenCV.DNN.blobFromImage(mat, size: {608, 608}, swapRB: true, crop: false)
+blob = Evision.DNN.blobFromImage(img, size: {608, 608}, swapRB: true, crop: false)
 
 predictions =
   net
-  |> OpenCV.DNN.Net.setInput(
+  |> Evision.DNN.Net.setInput(
     blob,
     name: "",
     scalefactor: 1 / 255,
     mean: {0, 0, 0}
   )
-  |> OpenCV.DNN.Net.forward(outBlobNames: out_names)
+  |> Evision.DNN.Net.forward(outBlobNames: out_names)
 ```
 
 ## Format predictions
@@ -106,7 +96,7 @@ score_threshold = 0.8
 formed_predictions =
   predictions
   |> Enum.map(fn prediction ->
-    OpenCV.Mat.to_nx(prediction, Nx.BinaryBackend)
+    Evision.Mat.to_nx(prediction, Nx.BinaryBackend)
   end)
   |> Nx.concatenate()
   |> Nx.to_batched(1)
@@ -148,7 +138,7 @@ score_list = Enum.map(formed_predictions, & &1.score)
 
 nms_threshold = 0.7
 
-index_list = OpenCV.DNN.nmsBoxes(box_list, score_list, score_threshold, nms_threshold)
+index_list = Evision.DNN.nmsBoxes(box_list, score_list, score_threshold, nms_threshold)
 ```
 
 ```elixir
@@ -159,7 +149,7 @@ selected_predictions = Enum.map(index_list, &Enum.at(formed_predictions, &1))
 
 ```elixir
 selected_predictions
-|> Enum.reduce(mat, fn prediction, drawed_mat ->
+|> Enum.reduce(img, fn prediction, drawed_mat ->
   box = Tuple.to_list(prediction.box)
   left = Enum.at(box, 0) |> Kernel.*(width) |> trunc()
   top = Enum.at(box, 1) |> Kernel.*(height) |> trunc()
@@ -169,16 +159,16 @@ selected_predictions
   label = Enum.at(label_list, prediction.class)
 
   drawed_mat
-  |> OpenCV.rectangle(
+  |> Evision.rectangle(
     {left, top},
     {right, bottom},
     {255, 0, 0},
     thickness: 4
   )
-  |> OpenCV.putText(
+  |> Evision.putText(
     label,
     {left + 6, top + 26},
-    OpenCV.cv_FONT_HERSHEY_SIMPLEX(),
+    Evision.cv_FONT_HERSHEY_SIMPLEX(),
     0.8,
     {0, 0, 255},
     thickness: 2
