@@ -1,0 +1,99 @@
+# Fill-mask
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.1"},
+    {:nx, "~> 0.4"},
+    {:exla, "~> 0.4"},
+    {:kino, "~> 0.8"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## 設定
+
+```elixir
+cache_dir = "/tmp/bumblebee_cache"
+```
+
+## モデルのダウンロード
+
+```elixir
+{:ok, bert} =
+  Bumblebee.load_model({
+    :hf,
+    "bert-base-uncased",
+    cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, tokenizer} =
+  Bumblebee.load_tokenizer({
+    :hf,
+    "bert-base-uncased",
+    cache_dir: cache_dir
+  })
+```
+
+## サービスの提供
+
+```elixir
+serving = Bumblebee.Text.fill_mask(bert, tokenizer)
+```
+
+## マスクされた文章の準備
+
+```elixir
+text_input = Kino.Input.text("マスクされた文章", default: "The most important thing in life is [MASK].")
+```
+
+```elixir
+text = Kino.Input.read(text_input)
+```
+
+## 推論の実行
+
+```elixir
+serving
+|> Nx.Serving.run(text)
+|> then(&Kino.DataTable.new(&1.predictions))
+```
+
+## 他のモデル
+
+```elixir
+serve_model = fn repository_id ->
+  {:ok, model} =
+    Bumblebee.load_model({
+      :hf,
+      repository_id,
+      cache_dir: cache_dir
+    })
+
+  {:ok, tokenizer} =
+    Bumblebee.load_tokenizer({
+      :hf,
+      repository_id,
+      cache_dir: cache_dir
+    })
+
+  Bumblebee.Text.fill_mask(model, tokenizer)
+end
+```
+
+```elixir
+"albert-base-v2"
+|> serve_model.()
+|> Nx.Serving.run(text)
+|> then(&Kino.DataTable.new(&1.predictions))
+```
+
+```elixir
+"roberta-base"
+|> serve_model.()
+|> Nx.Serving.run(text)
+|> then(&Kino.DataTable.new(&1.predictions))
+```
