@@ -95,22 +95,29 @@ score_threshold = 0.8
 
 formed_predictions =
   predictions
+  # テンソルに変換
   |> Enum.map(fn prediction ->
     Evision.Mat.to_nx(prediction, Nx.BinaryBackend)
   end)
+  # くっつける
   |> Nx.concatenate()
+  # 配列にする
   |> Nx.to_batched(1)
+  # [4] にスコアが入っているので、閾値以下のものを除外する
   |> Enum.filter(fn t ->
     t[0][4]
     |> Nx.to_number()
     |> Kernel.>(score_threshold)
   end)
   |> Enum.map(fn t ->
+    # [5] 以降に各クラスに対するスコアが入っているため、トップのものを取得する
     class_score_list = t[0][5..-1//1]
     class_id = class_score_list |> Nx.argmax() |> Nx.to_number()
     class_score = class_score_list[class_id] |> Nx.to_number()
     score = t[0][4] |> Nx.to_number() |> Kernel.*(class_score)
 
+    # [0] から [3] に座標情報が入っている
+    # 中央+サイズから、左上右下の値に変換する
     center_x = t[0][0] |> Nx.to_number()
     center_y = t[0][1] |> Nx.to_number()
     box_width = t[0][2] |> Nx.to_number()
@@ -122,6 +129,7 @@ formed_predictions =
 
     box = {min_x, min_y, max_x, max_y}
 
+    # マップに格納する
     %{
       box: box,
       score: score,
@@ -150,21 +158,25 @@ selected_predictions = Enum.map(index_list, &Enum.at(formed_predictions, &1))
 ```elixir
 selected_predictions
 |> Enum.reduce(img, fn prediction, drawed_mat ->
+  # 座標に画像サイズを掛ける
   box = Tuple.to_list(prediction.box)
   left = Enum.at(box, 0) |> Kernel.*(width) |> trunc()
   top = Enum.at(box, 1) |> Kernel.*(height) |> trunc()
   right = Enum.at(box, 2) |> Kernel.*(width) |> trunc()
   bottom = Enum.at(box, 3) |> Kernel.*(height) |> trunc()
 
+  # class の値に対応するラベルを取得する
   label = Enum.at(label_list, prediction.class)
 
   drawed_mat
+  # 四角形を描画する
   |> Evision.rectangle(
     {left, top},
     {right, bottom},
     {255, 0, 0},
     thickness: 4
   )
+  # ラベル文字を書く
   |> Evision.putText(
     label,
     {left + 6, top + 26},
