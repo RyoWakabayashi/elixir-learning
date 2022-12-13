@@ -4,8 +4,8 @@
 Mix.install([
   {:httpoison, "~> 1.8"},
   {:json, "~> 1.4"},
-  {:kino, "~> 0.7"},
-  {:kino_maplibre, "~> 0.1.3"}
+  {:kino, "~> 0.8"},
+  {:kino_maplibre, "~> 0.1"}
 ])
 ```
 
@@ -92,7 +92,7 @@ marker_list =
   end)
 ```
 
-<!-- livebook:{"attrs":{"center":"140, 35","layers":[{"cluster_colors":["#51bbd6","#f1f075","#f28cb1"],"cluster_max":750,"cluster_min":100,"coordinates_format":"columns","layer_color":"#18862e","layer_id":"ニパルタック","layer_opacity":0.5,"layer_radius":8,"layer_source":"marker_list","layer_source_query":null,"layer_source_query_strict":null,"layer_type":"circle","source_coordinates":"lng","source_latitude":"lat","source_longitude":"lng","source_type":"table"}],"ml_alias":"Elixir.MapLibre","style":"default","zoom":3},"kind":"Elixir.KinoMapLibre.MapCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"center":"140, 35","layers":[{"cluster_colors":["#51bbd6","#f1f075","#f28cb1"],"cluster_max":750,"cluster_min":100,"coordinates_format":"columns","layer_color":"#18862e","layer_id":"ニパルタック","layer_opacity":0.5,"layer_radius":8,"layer_source":"marker_list","layer_source_query":null,"layer_source_query_strict":null,"layer_type":"circle","source_coordinates":"lng","source_latitude":"lat","source_longitude":"lng","source_type":"table"}],"ml_alias":"Elixir.MapLibre","style":"default","zoom":3},"chunks":null,"kind":"Elixir.KinoMapLibre.MapCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 MapLibre.new(center: {140.0, 35.0}, zoom: 3)
