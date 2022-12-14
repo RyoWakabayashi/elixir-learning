@@ -1,0 +1,65 @@
+# Named-entity recognition
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.1"},
+    {:nx, "~> 0.4"},
+    {:exla, "~> 0.4"},
+    {:kino, "~> 0.8"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## 設定
+
+```elixir
+cache_dir = "/tmp/bumblebee_cache"
+```
+
+## モデルのダウンロード
+
+```elixir
+{:ok, bert} =
+  Bumblebee.load_model({
+    :hf,
+    "dslim/bert-base-NER",
+    cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, tokenizer} =
+  Bumblebee.load_tokenizer({
+    :hf,
+    "bert-base-cased",
+    cache_dir: cache_dir
+  })
+```
+
+## サービスの提供
+
+```elixir
+serving = Bumblebee.Text.token_classification(bert, tokenizer, aggregation: :same)
+```
+
+## 文章の準備
+
+```elixir
+text_input =
+  Kino.Input.textarea("TEXT",
+    default:
+      "Set before and after the French Revolution, the film depicts the dramatic life of Oscar, a beautiful man dressed in men's clothing, and Queen Marie Antoinette of France."
+  )
+```
+
+```elixir
+text = Kino.Input.read(text_input)
+```
+
+## 推論の実行
+
+```elixir
+Nx.Serving.run(serving, text)
+```
