@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:download, "~> 0.0.4"},
+  {:httpoison, "~> 1.8"},
   {:evision, "~> 0.1"},
   {:kino, "~> 0.7"},
   {:nx, "~> 0.4"}
@@ -12,60 +12,94 @@ Mix.install([
 ## 画像ダウンロード
 
 ```elixir
-# 再実行時、Download.from()でeexistエラーになるのを防止
-File.rm("Lenna_%28test_image%29.png")
-
-lenna =
-  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
-  |> elem(1)
+img_tensor =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> HTTPoison.get!()
+  |> then(& &1.body)
+  # Evision で PNG 画像を読込
+  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+  # Nx テンソルに変換
+  |> Evision.Mat.to_nx(Nx.BinaryBackend)
+  # BGR から RGB に変換
+  |> Nx.reverse(axes: [2])
 ```
 
 ```elixir
-mat = Evision.imread(lenna)
+# 画像の表示
+Kino.Image.new(img_tensor)
+```
+
+## 画像の保存
+
+```elixir
+# Evision を使って保存するため、マトリックスに変換
+img_mat =
+  img_tensor
+  |> Nx.reverse(axes: [2])
+  |> Evision.Mat.from_nx_2d()
+```
+
+```elixir
+# 指定したパスに保存する
+img_path = "Lenna.png"
+
+Evision.imwrite(img_path, img_mat)
 ```
 
 ```elixir
 # 画像サイズ
-shape = mat.shape
+shape = img_mat.shape
 
-# 分割サイズ
+# 分割サイズ（分割した画像一つの幅、高さのピクセル数）
 div_size = 64
 
 # ファイル名
-dst_file_ext = Path.extname(lenna)
-dst_file_basename = Path.basename(lenna, dst_file_ext)
+dst_file_ext = Path.extname(img_path)
+dst_file_basename = Path.basename(img_path, dst_file_ext)
+```
+
+```elixir
+# 画像リスト保存用関数
+save_img_tensor_list = fn img_tensor_list, kind ->
+  dst_files =
+    Stream.unfold(0, fn counter -> {counter, counter + 1} end)
+    |> Stream.map(&"#{dst_file_basename}_#{kind}_#{&1}#{dst_file_ext}")
+
+  img_tensor_list
+  |> Enum.zip(dst_files)
+  |> Enum.map(fn {img_tensor, dst_file} ->
+    img_mat =
+      img_tensor
+      |> Nx.reverse(axes: [2])
+      |> Evision.Mat.from_nx_2d()
+
+    Evision.imwrite(dst_file, img_mat)
+
+    dst_file
+  end)
+end
 ```
 
 ## 縦に分割
 
 ```elixir
-div_img =
-  mat
-  |> Evision.Mat.to_nx()
-  # 分割
-  |> Nx.to_batched(div_size)
-  |> Enum.map(&Evision.Mat.from_nx_2d(&1))
-  |> Enum.map(&Kino.render(&1))
-  |> dbg()
+div_tensor_list = Nx.to_batched(img_tensor, div_size)
 ```
 
 ```elixir
-# 分割したファイルを保存
-dst_files =
-  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&"#{dst_file_basename}_h_#{&1}#{dst_file_ext}")
-
-dst_file_paths =
-  div_img
-  |> Enum.zip(dst_files)
-  |> Enum.map(fn {img, dst_file} ->
-    Evision.imwrite(dst_file, img)
-    dst_file
-  end)
+# 分割した画像を並べて表示
+div_tensor_list
+|> Enum.map(&Kino.Image.new(&1))
+|> Kino.Layout.grid(columns: 1)
 ```
 
 ```elixir
-# 分割したファイルを取得
+# 分割した画像をファイルに保存
+dst_file_paths = save_img_tensor_list.(div_tensor_list, "h")
+```
+
+```elixir
+# 分割したファイルを結合
 imgs =
   Stream.unfold(0, fn counter -> {counter, counter + 1} end)
   |> Stream.map(&{&1, "#{dst_file_basename}_h_#{&1}#{dst_file_ext}"})
@@ -89,54 +123,45 @@ imgs =
   |> Nx.concatenate()
   # トリミング
   |> Nx.slice([0, 0, 0], Tuple.to_list(shape))
-  |> then(&Evision.Mat.from_nx_2d(&1))
+  |> Kino.Image.new()
   |> dbg()
 ```
 
 ## 横に分割
 
 ```elixir
-mat
-|> Evision.Mat.to_nx()
+# to_batched では縦にしか分割できないため、縦横を変換してから分割する
+img_tensor
 |> Nx.transpose(axes: [1, 0, 2])
-|> Evision.Mat.from_nx_2d()
+|> Kino.Image.new()
 ```
 
 ```elixir
-div_img =
-  mat
-  |> Evision.Mat.to_nx()
+div_tensor_list =
+  img_tensor
   # 　縦横入れ替え
   |> Nx.transpose(axes: [1, 0, 2])
   # 分割
   |> Nx.to_batched(div_size)
   # 　縦横入れ替え
   |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
-  |> Enum.map(&Evision.Mat.from_nx_2d(&1))
-  |> Enum.map(&Kino.render(&1))
   |> dbg()
 ```
 
 ```elixir
-# 分割したファイルを保存
-dst_file_ext = Path.extname(lenna)
-dst_file_basename = Path.basename(lenna, dst_file_ext)
-
-dst_files =
-  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&"#{dst_file_basename}_v_#{&1}#{dst_file_ext}")
-
-dst_file_paths =
-  div_img
-  |> Enum.zip(dst_files)
-  |> Enum.map(fn {img, dst_file} ->
-    Evision.imwrite(dst_file, img)
-    dst_file
-  end)
+# 分割した画像を並べて表示
+div_tensor_list
+|> Enum.map(&Kino.Image.new(&1))
+|> Kino.Layout.grid(columns: 8)
 ```
 
 ```elixir
-# 分割したファイルを取得
+# 分割した画像をファイルに保存
+dst_file_paths = save_img_tensor_list.(div_tensor_list, "v")
+```
+
+```elixir
+# 分割したファイルを結合
 imgs =
   Stream.unfold(0, fn counter -> {counter, counter + 1} end)
   |> Stream.map(&{&1, "#{dst_file_basename}_v_#{&1}#{dst_file_ext}"})
@@ -160,42 +185,33 @@ imgs =
   |> Nx.concatenate(axis: 1)
   # トリミング
   |> Nx.slice([0, 0, 0], Tuple.to_list(shape))
-  |> then(&Evision.Mat.from_nx_2d(&1))
+  |> Kino.Image.new()
   |> dbg()
 ```
 
 ## タイル状に分割
 
 ```elixir
-div_img =
-  mat
-  |> Evision.Mat.to_nx()
+div_tensor_list =
+  img_tensor
   # 縦方向に分割
   |> Nx.to_batched(div_size)
   |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
   # 横方向に分割
   |> Enum.flat_map(&Nx.to_batched(&1, div_size))
   |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
-  |> Enum.map(&Evision.Mat.from_nx_2d(&1))
-  |> Enum.map(&Kino.render(&1))
 ```
 
 ```elixir
-# 分割したファイルを保存
-dst_file_ext = Path.extname(lenna)
-dst_file_basename = Path.basename(lenna, dst_file_ext)
+# 分割した画像を並べて表示
+div_tensor_list
+|> Enum.map(&Kino.Image.new(&1))
+|> Kino.Layout.grid(columns: 8)
+```
 
-dst_files =
-  Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&"#{dst_file_basename}_t_#{&1}#{dst_file_ext}")
-
-dst_file_paths =
-  div_img
-  |> Enum.zip(dst_files)
-  |> Enum.map(fn {img, dst_file} ->
-    Evision.imwrite(dst_file, img)
-    dst_file
-  end)
+```elixir
+# 分割した画像をファイルに保存
+dst_file_paths = save_img_tensor_list.(div_tensor_list, "t")
 ```
 
 ```elixir
@@ -203,7 +219,7 @@ dst_file_paths =
 {width, _, _} = shape
 h_size = div(width, div_size)
 
-# 分割したファイルを取得
+# 分割したファイルを結合
 imgs =
   Stream.unfold(0, fn counter -> {counter, counter + 1} end)
   |> Stream.map(&{&1, "#{dst_file_basename}_t_#{&1}#{dst_file_ext}"})
@@ -236,6 +252,6 @@ imgs =
   |> Nx.concatenate()
   # トリミング
   |> Nx.slice([0, 0, 0], Tuple.to_list(shape))
-  |> then(&Evision.Mat.from_nx_2d(&1))
+  |> Kino.Image.new()
   |> dbg()
 ```

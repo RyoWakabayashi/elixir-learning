@@ -2,9 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:download, "~> 0.0.4"},
+  {:httpoison, "~> 1.8"},
   {:evision, "~> 0.1"},
-  {:kino, "~> 0.7"},
+  {:kino, "~> 0.8"},
   {:nx, "~> 0.4"},
   {:flow, "~> 1.2"},
   {:benchee, "~> 1.1"}
@@ -14,16 +14,21 @@ Mix.install([
 ## 画像ダウンロード
 
 ```elixir
-# 再実行時、Download.from()でeexistエラーになるのを防止
-File.rm("Lenna_%28test_image%29.png")
-
-lenna =
-  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
-  |> elem(1)
+img_mat =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> HTTPoison.get!()
+  |> then(& &1.body)
+  # Evision で PNG 画像を読込
+  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
 ```
 
+## 画像の保存
+
 ```elixir
-mat = Evision.imread(lenna)
+# 指定したパスに保存する
+img_path = "Lenna.png"
+
+Evision.imwrite(img_path, img_mat)
 ```
 
 ## 単体処理
@@ -44,24 +49,26 @@ end
 ```
 
 ```elixir
-proc.(mat)
+proc.(img_mat)
 ```
 
 ## 画像をコピー
 
 ```elixir
-src_file_ext = Path.extname(lenna)
-src_file_basename = Path.basename(lenna, src_file_ext)
+src_file_ext = Path.extname(img_path)
+src_file_basename = Path.basename(img_path, src_file_ext)
+```
 
+```elixir
 src_files =
   Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&"#{src_file_basename}_#{&1}#{src_file_ext}")
+  |> Stream.map(&"#{src_file_basename}_p_#{&1}#{src_file_ext}")
 
 # コピー枚数
 copy_count = 128
 
 src_file_paths =
-  mat
+  img_mat
   |> List.duplicate(copy_count)
   |> Enum.zip(src_files)
   |> Enum.map(fn {img, dst_file} ->
@@ -76,7 +83,7 @@ src_file_paths
 |> Enum.slice(0..1)
 |> IO.inspect()
 |> Enum.map(&Evision.imread(&1))
-|> Enum.map(&Kino.render(&1))
+|> Kino.Layout.grid(columns: 2)
 ```
 
 ## 逐次処理
@@ -85,7 +92,7 @@ src_file_paths
 # 存在するファイルを取得
 stream =
   Stream.unfold(0, fn counter -> {counter, counter + 1} end)
-  |> Stream.map(&{&1, "#{src_file_basename}_#{&1}#{src_file_ext}"})
+  |> Stream.map(&{&1, "#{src_file_basename}_p_#{&1}#{src_file_ext}"})
   |> Stream.take_while(fn {_, filename} -> File.exists?(filename) end)
 ```
 
@@ -112,8 +119,9 @@ imgs_tuple
 |> Enum.slice(0..1)
 |> Enum.map(fn {filename, img} ->
   IO.inspect(filename)
-  Kino.render(img)
+  img
 end)
+|> Kino.Layout.grid(columns: 2)
 ```
 
 ## 並列処理
@@ -143,8 +151,9 @@ imgs_tuple
 |> Enum.slice(0..1)
 |> Enum.map(fn {filename, img} ->
   IO.inspect(filename)
-  Kino.render(img)
+  img
 end)
+|> Kino.Layout.grid(columns: 2)
 ```
 
 ## 速度比較

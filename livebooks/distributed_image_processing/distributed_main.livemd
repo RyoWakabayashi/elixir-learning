@@ -3,7 +3,7 @@
 ```elixir
 Mix.install(
   [
-    {:download, "~> 0.0.4"},
+    {:httpoison, "~> 1.8"},
     {:evision, "~> 0.1"},
     {:kino, "~> 0.7"},
     {:nx, "~> 0.4"},
@@ -19,16 +19,21 @@ Mix.install(
 ## 画像ダウンロード
 
 ```elixir
-# 再実行時、Download.from()でeexistエラーになるのを防止
-File.rm("Lenna_%28test_image%29.png")
-
-lenna =
-  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
-  |> elem(1)
+img_mat =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> HTTPoison.get!()
+  |> then(& &1.body)
+  # Evision で PNG 画像を読込
+  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
 ```
 
+## 画像の保存
+
 ```elixir
-mat = Evision.imread(lenna)
+# 指定したパスに保存する
+img_path = "Lenna.png"
+
+Evision.imwrite(img_path, img_mat)
 ```
 
 ## 処理内容
@@ -36,11 +41,11 @@ mat = Evision.imread(lenna)
 ノード間でデータをやり取りするため、バイナリにする
 
 ```elixir
-img = Evision.Mat.to_nx(mat)
+img_tensor = Evision.Mat.to_nx(img_mat)
 
-type = Nx.type(img)
-shape = Nx.shape(img)
-binary = Nx.to_binary(img)
+type = Nx.type(img_tensor)
+shape = Nx.shape(img_tensor)
+binary = Nx.to_binary(img_tensor)
 ```
 
 閾値処理をした後、どのノードで処理したか分かるようにノード名を入れる
@@ -73,7 +78,7 @@ dst_binary =
 バイナリーで返ってきた処理結果をマトリックスに戻す
 
 ```elixir
-dst_img =
+dst_img_mat =
   dst_binary
   |> Nx.from_binary(type)
   |> Nx.reshape(shape)
@@ -116,9 +121,11 @@ Node.list(:connected)
 ## 画像をコピー
 
 ```elixir
-src_file_ext = Path.extname(lenna)
-src_file_basename = Path.basename(lenna, src_file_ext)
+src_file_ext = Path.extname(img_path)
+src_file_basename = Path.basename(img_path, src_file_ext)
+```
 
+```elixir
 src_files =
   Stream.unfold(0, fn counter -> {counter, counter + 1} end)
   |> Stream.map(&"#{src_file_basename}_#{&1}#{src_file_ext}")
@@ -127,7 +134,7 @@ src_files =
 copy_count = 32
 
 src_file_paths =
-  mat
+  img_mat
   |> List.duplicate(copy_count)
   |> Enum.zip(src_files)
   |> Enum.map(fn {img, dst_file} ->
@@ -253,7 +260,7 @@ end
 ### 自身のノードで1つだけ実行
 
 ```elixir
-{lenna, type, shape, binary}
+{img_path, type, shape, binary}
 |> DistributedImageProcessing.process_image()
 |> then(fn {dst_file, dst_img} ->
   {dst_file, Nx.type(dst_img), Nx.shape(dst_img), Nx.to_binary(dst_img)}
@@ -267,7 +274,7 @@ end)
 
 ```elixir
 [worker_1_atom]
-|> DistributedImageProcessing.distribute([lenna])
+|> DistributedImageProcessing.distribute([img_path])
 |> Enum.at(0)
 |> Evision.imread()
 ```
@@ -285,12 +292,8 @@ images_stream =
 ```elixir
 [worker_1_atom]
 |> DistributedImageProcessing.distribute(images_stream)
-|> Enum.slice(0..2)
-|> Enum.map(fn dst_filename ->
-  dst_filename
-  |> Evision.imread()
-  |> Kino.render()
-end)
+|> Enum.map(&Evision.imread(&1))
+|> Kino.Layout.grid(columns: 4)
 ```
 
 ### ワーカーノード4つで分散処理
@@ -320,12 +323,8 @@ workers =
 ```elixir
 workers
 |> DistributedImageProcessing.distribute(images_stream)
-|> Enum.slice(0..5)
-|> Enum.map(fn dst_filename ->
-  dst_filename
-  |> Evision.imread()
-  |> Kino.render()
-end)
+|> Enum.map(&Evision.imread(&1))
+|> Kino.Layout.grid(columns: 4)
 ```
 
 ## 速度比較
