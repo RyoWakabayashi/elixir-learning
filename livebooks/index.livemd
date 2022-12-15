@@ -8,6 +8,7 @@
   * [Kino](kino/index.livemd)
   * [Explorer](explorer/index.livemd)
   * [Evision](evision/index.livemd)
+  * [Axon](axon/index.livemd)
   * [Bumblebee](bumblebee/index.livemd)
 
 * Web Services
