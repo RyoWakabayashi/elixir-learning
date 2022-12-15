@@ -1,0 +1,12 @@
+---
+
+version: '3.2'
+services:
+  web:
+    container_name: phoenix
+    build: .
+    ports:
+      - '8080:8080'
+    command: mix phx.server
+    environment:
+      - MIX_ENV=dev
