@@ -57,7 +57,7 @@ account_id =
   |> then(& &1.body.account)
 ```
 
-## タグ設定
+## ECRリポジトリー作成
 
 ```elixir
 region = Kino.Input.read(region_input)
@@ -70,8 +70,6 @@ image = "sagemaker-phoenix"
 ```elixir
 fullname = "#{account_id}.dkr.ecr.#{region}.amazonaws.com/#{image}:latest"
 ```
-
-## リポジトリ作成
 
 ```elixir
 client
@@ -105,7 +103,7 @@ client
 })
 ```
 
-## ECR へのイメージプッシュ
+## ECR リポジトリーへのイメージプッシュ
 
 ```elixir
 token =
@@ -181,7 +179,9 @@ client
 |> Kino.DataTable.new()
 ```
 
-## モデルファイルアップロード
+## S3へのモデルファイルアップロード
+
+### アップロード先の指定
 
 ```elixir
 ExAws.S3.list_buckets()
@@ -198,6 +198,8 @@ bucket_name_input = Kino.Input.text("BUCKET_ANME")
 bucket_name = Kino.Input.read(bucket_name_input)
 model_prefix = "models/"
 ```
+
+### モデルファイルの圧縮
 
 ```elixir
 models_path = "/sagemaker/serve/models"
@@ -219,6 +221,8 @@ tar_filename = "models.tar.gz"
 :erl_tar.create(tar_filename, filenames, [:compressed])
 ```
 
+### アップロードの実行
+
 ```elixir
 tar_filename
 |> ExAws.S3.Upload.stream_file()
@@ -234,7 +238,7 @@ bucket_name
 |> Kino.DataTable.new()
 ```
 
-## IAM ロール定義
+## IAM ロールの定義
 
 ```elixir
 client
@@ -321,7 +325,7 @@ client
 })
 ```
 
-## モデル定義作成
+## SageMaker モデル作成
 
 ```elixir
 client
@@ -335,7 +339,7 @@ client
 })
 ```
 
-## エンドポイント設定作成
+## SageMaker エンドポイント設定作成
 
 ```elixir
 client
@@ -353,7 +357,7 @@ client
 })
 ```
 
-## エンドポイント作成
+## SageMaker エンドポイント作成
 
 ```elixir
 client
@@ -369,12 +373,23 @@ client
   "EndpointName" => "sagemaker-phoenix-endpoint"
 })
 |> elem(1)
+|> then(& &1["EndpointStatus"])
 ```
 
-## SageMaker呼出
+## SageMaker エンドポイント呼出
 
 ```elixir
-binary = File.read!("/tmp/831.jpg")
+binary =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
+  |> Req.get!()
+  |> then(& &1.body)
+```
+
+```elixir
+binary
+|> StbImage.read_binary!()
+|> StbImage.to_nx()
+|> Kino.Image.new()
 ```
 
 ```elixir
@@ -393,7 +408,32 @@ client
 |> Kino.DataTable.new()
 ```
 
-## エンドポイント削除
+```elixir
+image_input = Kino.Input.image("INPUT_IMAGE", format: :jpeg)
+```
+
+```elixir
+binary =
+  image_input
+  |> Kino.Input.read()
+  |> then(& &1.data)
+
+client
+|> AWS.SageMakerRuntime.invoke_endpoint(
+  "sagemaker-phoenix-endpoint",
+  %{
+    "Body" => binary,
+    "ContentType" => "image/jpeg"
+  }
+)
+|> elem(1)
+|> then(& &1["Body"])
+|> Jason.decode!()
+|> then(& &1["predictions"])
+|> Kino.DataTable.new()
+```
+
+## SageMaker エンドポイント削除
 
 ```elixir
 client
@@ -416,7 +456,7 @@ client
 })
 ```
 
-## IAMロール削除
+## IAM ロール削除
 
 ```elixir
 client
@@ -440,7 +480,7 @@ client
 })
 ```
 
-## ECRリポジトリー削除
+## ECR リポジトリー削除
 
 ```elixir
 client
