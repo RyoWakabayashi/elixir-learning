@@ -1,7 +1,6 @@
 FROM elixir:1.14.2
 
 RUN mix local.hex --force \
-  && mix archive.install hex phx_new --force \
   && mix local.rebar --force
 
 COPY ./api /app

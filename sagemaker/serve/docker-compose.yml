@@ -7,7 +7,7 @@ services:
     build: .
     ports:
       - '8080:8080'
-    command: mix phx.server
+    command: serve
     environment:
       - MIX_ENV=dev
     volumes:
