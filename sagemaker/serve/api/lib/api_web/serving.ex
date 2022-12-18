@@ -1,18 +1,15 @@
 defmodule ApiWeb.Serving do
   use Agent
 
+  @resnet_id "microsoft/resnet-50"
+  @cache_dir "/opt/ml/model"
+
   def start_link(_opts) do
     {:ok, model} =
-      Bumblebee.load_model({
-        :hf,
-        "microsoft/resnet-50"
-      })
+      Bumblebee.load_model({:hf, @resnet_id, cache_dir: @cache_dir})
 
     {:ok, featurizer} =
-      Bumblebee.load_featurizer({
-        :hf,
-        "microsoft/resnet-50"
-      })
+      Bumblebee.load_featurizer({:hf, @resnet_id, cache_dir: @cache_dir})
 
     resnet = Bumblebee.Vision.image_classification(model, featurizer)
 

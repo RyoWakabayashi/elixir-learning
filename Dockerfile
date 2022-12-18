@@ -7,12 +7,25 @@ RUN mix local.hex --force \
 RUN apt-get upgrade -y \
   && apt-get update \
   && apt-get install --no-install-recommends -y \
-  gnupg2 \
-  apt-transport-https \
-  libopencv-dev \
-  build-essential \
-  erlang-dev \
-  sudo \
+    gnupg2 \
+    apt-transport-https \
+    ca-certificates \
+    lsb-release \
+    curl \
+    libopencv-dev \
+    build-essential \
+    erlang-dev \
+    sudo \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /etc/apt/keyrings \
+  && curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+  && echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null \
+  && sudo apt-get update \
+  && sudo apt-get install -y docker.io \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 

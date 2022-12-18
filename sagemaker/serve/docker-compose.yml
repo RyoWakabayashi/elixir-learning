@@ -10,3 +10,6 @@ services:
     command: mix phx.server
     environment:
       - MIX_ENV=dev
+    volumes:
+      - ./tmp:/tmp
+      - ./models:/opt/ml/model
