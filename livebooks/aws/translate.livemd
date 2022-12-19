@@ -1,0 +1,161 @@
+# Amazon Translate
+
+```elixir
+Mix.install([
+  {:ex_aws, "~> 2.0"},
+  {:ex_aws_translate, "~> 0.3"},
+  {:jason, "~> 1.4"},
+  {:poison, "~> 5.0"},
+  {:hackney, "~> 1.18"},
+  {:sweet_xml, "~> 0.7"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## 準備
+
+```elixir
+alias ExAws.Translate
+```
+
+## 認証
+
+```elixir
+access_key_id_input = Kino.Input.password("ACCESS_KEY_ID")
+```
+
+```elixir
+secret_access_key_input = Kino.Input.password("SECRET_ACCESS_KEY")
+```
+
+```elixir
+region_input = Kino.Input.text("REGION", default: "us-east-1")
+```
+
+```elixir
+auth_config = [
+  access_key_id: Kino.Input.read(access_key_id_input),
+  secret_access_key: Kino.Input.read(secret_access_key_input),
+  region: Kino.Input.read(region_input)
+]
+
+"dummy"
+```
+
+## 利用可能な言語一覧の取得
+
+```elixir
+languages =
+  %ExAws.Operation.JSON{
+    stream_builder: nil,
+    http_method: :post,
+    parser: nil,
+    path: "/",
+    data: %{},
+    params: %{},
+    headers: [
+      {"Content-Type", "application/x-amz-json-1.1"},
+      {"X-Amz-Target", "AWSShineFrontendService_20170701.ListLanguages"}
+    ],
+    service: :translate,
+    before_request: nil
+  }
+  |> ExAws.request!(auth_config)
+  |> then(& &1["Languages"])
+  |> Enum.map(&{&1["LanguageCode"], &1["LanguageName"]})
+```
+
+```elixir
+Enum.count(languages)
+```
+
+## 言語の選択
+
+```elixir
+src_lang_select = Kino.Input.select("翻訳元言語", languages, default: "en")
+```
+
+```elixir
+src_lang = Kino.Input.read(src_lang_select)
+```
+
+```elixir
+dst_lang_select = Kino.Input.select("翻訳先言語", languages, default: "ja")
+```
+
+```elixir
+dst_lang = Kino.Input.read(dst_lang_select)
+```
+
+## 翻訳
+
+```elixir
+"Hello"
+|> Translate.translate_text(src_lang, dst_lang)
+|> ExAws.request!(auth_config)
+```
+
+```elixir
+text_input =
+  Kino.Input.textarea("TEXT",
+    default:
+      ~s/Elixir is a dynamic, functional language for building scalable and maintainable applications. Elixir runs on the Erlang VM, known for creating low-latency, distributed, and fault-tolerant systems. These capabilities and Elixir tooling allow developers to be productive in several domains, such as web development, embedded software, data pipelines, and multimedia processing, across a wide range of industries./
+  )
+```
+
+```elixir
+text_input
+|> Kino.Input.read()
+|> Translate.translate_text(src_lang, dst_lang)
+|> ExAws.request!(auth_config)
+|> then(& &1["TranslatedText"])
+```
+
+```elixir
+# 翻訳元言語の自動識別
+text_input
+|> Kino.Input.read()
+|> Translate.translate_text("auto", dst_lang)
+|> ExAws.request!(auth_config)
+|> then(& &1["TranslatedText"])
+```
+
+## 用語登録
+
+```elixir
+text =
+  "Temakizushi are cones made of nori seaweed and filled with sushi rice, seafood and vegetables."
+```
+
+```elixir
+text
+|> Translate.translate_text("auto", dst_lang)
+|> ExAws.request!(auth_config)
+|> then(& &1["TranslatedText"])
+```
+
+```elixir
+sushi_terminology_data =
+  ("en,ja\n" <>
+     "cones,円錐")
+  |> Base.encode64()
+```
+
+```elixir
+Translate.import_terminology(
+  "sushi_terminology",
+  %{
+    file: sushi_terminology_data,
+    format: "CSV"
+  },
+  "OVERWRITE"
+)
+|> ExAws.request!(auth_config)
+```
+
+```elixir
+text
+|> Translate.translate_text("auto", dst_lang, terminology_names: ["sushi_terminology"])
+|> ExAws.request!(auth_config)
+|> then(& &1["TranslatedText"])
+```
