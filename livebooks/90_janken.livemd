@@ -1,0 +1,83 @@
+# じゃんけん
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.8"}
+])
+```
+
+## 手と結果の定義
+
+```elixir
+hands = [
+  {0, "グー"},
+  {1, "チョキ"},
+  {2, "パー"}
+]
+```
+
+```elixir
+results = ["あいこ", "勝ち", "負け"]
+```
+
+## 手の選択
+
+```elixir
+my_hand_input = Kino.Input.select("あなたの手", hands)
+```
+
+```elixir
+my_hand = Kino.Input.read(my_hand_input)
+```
+
+```elixir
+# ランダムに決定
+opponents_hand = 0..2 |> Enum.random()
+```
+
+```elixir
+get_hand_name = fn hand ->
+  hands |> Enum.at(hand) |> elem(1)
+end
+```
+
+```elixir
+IO.puts("あなたの手: #{get_hand_name.(my_hand)}")
+IO.puts("あいての手: #{get_hand_name.(opponents_hand)}")
+```
+
+## 勝敗判定
+
+```elixir
+judge = fn x_hand, y_hand ->
+  IO.puts("あなたの手: #{get_hand_name.(x_hand)}")
+  IO.puts("あいての手: #{get_hand_name.(y_hand)}")
+  result = rem(y_hand - x_hand, 3)
+  result_name = Enum.at(results, result)
+  IO.puts("結果: #{result_name}")
+  result_name
+end
+```
+
+```elixir
+judge.(my_hand, opponents_hand)
+```
+
+## 全ての組み合わせ
+
+```elixir
+%{
+  "あいての手\\あなたの手" => Enum.map(hands, &elem(&1, 1))
+}
+|> Map.merge(
+  for {x_hand, x_hand_name} <- hands, into: %{} do
+    {
+      x_hand_name,
+      Enum.map(hands, fn {y_hand, _} ->
+        judge.(x_hand, y_hand)
+      end)
+    }
+  end
+)
+|> Kino.DataTable.new()
+```
