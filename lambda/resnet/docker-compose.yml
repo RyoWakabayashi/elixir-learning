@@ -1,0 +1,13 @@
+---
+
+version: '3.2'
+services:
+  faas:
+    container_name: faas_resnet
+    build: .
+    command: Resnet
+    tty: true
+    ports:
+      - '9000:8080'
+    environment:
+      - LOG_LEVEL=debug

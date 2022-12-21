@@ -15,5 +15,6 @@ services:
       - HTTPS_PROXY
     volumes:
       - ./tmp:/tmp
+      - ./lambda:/lambda
       - ./sagemaker:/sagemaker
       - //var/run/docker.sock:/var/run/docker.sock

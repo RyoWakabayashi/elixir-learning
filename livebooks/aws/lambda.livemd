@@ -1,0 +1,375 @@
+# AWS Lambda
+
+```elixir
+Mix.install([
+  {:aws, "~> 0.13"},
+  {:ex_aws, "~> 2.3"},
+  {:ex_aws_sts, "~> 2.3"},
+  {:ex_aws_s3, "~> 2.3"},
+  {:ex_aws_lambda, "~> 2.1"},
+  {:req, "~> 0.3"},
+  {:nx, "~> 0.4"},
+  {:stb_image, "~> 0.6"},
+  {:hackney, "~> 1.18"},
+  {:sweet_xml, "~> 0.7"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## 認証
+
+```elixir
+access_key_id_input = Kino.Input.password("ACCESS_KEY_ID")
+```
+
+```elixir
+secret_access_key_input = Kino.Input.password("SECRET_ACCESS_KEY")
+```
+
+```elixir
+region_input = Kino.Input.text("REGION")
+```
+
+```elixir
+client =
+  AWS.Client.create(
+    Kino.Input.read(access_key_id_input),
+    Kino.Input.read(secret_access_key_input),
+    Kino.Input.read(region_input)
+  )
+```
+
+```elixir
+auth_config = [
+  access_key_id: Kino.Input.read(access_key_id_input),
+  secret_access_key: Kino.Input.read(secret_access_key_input),
+  region: Kino.Input.read(region_input)
+]
+
+"dummy"
+```
+
+## アカウントIDの取得
+
+```elixir
+account_id =
+  ExAws.STS.get_caller_identity()
+  |> ExAws.request!(auth_config)
+  |> then(& &1.body.account)
+```
+
+## IAM ロールの定義
+
+```elixir
+client
+|> AWS.IAM.create_role(%{
+  "RoleName" => "lambda-resnet-role",
+  "AssumeRolePolicyDocument" =>
+    Jason.encode!(%{
+      "Statement" => [
+        %{
+          "Sid" => "STS202201051440",
+          "Effect" => "Allow",
+          "Principal" => %{
+            "Service" => ["lambda.amazonaws.com"]
+          },
+          "Action" => "sts:AssumeRole"
+        }
+      ]
+    })
+})
+```
+
+```elixir
+client
+|> AWS.IAM.create_policy(%{
+  "PolicyName" => "lambda-resnet-role-policy",
+  "PolicyDocument" =>
+    Jason.encode!(%{
+      "Version" => "2012-10-17",
+      "Statement" => [
+        %{
+          "Effect" => "Allow",
+          "Action" => [
+            "cloudwatch:PutMetricData",
+            "logs:CreateLogStream",
+            "logs:PutLogEvents",
+            "logs:CreateLogGroup",
+            "logs:DescribeLogStreams"
+          ],
+          "Resource" => ["*"]
+        }
+      ]
+    })
+})
+```
+
+```elixir
+client
+|> AWS.IAM.attach_role_policy(%{
+  "RoleName" => "lambda-resnet-role",
+  "PolicyArn" => "arn:aws:iam::#{account_id}:policy/lambda-resnet-role-policy"
+})
+```
+
+## ECRリポジトリー作成
+
+```elixir
+region = Kino.Input.read(region_input)
+```
+
+```elixir
+image = "lambda-resnet"
+```
+
+```elixir
+fullname = "#{account_id}.dkr.ecr.#{region}.amazonaws.com/#{image}:latest"
+```
+
+```elixir
+client
+|> AWS.ECR.create_repository(%{
+  "repositoryName" => image
+})
+```
+
+```elixir
+client
+|> AWS.ECR.describe_repositories(%{})
+```
+
+```elixir
+client
+|> AWS.ECR.set_repository_policy(%{
+  "repositoryName" => image,
+  "policyText" =>
+    Jason.encode!(%{
+      "Statement" => [
+        %{
+          "Sid" => "ECR202201051440",
+          "Effect" => "Allow",
+          "Principal" => %{
+            "AWS" => ["*"]
+          },
+          "Action" => "ecr:*"
+        }
+      ]
+    })
+})
+```
+
+## ECR リポジトリーへのイメージプッシュ
+
+```elixir
+token =
+  client
+  |> AWS.ECR.get_authorization_token(%{})
+  |> elem(1)
+  |> then(& &1["authorizationData"])
+  |> Enum.at(0)
+  |> then(& &1["authorizationToken"])
+```
+
+```elixir
+[username, password] =
+  token
+  |> Base.decode64!()
+  |> String.split(":")
+```
+
+```elixir
+System.cmd(
+  "docker",
+  [
+    "login",
+    "--username",
+    username,
+    "--password",
+    password,
+    fullname
+  ]
+)
+```
+
+```elixir
+System.cmd(
+  "docker",
+  [
+    "build",
+    "-t",
+    image,
+    "/lambda/resnet"
+  ]
+)
+```
+
+```elixir
+System.cmd(
+  "docker",
+  [
+    "tag",
+    image,
+    fullname
+  ]
+)
+```
+
+```elixir
+System.cmd(
+  "docker",
+  [
+    "push",
+    fullname
+  ]
+)
+```
+
+```elixir
+client
+|> AWS.ECR.list_images(%{
+  "repositoryName" => image
+})
+|> elem(1)
+|> then(& &1["imageIds"])
+|> Kino.DataTable.new()
+```
+
+## Lambda関数の作成
+
+```elixir
+client
+|> AWS.Lambda.create_function(%{
+  "FunctionName" => "resnet",
+  "PackageType" => "Image",
+  "Code" => %{
+    "ImageUri" => fullname
+  },
+  "Role" => "arn:aws:iam::#{account_id}:role/lambda-resnet-role",
+  "MemorySize" => 1024,
+  "Timeout" => 900,
+  "Environment" => %{
+    "Variables" => %{
+      "LOG_LEVEL" => "DEBUG"
+    }
+  }
+})
+```
+
+```elixir
+client
+|> AWS.Lambda.get_function("resnet")
+```
+
+## Lambda 関数呼出
+
+```elixir
+binary =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
+  |> Req.get!()
+  |> then(& &1.body)
+```
+
+```elixir
+binary
+|> StbImage.read_binary!()
+|> StbImage.to_nx()
+|> Kino.Image.new()
+```
+
+```elixir
+client
+|> AWS.Lambda.invoke(
+  "resnet",
+  %{
+    "Payload" => Base.encode64(binary)
+  }
+)
+```
+
+```elixir
+image_input = Kino.Input.image("INPUT_IMAGE", format: :jpeg)
+```
+
+```elixir
+binary =
+  image_input
+  |> Kino.Input.read()
+  |> then(& &1.data)
+
+client
+|> AWS.Lambda.invoke(
+  "resnet",
+  %{
+    "Payload" => Base.encode64(binary)
+  }
+)
+```
+
+## Lambda関数削除
+
+```elixir
+"resnet"
+|> ExAws.Lambda.delete_function()
+|> ExAws.request!(auth_config)
+```
+
+## IAM ロール削除
+
+```elixir
+client
+|> AWS.IAM.detach_role_policy(%{
+  "RoleName" => "lambda-resnet-role",
+  "PolicyArn" => "arn:aws:iam::#{account_id}:policy/lambda-resnet-role-policy"
+})
+```
+
+```elixir
+client
+|> AWS.IAM.delete_policy(%{
+  "PolicyArn" => "arn:aws:iam::#{account_id}:policy/lambda-resnet-role-policy"
+})
+```
+
+```elixir
+client
+|> AWS.IAM.delete_role(%{
+  "RoleName" => "lambda-resnet-role"
+})
+```
+
+## ECR リポジトリー削除
+
+```elixir
+image_ids =
+  client
+  |> AWS.ECR.list_images(%{
+    "repositoryName" => image
+  })
+  |> elem(1)
+  |> then(& &1["imageIds"])
+```
+
+```elixir
+client
+|> AWS.ECR.batch_delete_image(%{
+  "repositoryName" => image,
+  "imageIds" => image_ids
+})
+```
+
+```elixir
+client
+|> AWS.ECR.list_images(%{
+  "repositoryName" => image
+})
+|> elem(1)
+|> then(& &1["imageIds"])
+|> Kino.DataTable.new()
+```
+
+```elixir
+client
+|> AWS.ECR.delete_repository(%{
+  "repositoryName" => image
+})
+```
