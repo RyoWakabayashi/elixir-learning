@@ -5,7 +5,6 @@ Mix.install([
   {:aws, "~> 0.13"},
   {:ex_aws, "~> 2.3"},
   {:ex_aws_sts, "~> 2.3"},
-  {:ex_aws_s3, "~> 2.3"},
   {:ex_aws_lambda, "~> 2.1"},
   {:req, "~> 0.3"},
   {:nx, "~> 0.4"},
@@ -249,15 +248,14 @@ client
   "Timeout" => 900,
   "Environment" => %{
     "Variables" => %{
-      "LOG_LEVEL" => "DEBUG"
+      "LOG_LEVEL" => "debug"
     }
   }
 })
 ```
 
 ```elixir
-client
-|> AWS.Lambda.get_function("resnet")
+AWS.Lambda.get_function(client, "resnet")
 ```
 
 ## Lambda 関数呼出
@@ -277,13 +275,11 @@ binary
 ```
 
 ```elixir
-client
-|> AWS.Lambda.invoke(
-  "resnet",
-  %{
-    "Payload" => Base.encode64(binary)
-  }
-)
+"resnet"
+|> ExAws.Lambda.invoke(%{"Payload" => Base.encode64(binary)}, %{})
+|> ExAws.request!(auth_config)
+|> then(& &1["body"]["predictions"])
+|> Kino.DataTable.new()
 ```
 
 ```elixir
@@ -296,13 +292,36 @@ binary =
   |> Kino.Input.read()
   |> then(& &1.data)
 
+"resnet"
+|> ExAws.Lambda.invoke(%{"Payload" => Base.encode64(binary)}, %{})
+|> ExAws.request!(auth_config)
+|> then(& &1["body"]["predictions"])
+|> Kino.DataTable.new()
+```
+
+## ログ確認
+
+```elixir
+log_stream_name =
+  client
+  |> AWS.CloudWatchLogs.describe_log_streams(%{
+    "logGroupName" => "/aws/lambda/resnet"
+  })
+  |> elem(1)
+  |> then(& &1["logStreams"])
+  |> Enum.at(-1)
+  |> then(& &1["logStreamName"])
+```
+
+```elixir
 client
-|> AWS.Lambda.invoke(
-  "resnet",
-  %{
-    "Payload" => Base.encode64(binary)
-  }
-)
+|> AWS.CloudWatchLogs.get_log_events(%{
+  "logGroupName" => "/aws/lambda/resnet",
+  "logStreamName" => log_stream_name
+})
+|> elem(1)
+|> then(& &1["events"])
+|> Enum.map(& &1["message"])
 ```
 
 ## Lambda関数削除
@@ -355,16 +374,6 @@ client
   "repositoryName" => image,
   "imageIds" => image_ids
 })
-```
-
-```elixir
-client
-|> AWS.ECR.list_images(%{
-  "repositoryName" => image
-})
-|> elem(1)
-|> then(& &1["imageIds"])
-|> Kino.DataTable.new()
 ```
 
 ```elixir

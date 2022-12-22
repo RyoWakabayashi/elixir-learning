@@ -5,4 +5,7 @@
 * [S3](s3.livemd)
 * [Athena](athena.livemd)
 * [Rekognition](rekognition.livemd)
+* [Translate](translate.livemd)
 * [DynamoDB](dynamo.livemd)
+* [Lambda](lambda.livemd)
+* [SageMaker](sagemaker.livemd)

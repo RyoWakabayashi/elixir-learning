@@ -13,31 +13,31 @@ RUN set -e \
 ARG OTP_VERSION="25.2"
 
 RUN set -e \
-        && OTP_DOWNLOAD_URL="https://github.com/erlang/otp/archive/OTP-${OTP_VERSION}.tar.gz" \
-        && curl -fSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
-        && export ERL_TOP="/usr/src/otp_src_${OTP_VERSION%%@*}" \
-        && mkdir -vp $ERL_TOP \
-        && tar -xzf otp-src.tar.gz -C $ERL_TOP --strip-components=1 \
-        && rm otp-src.tar.gz \
-        && ( cd $ERL_TOP \
-             && ./otp_build autoconf \
-             && ./configure \
-             && make -j$(nproc) \
-             && make install ) \
-        && find /usr/local -name examples | xargs rm -rf
+    && OTP_DOWNLOAD_URL="https://github.com/erlang/otp/archive/OTP-${OTP_VERSION}.tar.gz" \
+    && curl -fSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
+    && export ERL_TOP="/usr/src/otp_src_${OTP_VERSION%%@*}" \
+    && mkdir -vp $ERL_TOP \
+    && tar -xzf otp-src.tar.gz -C $ERL_TOP --strip-components=1 \
+    && rm otp-src.tar.gz \
+    && ( cd $ERL_TOP \
+        && ./otp_build autoconf \
+        && ./configure \
+        && make -j$(nproc) \
+        && make install ) \
+    && find /usr/local -name examples | xargs rm -rf
 
 ARG REBAR3_VERSION="3.20.0"
 
 RUN set -xe \
-        && REBAR3_DOWNLOAD_URL="https://github.com/erlang/rebar3/archive/${REBAR3_VERSION}.tar.gz" \
-        && mkdir -p /usr/src/rebar3-src \
-        && curl -fSL -o rebar3-src.tar.gz "$REBAR3_DOWNLOAD_URL" \
-        && tar -xzf rebar3-src.tar.gz -C /usr/src/rebar3-src --strip-components=1 \
-        && rm rebar3-src.tar.gz \
-        && cd /usr/src/rebar3-src \
-        && HOME=$PWD ./bootstrap \
-        && install -v ./rebar3 /usr/local/bin/ \
-        && rm -rf /usr/src/rebar3-src
+    && REBAR3_DOWNLOAD_URL="https://github.com/erlang/rebar3/archive/${REBAR3_VERSION}.tar.gz" \
+    && mkdir -p /usr/src/rebar3-src \
+    && curl -fSL -o rebar3-src.tar.gz "$REBAR3_DOWNLOAD_URL" \
+    && tar -xzf rebar3-src.tar.gz -C /usr/src/rebar3-src --strip-components=1 \
+    && rm rebar3-src.tar.gz \
+    && cd /usr/src/rebar3-src \
+    && HOME=$PWD ./bootstrap \
+    && install -v ./rebar3 /usr/local/bin/ \
+    && rm -rf /usr/src/rebar3-src
 
 ARG ELIXIR_VERSION=1.14.2
 
@@ -46,18 +46,18 @@ ENV LANG=en_US.UTF-8
 ENV MIX_REBAR3=/usr/local/bin/rebar3
 
 RUN set -xe \
-        && ELIXIR_DOWNLOAD_URL="https://github.com/elixir-lang/elixir/archive/v${ELIXIR_VERSION}.tar.gz" \
-        && curl -fsSL $ELIXIR_DOWNLOAD_URL -o elixir-src.tar.gz \
-        && mkdir -p /usr/src/elixir-src \
-        && tar -xzf elixir-src.tar.gz -C /usr/src/elixir-src --strip-components=1 \
-        && rm elixir-src.tar.gz \
-        && cd /usr/src/elixir-src \
-        && make -j$(nproc) \
-        && make install \
-        && rm -rf /usr/src/elixir-src \
-        && cd $HOME \
-        && mix local.hex --force \
-        && mix hex.info
+    && ELIXIR_DOWNLOAD_URL="https://github.com/elixir-lang/elixir/archive/v${ELIXIR_VERSION}.tar.gz" \
+    && curl -fsSL $ELIXIR_DOWNLOAD_URL -o elixir-src.tar.gz \
+    && mkdir -p /usr/src/elixir-src \
+    && tar -xzf elixir-src.tar.gz -C /usr/src/elixir-src --strip-components=1 \
+    && rm elixir-src.tar.gz \
+    && cd /usr/src/elixir-src \
+    && make -j$(nproc) \
+    && make install \
+    && rm -rf /usr/src/elixir-src \
+    && cd $HOME \
+    && mix local.hex --force \
+    && mix hex.info
 
 WORKDIR /tmp
 
