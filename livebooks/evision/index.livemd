@@ -4,5 +4,6 @@
 
 * [Image Processing](image_processing.livemd)
 * [Gamma Correction](gamma_correction.livemd)
+* [Hisogram Flatten](histogram_flatten.livemd)
 * [DNN](dnn.livemd)
 * [Nx Backend](backend.livemd)

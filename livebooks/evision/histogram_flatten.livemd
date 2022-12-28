@@ -1,0 +1,114 @@
+# ヒストグラム平坦化
+
+```elixir
+Mix.install([
+  {:req, "~> 0.3"},
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.8"},
+  {:nx, "~> 0.4"},
+  {:kino_vega_lite, "~> 0.1.7"}
+])
+```
+
+## 画像のダウンロード
+
+```elixir
+img =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+```
+
+## グレースケールの場合
+
+```elixir
+gray_img = Evision.cvtColor(img, Evision.cv_COLOR_BGR2GRAY())
+```
+
+ピクセル値のヒストグラムをグラフ化
+
+ヒストグラムが平均化される = 暗いところも明るいところも増える = コントラストが強調される
+
+```elixir
+pixel =
+  gray_img
+  |> Evision.Mat.to_nx()
+  |> Nx.to_flat_list()
+
+VegaLite.new()
+|> VegaLite.data_from_values(x: pixel)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(:x, "x", type: :quantitative)
+|> VegaLite.encode_field(:y, "x", type: :quantitative, aggregate: :count)
+```
+
+```elixir
+equalized_img = Evision.equalizeHist(gray_img)
+```
+
+```elixir
+Kino.Layout.grid([gray_img, equalized_img], columns: 2)
+```
+
+```elixir
+equalized_pixel =
+  equalized_img
+  |> Evision.Mat.to_nx()
+  |> Nx.to_flat_list()
+
+VegaLite.new()
+|> VegaLite.data_from_values(x: equalized_pixel)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(:x, "x", type: :quantitative)
+|> VegaLite.encode_field(:y, "x", type: :quantitative, aggregate: :count)
+```
+
+## カラーの場合
+
+BGR から HSV に変換し、明度情報だけをヒストグラム平坦化する
+
+```elixir
+hsv_img = Evision.cvtColor(img, Evision.cv_COLOR_BGR2HSV())
+```
+
+```elixir
+value =
+  hsv_img
+  |> Evision.Mat.to_nx(Nx.BinaryBackend)
+  |> Nx.slice_along_axis(2, 1, axis: 2)
+
+Kino.Image.new(value)
+```
+
+```elixir
+equalized_value =
+  value
+  |> Nx.squeeze()
+  |> Evision.equalizeHist()
+  |> Evision.Mat.to_nx(Nx.BinaryBackend)
+  |> Nx.new_axis(2)
+
+Kino.Image.new(equalized_value)
+```
+
+元画像の色相、彩度とヒストグラム平坦化した明度を結合して BGR に戻す
+
+```elixir
+hs =
+  hsv_img
+  |> Evision.Mat.to_nx(Nx.BinaryBackend)
+  |> Nx.slice_along_axis(0, 2, axis: 2)
+```
+
+```elixir
+equalized_img =
+  [hs, equalized_value]
+  |> Nx.concatenate(axis: 2)
+  |> Evision.Mat.from_nx_2d()
+  |> Evision.cvtColor(Evision.cv_COLOR_HSV2BGR())
+```
+
+```elixir
+Kino.Layout.grid([img, equalized_img], columns: 2)
+```
