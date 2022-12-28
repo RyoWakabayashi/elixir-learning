@@ -1,0 +1,84 @@
+# ガンマ補正
+
+```elixir
+Mix.install([
+  {:req, "~> 0.3"},
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.8"},
+  {:nx, "~> 0.4"},
+  {:kino_vega_lite, "~> 0.1.7"}
+])
+```
+
+## 準備
+
+```elixir
+import Nx.Defn
+```
+
+## 画像のダウンロード
+
+```elixir
+img =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+```
+
+## ガンマ補正
+
+```elixir
+defmodule GammaCorrection do
+  defn generate_gamma_tensor(gamma) do
+    (Nx.iota({256, 1}) / 255) ** (1 / gamma) * 255
+  end
+
+  def correct(img, gamma) do
+    gamma_tensor = generate_gamma_tensor(gamma)
+    Evision.lut(img, gamma_tensor)
+  end
+end
+```
+
+```elixir
+[
+  img,
+  GammaCorrection.correct(img, 5.0)
+]
+|> Kino.Layout.grid(columns: 2)
+```
+
+```elixir
+1..8
+|> Enum.to_list()
+|> Enum.map(fn gamma_seed -> GammaCorrection.correct(img, gamma_seed / 4) end)
+|> Kino.Layout.grid(columns: 4)
+```
+
+## 演算内容の確認
+
+```elixir
+gamma_tensor = GammaCorrection.generate_gamma_tensor(0.1)
+```
+
+```elixir
+data =
+  [0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+  |> Enum.reduce(%{gamma: [], src: [], dst: []}, fn gamma, acc ->
+    %{
+      gamma: acc.gamma ++ List.duplicate(gamma, 256),
+      src: acc.src ++ Enum.to_list(0..255),
+      dst: acc.dst ++ (gamma |> GammaCorrection.generate_gamma_tensor() |> Nx.to_flat_list())
+    }
+  end)
+```
+
+```elixir
+VegaLite.new()
+|> VegaLite.data_from_values(data, only: ["src", "dst", "gamma"])
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "src", type: :quantitative)
+|> VegaLite.encode_field(:y, "dst", type: :quantitative)
+|> VegaLite.encode_field(:color, "gamma", type: :nominal)
+```

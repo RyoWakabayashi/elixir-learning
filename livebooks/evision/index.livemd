@@ -3,5 +3,6 @@
 ## Links
 
 * [Image Processing](image_processing.livemd)
+* [Gamma Correction](gamma_correction.livemd)
 * [DNN](dnn.livemd)
 * [Nx Backend](backend.livemd)
