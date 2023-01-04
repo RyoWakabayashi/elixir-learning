@@ -1,0 +1,214 @@
+# 農林水産省 筆ポリゴンデータ
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.4"},
+    {:evision, "~> 0.1"},
+    {:exla, "~> 0.4"},
+    {:geo, "~> 3.4"},
+    {:jason, "~> 1.4"},
+    {:kino, "~> 0.8"},
+    {:kino_maplibre, "~> 0.1.3"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## 筆ポリゴンデータの取得
+
+農林水産省の筆ポリゴンデータをダウンロードする
+
+※筆の読みは「ふで」
+
+出典: 「筆ポリゴンデータ（2022年度公開）」（農林水産省）（<https://www.maff.go.jp/j/tokei/porigon/>）を加工して作成
+
+```elixir
+json_file = "/tmp/2022_442011.json"
+```
+
+## GeoJSON の読込
+
+```elixir
+geojson_data =
+  json_file
+  |> File.read!()
+  |> Jason.decode!()
+  |> Geo.JSON.decode!()
+```
+
+```elixir
+Enum.count(geojson_data.geometries)
+```
+
+```elixir
+# 田んぼの件数
+geojson_data.geometries
+|> Enum.filter(&(&1.properties["land_type"] == 100))
+|> Enum.count()
+```
+
+```elixir
+# 畑の件数
+geojson_data.geometries
+|> Enum.filter(&(&1.properties["land_type"] == 200))
+|> Enum.count()
+```
+
+```elixir
+# 対象の絞り込み
+target_fields =
+  geojson_data.geometries
+  |> Enum.filter(fn field ->
+    field.properties["point_lng"] >= 131.42 &&
+      field.properties["point_lng"] <= 131.46 &&
+      field.properties["point_lat"] >= 33.13 &&
+      field.properties["point_lat"] <= 33.15 &&
+      field.properties["land_type"] == 100
+  end)
+  |> then(fn geometries ->
+    %Geo.GeometryCollection{geometries: geometries}
+  end)
+
+Enum.count(target_fields.geometries)
+```
+
+## Smart Cell による可視化
+
+<!-- livebook:{"attrs":{"center":"131.443, 33.131","layers":[{"cluster_colors":["#51bbd6","#f1f075","#f28cb1"],"cluster_max":750,"cluster_min":100,"coordinates_format":"lng_lat","layer_color":"#000000","layer_opacity":1,"layer_radius":5,"layer_source":"target_fields","layer_source_query":null,"layer_source_query_strict":null,"layer_type":"line","source_coordinates":null,"source_latitude":null,"source_longitude":null,"source_type":"geo"}],"ml_alias":"Elixir.MapLibre","style":"terrain (non-commercial)","zoom":16},"chunks":null,"kind":"Elixir.KinoMapLibre.MapCell","livebook_object":"smart_cell"} -->
+
+```elixir
+MapLibre.new(style: :terrain, center: {131.443, 33.131}, zoom: 16)
+|> MapLibre.add_geo_source("target_fields", target_fields)
+|> MapLibre.add_layer(
+  id: "target_fields_line_1",
+  source: "target_fields",
+  type: :line,
+  paint: [line_color: "#000000", line_opacity: 1]
+)
+```
+
+## Smart Cell を使わない可視化
+
+```elixir
+longitudes =
+  target_fields.geometries
+  |> Enum.map(& &1.coordinates)
+  |> List.flatten()
+  |> Enum.map(&elem(&1, 0))
+
+latitudes =
+  target_fields.geometries
+  |> Enum.map(& &1.coordinates)
+  |> List.flatten()
+  |> Enum.map(&elem(&1, 1))
+
+center = {
+  (Enum.min(longitudes) + Enum.max(longitudes)) / 2,
+  (Enum.min(latitudes) + Enum.max(latitudes)) / 2
+}
+```
+
+```elixir
+MapLibre.new(center: center, zoom: 14.5, style: :terrain)
+|> MapLibre.add_geo_source("geojson", target_fields)
+|> MapLibre.add_layer(
+  id: "fill",
+  source: "geojson",
+  type: :fill,
+  paint: [fill_color: "#00ff00", fill_opacity: 0.5]
+)
+```
+
+## Evision による可視化
+
+```elixir
+# 緯度経度の最大最小を求める
+coordinates =
+  target_fields.geometries
+  |> Enum.map(& &1.coordinates)
+  |> List.flatten()
+
+longitudes = Enum.map(coordinates, &elem(&1, 0))
+latitudes = Enum.map(coordinates, &elem(&1, 1))
+
+min_longitude = Enum.min(longitudes)
+max_longitude = Enum.max(longitudes)
+min_latitude = Enum.min(latitudes)
+max_latitude = Enum.max(latitudes)
+
+{min_longitude, max_longitude, min_latitude, max_latitude}
+```
+
+```elixir
+{height, width} = {1280, 2560}
+```
+
+```elixir
+# 緯度経度の最小から最大をピクセル数の0から幅・高さに正規化する
+normalized_points =
+  target_fields.geometries
+  |> Enum.map(& &1.coordinates)
+  |> Enum.map(fn coordinate ->
+    coordinate
+    |> Enum.at(0)
+    |> Enum.map(fn {x, y} ->
+      [
+        trunc((x - min_longitude) * width / (max_longitude - min_longitude)),
+        # 縦方向は緯度が北緯の場合逆転するため、高さから引く
+        trunc(height - (y - min_latitude) * height / (max_latitude - min_latitude))
+      ]
+    end)
+    |> Nx.tensor(type: :s32)
+  end)
+```
+
+```elixir
+# 空画像を用意する
+# 全て黒の不透明
+empty_mat =
+  [0, 0, 0, 255]
+  |> Nx.tensor(type: :u8)
+  |> Nx.tile([height, width, 1])
+  |> Evision.Mat.from_nx_2d()
+```
+
+```elixir
+# ポリゴンを透明色で塗りつぶす
+img = Evision.fillPoly(empty_mat, normalized_points, {0, 0, 0, 0})
+```
+
+```elixir
+img_base64 =
+  Evision.imencode(".png", img)
+  |> Base.encode64()
+  |> then(&"data:image/png;base64,#{&1}")
+```
+
+```elixir
+MapLibre.new(center: center, zoom: 14.5, style: :terrain)
+# 画像をレイヤーとして地図に重ねる
+|> MapLibre.add_source(
+  "field_mask",
+  type: :image,
+  url: img_base64,
+  coordinates: [
+    [min_longitude, max_latitude],
+    [max_longitude, max_latitude],
+    [max_longitude, min_latitude],
+    [min_longitude, min_latitude]
+  ]
+)
+|> MapLibre.add_layer(
+  id: "overlay",
+  source: "field_mask",
+  type: :raster,
+  layout: %{
+    "visibility" => "visible"
+  }
+)
+```
