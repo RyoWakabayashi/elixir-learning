@@ -1,0 +1,530 @@
+# Tellus Traveler
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.4"},
+    {:evision, "~> 0.1"},
+    {:exla, "~> 0.4"},
+    {:req, "~> 0.3"},
+    {:geo, "~> 3.4"},
+    {:kino, "~> 0.8"},
+    {:kino_maplibre, "~> 0.1.3"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## 設定
+
+```elixir
+# Tellus のトークンを入力する
+token_input = Kino.Input.password("Token")
+```
+
+## Tellus Traveler からデータを探す
+
+Tellus Satellite Data Traveler API を使用する
+
+API 仕様: <https://www.tellusxdp.com/docs/travelers/>
+
+```elixir
+defmodule TellusTraveler do
+  @base_path "https://www.tellusxdp.com/api/traveler/v1"
+  @data_path "#{@base_path}/datasets"
+
+  defp get_headers(token) do
+    %{
+      "Authorization" => "Bearer #{token}",
+      "Content-Type" => "application/json"
+    }
+  end
+
+  def get_datasets(token, is_order_required) do
+    url = "#{@data_path}/?is_order_required=#{is_order_required}"
+    headers = get_headers(token)
+
+    url
+    |> Req.get!(headers: headers)
+    |> then(& &1.body["results"])
+  end
+
+  def get_dataset(token, dataset_id) do
+    url = "#{@data_path}/#{dataset_id}/"
+    headers = get_headers(token)
+
+    url
+    |> Req.get!(headers: headers)
+    |> then(& &1.body)
+  end
+
+  def search(token, dataset_id, coordinates) do
+    url =
+      if is_list(dataset_id) do
+        "#{@base_path}/data-search/"
+      else
+        "#{@data_path}/#{dataset_id}/data-search/"
+      end
+
+    headers = get_headers(token)
+
+    request_body =
+      %{
+        intersects: %{
+          type: "Polygon",
+          coordinates: coordinates
+        },
+        query: %{},
+        sortby: [
+          %{
+            field: "properties.start_datetime",
+            direction: "asc"
+          }
+        ]
+      }
+      |> Map.merge(
+        if is_list(dataset_id) do
+          %{datasets: dataset_id}
+        else
+          %{}
+        end
+      )
+      |> Jason.encode!()
+
+    url
+    |> Req.post!(body: request_body, headers: headers)
+    |> then(& &1.body["features"])
+  end
+
+  def get_data_files(token, dataset_id, data_id) do
+    url = "#{@data_path}/#{dataset_id}/data/#{data_id}/files/"
+    headers = get_headers(token)
+
+    url
+    |> Req.get!(headers: headers)
+    |> then(& &1.body["results"])
+  end
+
+  defp get_data_file_download_url(token, dataset_id, data_id, file_id) do
+    url = "#{@data_path}/#{dataset_id}/data/#{data_id}/files/#{file_id}/download-url/"
+    headers = get_headers(token)
+
+    url
+    |> Req.post!(headers: headers)
+    |> then(& &1.body["download_url"])
+  end
+
+  def download(token, dataset_id, scene_id, dist \\ "/tmp/") do
+    [dist, scene_id]
+    |> Path.join()
+    |> File.mkdir_p()
+
+    token
+    |> get_data_files(dataset_id, scene_id)
+    |> Enum.map(fn file ->
+      file_path = Path.join([dist, scene_id, file["name"]])
+
+      unless File.exists?(file_path) do
+        token
+        |> get_data_file_download_url(dataset_id, scene_id, file["id"])
+        |> Req.get!(output: file_path)
+      end
+
+      file_path
+    end)
+  end
+end
+```
+
+### データセットの選択
+
+```elixir
+datasets =
+  token_input
+  |> Kino.Input.read()
+  |> TellusTraveler.get_datasets(false)
+```
+
+```elixir
+datasets
+|> Enum.map(fn dataset ->
+  %{
+    "name" => dataset["name"],
+    "description" => dataset["description"],
+    "allowed_in" => dataset["permission"]["allow_network_type"]
+  }
+end)
+|> Kino.DataTable.new(keys: ["name", "description", "allowed_in"])
+```
+
+```elixir
+opt_datasets =
+  datasets
+  |> Enum.filter(fn dataset ->
+    dataset["permission"]["allow_network_type"] == "global" &&
+      String.contains?(dataset["description"], "光学")
+  end)
+
+Kino.DataTable.new(opt_datasets, keys: ["name", "description"])
+```
+
+```elixir
+sar_datasets =
+  datasets
+  |> Enum.filter(fn dataset ->
+    dataset["permission"]["allow_network_type"] == "global" &&
+      String.contains?(dataset["description"], "SAR")
+  end)
+
+Kino.DataTable.new(sar_datasets, keys: ["name", "description"])
+```
+
+### シーンの選択
+
+```elixir
+dataset_id_list = Enum.map(opt_datasets, & &1["id"])
+```
+
+青森県の行政区域データを /tmp/GML にダウンロードしておく
+
+出典: 「国土数値情報（行政区域データ）」（国土交通省）（https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v3_1.html）を加工して作成
+
+```elixir
+gml_dir = "/tmp/GML"
+```
+
+```elixir
+geojson_file =
+  gml_dir
+  # ファイル一覧取得
+  |> File.ls!()
+  # `.geojson` で終わるもののうち先頭を取得
+  |> Enum.find(&String.ends_with?(&1, ".geojson"))
+```
+
+```elixir
+geojson_data =
+  [gml_dir, geojson_file]
+  |> Path.join()
+  |> File.read!()
+  |> Jason.decode!()
+  |> Geo.JSON.decode!()
+```
+
+```elixir
+city_geojson = %Geo.GeometryCollection{
+  geometries: Enum.filter(geojson_data.geometries, &(&1.properties["N03_007"] == "02361"))
+}
+```
+
+```elixir
+city_map =
+  MapLibre.new(center: {140.5, 40.7}, zoom: 7)
+  |> MapLibre.add_geo_source("city_geojson", city_geojson)
+  |> MapLibre.add_layer(
+    id: "city_geojson",
+    source: "city_geojson",
+    type: :fill,
+    paint: [fill_color: "#00ff00", fill_opacity: 0.5]
+  )
+```
+
+藤崎町に外接する四角形を取得する
+
+```elixir
+city_polygons =
+  city_geojson.geometries
+  |> Enum.at(0)
+  |> then(& &1.coordinates)
+```
+
+```elixir
+longitudes =
+  city_polygons
+  |> List.flatten()
+  |> Enum.map(&elem(&1, 0))
+
+latitudes =
+  city_polygons
+  |> List.flatten()
+  |> Enum.map(&elem(&1, 1))
+
+bbox = %{
+  min_longitude: Enum.min(longitudes),
+  max_longitude: Enum.max(longitudes),
+  min_latitude: Enum.min(latitudes),
+  max_latitude: Enum.max(latitudes)
+}
+```
+
+```elixir
+city_rectangle = [
+  [
+    [bbox.min_longitude, bbox.min_latitude],
+    [bbox.max_longitude, bbox.min_latitude],
+    [bbox.max_longitude, bbox.max_latitude],
+    [bbox.min_longitude, bbox.max_latitude],
+    [bbox.min_longitude, bbox.min_latitude]
+  ]
+]
+```
+
+四角形を含むシーンを検索する
+
+```elixir
+scenes_list =
+  token_input
+  |> Kino.Input.read()
+  |> TellusTraveler.search(dataset_id_list, city_rectangle)
+```
+
+```elixir
+scenes_list
+|> Enum.map(& &1["geometry"]["coordinates"])
+|> Enum.map(fn coordinates ->
+  coordinates
+  |> Enum.at(0)
+  |> Enum.map(&List.to_tuple(&1))
+end)
+|> then(fn coordinates ->
+  %Geo.GeometryCollection{
+    geometries: [
+      %Geo.Polygon{
+        coordinates: coordinates
+      }
+    ]
+  }
+end)
+|> then(fn geojson ->
+  city_map
+  |> MapLibre.add_geo_source("area", geojson)
+  |> MapLibre.add_layer(
+    id: "area",
+    source: "area",
+    type: :line,
+    paint: [line_color: "#00ff00"]
+  )
+end)
+```
+
+```elixir
+target_dataset_id_list =
+  scenes_list
+  # データセットIDでグルーピング
+  |> Enum.group_by(& &1["dataset_id"])
+  # それぞれの件数を取得
+  |> Enum.map(fn {key, value} -> {key, Enum.count(value)} end)
+  |> Enum.into(%{})
+```
+
+```elixir
+target_dataset_id_list
+|> Enum.map(fn {dataset_id, count} ->
+  Enum.find(opt_datasets, &(&1["id"] == dataset_id))
+  |> Map.merge(%{"count" => count})
+end)
+|> Kino.DataTable.new(keys: ["id", "name", "count", "description"])
+```
+
+```elixir
+target_dataset_id = "ea71ef6e-9569-49fc-be16-ba98d876fb73"
+```
+
+データセットと雲の量でシーンを絞り込む
+
+```elixir
+target_scenes_list =
+  scenes_list
+  |> Enum.filter(fn scene ->
+    scene["dataset_id"] == target_dataset_id &&
+      scene["properties"]["eo:cloud_cover"] < 25
+  end)
+```
+
+k-平均法を使って領域毎にグループ分けする
+
+```elixir
+coordinates_tensor =
+  target_scenes_list
+  |> Enum.map(fn scene ->
+    scene["geometry"]["coordinates"]
+    |> Enum.at(0)
+    |> Enum.at(0)
+  end)
+  |> Nx.tensor()
+```
+
+```elixir
+labels =
+  coordinates_tensor
+  |> Evision.kmeans(
+    # ４グループに分ける
+    4,
+    # 必要ないが nil 指定できないので適当なテンソルを指定する
+    Nx.tensor([0], type: :f32),
+    # 3 = TERM_CRITERIA_EPS(1) + TERM_CRITERIA_MAX_ITER(2)
+    {3, 10, 1.0},
+    # 試行回数
+    10,
+    # 中心初期化手法を使用
+    Evision.cv_KMEANS_PP_CENTERS()
+  )
+  |> then(fn {compactness, labels, _} ->
+    IO.inspect("compactness: #{compactness}")
+
+    labels
+    |> Evision.Mat.to_nx()
+    |> Nx.to_flat_list()
+  end)
+```
+
+```elixir
+target_scenes_group =
+  [target_scenes_list, labels]
+  |> Enum.zip()
+  |> Enum.group_by(fn {_, label} -> label end, fn {scene, _} -> scene end)
+```
+
+```elixir
+target_scenes_group
+|> Enum.map(fn {label, scenes} -> {label, Enum.count(scenes)} end)
+|> Enum.into(%{})
+```
+
+グループ毎の領域を地図にプロットする
+
+```elixir
+# グループ毎に先頭シーンの領域を取得
+scene_geojson_map =
+  target_scenes_group
+  |> Enum.map(fn {label, scene_list} ->
+    scene_list
+    |> Enum.at(0)
+    |> then(& &1["geometry"]["coordinates"])
+    |> Enum.at(0)
+    |> Enum.map(&List.to_tuple(&1))
+    |> then(fn coordinates ->
+      %Geo.GeometryCollection{
+        geometries: [
+          %Geo.Polygon{
+            coordinates: [coordinates]
+          }
+        ]
+      }
+    end)
+    |> then(fn geojson ->
+      {label, geojson}
+    end)
+  end)
+  |> Enum.into(%{})
+```
+
+```elixir
+# 藤崎町の中心座標
+center = {
+  (bbox.min_longitude + bbox.max_longitude) / 2,
+  (bbox.min_latitude + bbox.max_latitude) / 2
+}
+```
+
+```elixir
+city_map =
+  MapLibre.new(center: center, zoom: 7)
+  |> MapLibre.add_geo_source("city_geojson", city_geojson)
+  |> MapLibre.add_layer(
+    id: "city",
+    source: "city_geojson",
+    type: :fill,
+    paint: [fill_color: "#000000"]
+  )
+```
+
+```elixir
+scene_geojson_map
+|> Enum.map(fn {label, scene_geojson} ->
+  map =
+    city_map
+    |> MapLibre.add_geo_source("area", scene_geojson)
+    |> MapLibre.add_layer(
+      id: "area",
+      source: "area",
+      type: :fill,
+      paint: [fill_color: "#00ff00", fill_opacity: 0.5]
+    )
+
+  {Integer.to_string(label), map}
+end)
+|> Kino.Layout.tabs()
+```
+
+```elixir
+target_scenes_group[0]
+|> Enum.map(fn scene ->
+  coordinates =
+    scene["geometry"]["coordinates"]
+    |> Enum.at(0)
+    |> Enum.map(&List.to_tuple(&1))
+
+  scene_geojson = %Geo.GeometryCollection{
+    geometries: [
+      %Geo.Polygon{
+        coordinates: [coordinates]
+      }
+    ]
+  }
+
+  map =
+    city_map
+    |> MapLibre.add_geo_source("area", scene_geojson)
+    |> MapLibre.add_layer(
+      id: "area",
+      source: "area",
+      type: :fill,
+      paint: [fill_color: "#00ff00", fill_opacity: 0.5]
+    )
+
+  # 観測日をタブにする
+  date = String.slice(scene["properties"]["start_datetime"], 0..9)
+
+  {date, map}
+end)
+|> Kino.Layout.tabs()
+```
+
+```elixir
+scene_id_list =
+  target_scenes_group[0]
+  |> Enum.map(& &1["id"])
+```
+
+```elixir
+scene_id_list
+|> Enum.map(fn scene_id ->
+  token_input
+  |> Kino.Input.read()
+  |> TellusTraveler.download(target_dataset_id, scene_id)
+end)
+```
+
+## ダウンロードした画像を表示する
+
+```elixir
+scene_id = Enum.at(scene_id_list, 2)
+
+"/tmp/#{scene_id}"
+|> File.ls!()
+|> Enum.filter(fn filename -> Path.extname(filename) != ".txt" end)
+|> Enum.sort()
+|> Enum.map(fn filename ->
+  ["/tmp", scene_id, filename]
+  |> Path.join()
+  |> Evision.imread()
+  # 大きすぎるのでリサイズ
+  |> Evision.resize({640, 640})
+end)
+|> Kino.Layout.grid(columns: 2)
+```
