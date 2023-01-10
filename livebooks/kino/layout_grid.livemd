@@ -1,0 +1,124 @@
+# Kino.Layout.grid
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.4"},
+  {:kino, "~> 0.8"},
+  {:kino_vega_lite, "~> 0.1.7"}
+])
+```
+
+## 画像を並べる
+
+```elixir
+generate_image = fn color ->
+  {height, width} = {160, 160}
+
+  color
+  |> Nx.tensor(type: :u8)
+  |> Nx.tile([height, width, 1])
+  |> Kino.Image.new()
+end
+```
+
+```elixir
+generate_image.([255, 0, 0])
+generate_image.([0, 255, 0])
+generate_image.([0, 0, 255])
+generate_image.([255, 255, 0])
+generate_image.([255, 0, 255])
+generate_image.([0, 255, 255])
+```
+
+```elixir
+generate_image.([255, 0, 0])
+generate_image.([0, 255, 0])
+
+generate_image.([0, 0, 255])
+|> Kino.render()
+
+generate_image.([255, 255, 0])
+
+generate_image.([255, 0, 255])
+|> Kino.render()
+
+generate_image.([0, 255, 255])
+```
+
+```elixir
+[
+  generate_image.([255, 0, 0]),
+  generate_image.([0, 255, 0]),
+  generate_image.([0, 0, 255]),
+  generate_image.([255, 255, 0]),
+  generate_image.([255, 0, 255]),
+  generate_image.([0, 255, 255])
+]
+|> Kino.Layout.grid(columns: 3)
+```
+
+```elixir
+[
+  [0, 0, 0],
+  [255, 0, 0],
+  [0, 255, 0],
+  [0, 0, 255],
+  [255, 255, 0],
+  [255, 0, 255],
+  [0, 255, 255],
+  [255, 255, 255]
+]
+|> Enum.map(&generate_image.(&1))
+|> Kino.Layout.grid(columns: 4)
+```
+
+```elixir
+[
+  [255, 0, 0],
+  [0, 255, 0],
+  [0, 0, 255],
+  [255, 255, 0],
+  [255, 0, 255],
+  [0, 255, 255]
+]
+|> Enum.map(&generate_image.(&1))
+|> Kino.Layout.grid(columns: 3, boxed: true, gap: 60)
+```
+
+```elixir
+[
+  generate_image.([255, 0, 0]),
+  generate_image.([0, 0, 255]),
+  [
+    generate_image.([255, 0, 0]),
+    generate_image.([0, 0, 255]),
+    generate_image.([0, 0, 255]),
+    generate_image.([255, 0, 0])
+  ]
+  |> Kino.Layout.grid(columns: 2, gap: 10),
+  generate_image.([0, 0, 255]),
+  generate_image.([255, 0, 0])
+]
+|> Kino.Layout.grid(columns: 5, gap: 10)
+```
+
+## グラフを並べる
+
+```elixir
+plot = fn p ->
+  x = Nx.iota({10})
+  y = Nx.power(x, p)
+
+  VegaLite.new(width: 180)
+  |> VegaLite.data_from_values(%{x: Nx.to_flat_list(x), y: Nx.to_flat_list(y)})
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "x", type: :quantitative)
+  |> VegaLite.encode_field(:y, "y", type: :quantitative)
+end
+```
+
+```elixir
+0..8
+|> Enum.map(&plot.(&1))
+|> Kino.Layout.grid(columns: 3)
+```

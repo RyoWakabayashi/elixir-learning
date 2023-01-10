@@ -1,0 +1,74 @@
+# Kino.Layout.tabs
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.4"},
+  {:kino, "~> 0.8"},
+  {:kino_vega_lite, "~> 0.1.7"}
+])
+```
+
+## タブ表示する
+
+```elixir
+generate_image = fn color ->
+  {height, width} = {160, 160}
+
+  color
+  |> Nx.tensor(type: :u8)
+  |> Nx.tile([height, width, 1])
+  |> Kino.Image.new()
+end
+```
+
+```elixir
+[
+  Red: generate_image.([255, 0, 0]),
+  Green: generate_image.([0, 255, 0]),
+  Blue: generate_image.([0, 0, 255])
+]
+|> Kino.Layout.tabs()
+```
+
+```elixir
+[
+  Input: [255, 0, 0],
+  Output: generate_image.([255, 0, 0])
+]
+|> Kino.Layout.tabs()
+```
+
+```elixir
+plot = fn value ->
+  x = Nx.iota({256})
+
+  VegaLite.new(width: 180)
+  |> VegaLite.data_from_values(%{x: Nx.to_flat_list(x), y: Nx.to_flat_list(value)})
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "x", type: :quantitative)
+  |> VegaLite.encode_field(:y, "y", type: :quantitative)
+end
+```
+
+```elixir
+red = Nx.iota({256})
+green = [Nx.iota({128}) |> Nx.reverse(), Nx.iota({128})] |> Nx.concatenate()
+blue = {256} |> Nx.iota() |> Nx.reverse()
+
+img =
+  [red, green, blue]
+  |> Nx.stack()
+  |> Nx.tile([256])
+  |> Nx.transpose()
+  |> Nx.reshape({256, 256, 3})
+  |> Nx.as_type(:u8)
+  |> Kino.Image.new()
+
+[
+  Image: img,
+  Red: plot.(red),
+  Green: plot.(green),
+  Blue: plot.(blue)
+]
+|> Kino.Layout.tabs()
+```

@@ -3,3 +3,5 @@
 ## Links
 
 * [Kino.Input.image](input_image.livemd)
+* [Kino.Layout.grid](layout_grid.livemd)
+* [Kino.Layout.tabs](layout_tabs.livemd)
