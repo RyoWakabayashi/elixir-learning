@@ -1,0 +1,833 @@
+# 農地のNDVI
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.4"},
+    {:evision, "~> 0.1"},
+    {:exla, "~> 0.4"},
+    {:geo, "~> 3.4"},
+    {:jason, "~> 1.4"},
+    {:kino, "~> 0.8"},
+    {:kino_maplibre, "~> 0.1.3"},
+    {:kino_vega_lite, "~> 0.1.7"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## データの指定
+
+提供：だいち(ALOS)　AVNIR-2　データ(JAXA)
+
+だいち(ALOS) AVNIR-2 の仕様はこちら
+
+https://www.eorc.jaxa.jp/ALOS/jp/alos/sensor/avnir2_j.htm
+
+```elixir
+scene_id_list = [
+  "202ce08d-ba4b-4ffe-8165-109fd3a8b917",
+  "34d8dc6f-fdd1-4542-a038-c1235a5a97fa",
+  "12ad308b-6ce1-40ec-9ebf-f0215c30500e",
+  "e2e85b2e-a208-4a65-87fd-b92721b037a8",
+  "208a3618-7700-421b-bf05-fd59551cc1aa",
+  "d5ce7320-5b25-4ced-bda5-0e25a9d75940",
+  "9d14706f-cee7-4eb4-9151-2558609c3de0",
+  "3f4555ac-eaf3-4066-a1ba-20bb1ec1c0b3"
+]
+```
+
+## ヘッダーファイルの読込
+
+ヘッダーファイルの仕様はこちら
+
+<https://www.eorc.jaxa.jp/ALOS/alos-ori/doc/AVNIR-2_ORI_format_jp.pdf>
+
+```elixir
+defmodule Coordinate do
+  defstruct latitude: 0.0, longitude: 0.0
+end
+
+defmodule BandInfo do
+  defstruct gain: 0.0, offset: 0.0
+end
+
+defmodule Affine do
+  defstruct a: 0.0, b: 0.0, c: 0.0, d: 0.0
+end
+
+defmodule Conversion do
+  defstruct x: 0.0, y: 0.0
+end
+```
+
+```elixir
+defmodule HeaderInfo do
+  defstruct blue_band: %BandInfo{},
+            green_band: %BandInfo{},
+            red_band: %BandInfo{},
+            nir_band: %BandInfo{},
+            center: %Coordinate{},
+            left_top: %Coordinate{},
+            right_top: %Coordinate{},
+            left_bottom: %Coordinate{},
+            right_bottom: %Coordinate{},
+            affine: %Affine{},
+            conversion: %Conversion{},
+            degree: 0.0,
+            map_degree: 0.0,
+            datetime: nil,
+            product_id: ""
+
+  def get_string(info, start, value) do
+    info
+    |> String.slice(start, value)
+    |> String.trim()
+  end
+
+  def get_value(info, start, value) do
+    info
+    |> get_string(start, value)
+    |> String.to_float()
+  end
+
+  def read(hdr_file_path) do
+    info = File.read!(hdr_file_path)
+
+    %HeaderInfo{
+      # 青色光バンド
+      blue_band: %BandInfo{
+        gain: get_value(info, 1721, 8),
+        offset: get_value(info, 1729, 8)
+      },
+      # 緑色光バンド
+      green_band: %BandInfo{
+        gain: get_value(info, 1737, 8),
+        offset: get_value(info, 1745, 8)
+      },
+      # 赤色光バンド
+      red_band: %BandInfo{
+        gain: get_value(info, 1752, 8),
+        offset: get_value(info, 1760, 8)
+      },
+      # 近赤外線バンド
+      nir_band: %BandInfo{
+        gain: get_value(info, 1768, 8),
+        offset: get_value(info, 1776, 8)
+      },
+      # 画像中央
+      center: %Coordinate{
+        latitude: get_value(info, 248, 16),
+        longitude: get_value(info, 264, 16)
+      },
+      # 画像左上
+      left_top: %Coordinate{
+        latitude: get_value(info, 376, 16),
+        longitude: get_value(info, 392, 16)
+      },
+      # 画像右上
+      right_top: %Coordinate{
+        latitude: get_value(info, 408, 16),
+        longitude: get_value(info, 424, 16)
+      },
+      # 画像左下
+      left_bottom: %Coordinate{
+        latitude: get_value(info, 440, 16),
+        longitude: get_value(info, 456, 16)
+      },
+      # 画像右下
+      right_bottom: %Coordinate{
+        latitude: get_value(info, 472, 16),
+        longitude: get_value(info, 488, 16)
+      },
+      affine: %Affine{
+        a: get_value(info, 1224, 16),
+        b: get_value(info, 1240, 16),
+        c: get_value(info, 1256, 16),
+        d: get_value(info, 1272, 16)
+      },
+      conversion: %Conversion{
+        x: get_value(info, 1208, 8),
+        y: get_value(info, 1216, 8)
+      },
+      degree: get_value(info, 760, 16),
+      map_degree: get_value(info, 921, 16),
+      datetime:
+        info
+        |> get_string(192, 24)
+        |> then(fn str ->
+          String.slice(str, 0, 4) <>
+            "-" <>
+            String.slice(str, 4, 2) <>
+            "-" <>
+            String.slice(str, 6, 2) <>
+            "T" <>
+            String.slice(str, 8, 2) <>
+            ":" <>
+            String.slice(str, 10, 2) <>
+            ":" <> String.slice(str, 12, 2)
+        end)
+        |> NaiveDateTime.from_iso8601!(),
+      product_id: get_string(info, 128, 16)
+    }
+  end
+end
+```
+
+## NDVIの算出
+
+```elixir
+defmodule NDVI do
+  def read_header(file_path_list) do
+    file_path_list
+    |> Enum.find(fn file -> Path.extname(file) == ".txt" end)
+    |> HeaderInfo.read()
+  end
+
+  def get_band_tensor(file_path_list, prefix) do
+    file_path_list
+    |> Enum.find(fn file ->
+      file
+      |> Path.basename()
+      |> String.starts_with?(prefix)
+    end)
+    |> Evision.imread(flags: Evision.cv_IMREAD_GRAYSCALE())
+    |> Evision.Mat.to_nx(EXLA.Backend)
+  end
+
+  def get_lat_lon(header_info) do
+    ndvi_longitudes = [
+      header_info.left_top.longitude,
+      header_info.right_top.longitude,
+      header_info.left_bottom.longitude,
+      header_info.right_bottom.longitude
+    ]
+
+    ndvi_latitudes = [
+      header_info.left_top.latitude,
+      header_info.right_top.latitude,
+      header_info.left_bottom.latitude,
+      header_info.right_bottom.latitude
+    ]
+
+    ndvi_min_longitude = Enum.min(ndvi_longitudes)
+    ndvi_max_longitude = Enum.max(ndvi_longitudes)
+    ndvi_min_latitude = Enum.min(ndvi_latitudes)
+    ndvi_max_latitude = Enum.max(ndvi_latitudes)
+
+    {ndvi_min_longitude, ndvi_max_longitude, ndvi_min_latitude, ndvi_max_latitude}
+  end
+
+  def wrap_rotate(tensor, degree) do
+    {src_height, src_width} = Nx.shape(tensor)
+
+    affine =
+      {src_width / 2, src_height / 2}
+      |> Evision.getRotationMatrix2D(degree, 1)
+      |> Evision.Mat.to_nx(EXLA.Backend)
+
+    cos = Nx.abs(affine[[0, 0]])
+    sin = Nx.abs(affine[[0, 1]])
+
+    dst_width =
+      Nx.add(Nx.multiply(src_height, sin), Nx.multiply(src_width, cos))
+      |> Nx.to_number()
+      |> trunc()
+
+    dst_height =
+      Nx.add(Nx.multiply(src_height, cos), Nx.multiply(src_width, sin))
+      |> Nx.to_number()
+      |> trunc()
+
+    bias =
+      Nx.tensor([
+        [0, 0, (dst_width - src_width) / 2],
+        [0, 0, (dst_height - src_height) / 2]
+      ])
+
+    new_affine = Nx.add(affine, bias)
+
+    Evision.warpAffine(tensor, new_affine, {dst_width, dst_height})
+  end
+
+  def correct(ndvi_tensor, header_info) do
+    {ndvi_min_longitude, ndvi_max_longitude, _, _} = get_lat_lon(header_info)
+
+    rotated_mat = wrap_rotate(ndvi_tensor, -header_info.degree)
+
+    diff_longitude =
+      header_info.left_top.longitude - header_info.right_top.longitude -
+        (header_info.left_bottom.longitude - header_info.right_bottom.longitude)
+
+    {ndvi_height, ndvi_width} = rotated_mat.shape
+
+    pix_per_longitude = ndvi_width / (ndvi_max_longitude - ndvi_min_longitude)
+
+    diff_x = trunc(diff_longitude / 2 * pix_per_longitude)
+
+    affine =
+      [
+        [1, 0, diff_x],
+        [0, 1, 0]
+      ]
+      |> Nx.tensor()
+      |> Nx.as_type(:f32)
+
+    rotated_mat
+    |> Evision.warpAffine(affine, {ndvi_width, ndvi_height})
+    |> Evision.Mat.to_nx(EXLA.Backend)
+  end
+
+  def calc(file_path_list) do
+    header_info = read_header(file_path_list)
+
+    red_tensor =
+      file_path_list
+      |> get_band_tensor("IMG-03")
+      |> Nx.multiply(header_info.red_band.gain)
+      |> Nx.add(header_info.red_band.offset)
+
+    nir_tensor =
+      file_path_list
+      |> get_band_tensor("IMG-04")
+      |> Nx.multiply(header_info.nir_band.gain)
+      |> Nx.add(header_info.nir_band.offset)
+
+    ndvi_tensor =
+      Nx.select(
+        Nx.multiply(
+          Nx.not_equal(red_tensor, 0),
+          Nx.not_equal(nir_tensor, 0)
+        ),
+        Nx.divide(
+          Nx.subtract(nir_tensor, red_tensor),
+          Nx.add(nir_tensor, red_tensor)
+        ),
+        0
+      )
+      |> correct(header_info)
+
+    {header_info, ndvi_tensor}
+  end
+
+  def to_heatmap(ndvi_tensor) do
+    ndvi_tensor
+    |> Nx.multiply(128)
+    |> Nx.add(128)
+    |> Nx.as_type(:u8)
+    |> Evision.applyColorMap(Evision.cv_COLORMAP_WINTER())
+  end
+end
+```
+
+```elixir
+ndvi_list =
+  scene_id_list
+  |> Enum.map(fn scene_id ->
+    "/tmp/#{scene_id}"
+    |> File.ls!()
+    |> Enum.map(fn filename -> Path.join(["/tmp", scene_id, filename]) end)
+    |> NDVI.calc()
+  end)
+```
+
+```elixir
+{header_info, ndvi_tensor} = Enum.at(ndvi_list, 0)
+
+ndvi_tensor
+|> NDVI.to_heatmap()
+|> Evision.resize({640, 640})
+```
+
+## 筆ポリゴンデータを用意する
+
+農林水産省の筆ポリゴンデータをダウンロードする
+
+※筆の読みは「ふで」
+
+出典: 「筆ポリゴンデータ（2022年度公開）」（農林水産省）（<https://www.maff.go.jp/j/tokei/porigon/>）を加工して作成
+
+```elixir
+json_file = "/tmp/2022_023612.json"
+```
+
+```elixir
+geojson_data =
+  json_file
+  |> File.read!()
+  |> Jason.decode!()
+  |> Geo.JSON.decode!()
+```
+
+```elixir
+# 地図に表示する中心座標を求める
+longitudes =
+  geojson_data.geometries
+  |> Enum.map(& &1.coordinates)
+  |> List.flatten()
+  |> Enum.map(&elem(&1, 0))
+
+latitudes =
+  geojson_data.geometries
+  |> Enum.map(& &1.coordinates)
+  |> List.flatten()
+  |> Enum.map(&elem(&1, 1))
+
+center = {
+  (Enum.min(longitudes) + Enum.max(longitudes)) / 2,
+  (Enum.min(latitudes) + Enum.max(latitudes)) / 2
+}
+```
+
+すべての農地を表示する
+
+```elixir
+city_map =
+  MapLibre.new(center: center, zoom: 11, style: :terrain)
+  |> MapLibre.add_geo_source("geojson", geojson_data)
+  |> MapLibre.add_layer(id: "line", source: "geojson", type: :line)
+```
+
+田んぼだけを対象にする
+
+```elixir
+fields_geojson_data =
+  geojson_data.geometries
+  # 田んぼを指定
+  |> Enum.filter(&(&1.properties["land_type"] == 100))
+  |> then(fn geometries ->
+    %Geo.GeometryCollection{geometries: geometries}
+  end)
+
+fields_map =
+  MapLibre.new(center: center, zoom: 11, style: :terrain)
+  |> MapLibre.add_geo_source("geojson", fields_geojson_data)
+  |> MapLibre.add_layer(id: "line", source: "geojson", type: :line)
+```
+
+## マスク画像による切り抜き
+
+```elixir
+# 全田んぼを含む領域の緯度経度の最大最小
+fields_coordinates =
+  fields_geojson_data.geometries
+  |> Enum.map(& &1.coordinates)
+  |> List.flatten()
+
+fields_longitudes = Enum.map(fields_coordinates, &elem(&1, 0))
+fields_latitudes = Enum.map(fields_coordinates, &elem(&1, 1))
+
+fields_min_longitude = Enum.min(fields_longitudes)
+fields_max_longitude = Enum.max(fields_longitudes)
+fields_min_latitude = Enum.min(fields_latitudes)
+fields_max_latitude = Enum.max(fields_latitudes)
+
+{fields_min_longitude, fields_max_longitude, fields_min_latitude, fields_max_latitude}
+```
+
+```elixir
+# NDVI 画像のサイズ
+{ndvi_height, ndvi_width} = Nx.shape(ndvi_tensor)
+```
+
+```elixir
+# NDVI 画像の緯度経度の最大最小
+{ndvi_min_longitude, ndvi_max_longitude, ndvi_min_latitude, ndvi_max_latitude} =
+  NDVI.get_lat_lon(header_info)
+```
+
+```elixir
+# 緯度経度あたりのピクセル数
+{pix_per_longitude, pix_per_latitude} = {
+  ndvi_width / (ndvi_max_longitude - ndvi_min_longitude),
+  ndvi_height / (ndvi_max_latitude - ndvi_min_latitude)
+}
+```
+
+```elixir
+# 最大最小の差から全田んぼを含む領域のサイズを求める
+fields_width = trunc((fields_max_longitude - fields_min_longitude) * pix_per_longitude)
+fields_height = trunc((fields_max_latitude - fields_min_latitude) * pix_per_latitude)
+
+{fields_width, fields_height}
+```
+
+```elixir
+# NDVI 画像内での相対的な位置を求める
+fields_lft_top_x = trunc((fields_min_longitude - ndvi_min_longitude) * pix_per_longitude)
+fields_lft_top_y = trunc((ndvi_max_latitude - fields_max_latitude) * pix_per_latitude)
+
+{fields_lft_top_x, fields_lft_top_y}
+```
+
+```elixir
+# NDVI 画像から全田んぼを含む領域を切り抜く
+city_tensor =
+  ndvi_tensor[
+    [
+      fields_lft_top_y..(fields_lft_top_y + fields_height - 1),
+      fields_lft_top_x..(fields_lft_top_x + fields_width - 1)
+    ]
+  ]
+
+city_tensor
+|> NDVI.to_heatmap()
+```
+
+```elixir
+# 田んぼの各ポリゴンについて、緯度経度の最小から最大をピクセル数の0から幅・高さにスケールする
+normalized_points =
+  fields_geojson_data.geometries
+  |> Enum.map(& &1.coordinates)
+  |> Enum.map(fn coordinate ->
+    coordinate
+    |> Enum.at(0)
+    |> Enum.map(fn {x, y} ->
+      [
+        trunc((x - fields_min_longitude) * pix_per_longitude),
+        # 縦方向は緯度が北緯の場合逆転するため、高さから引く
+        trunc(fields_height - (y - fields_min_latitude) * pix_per_latitude)
+      ]
+    end)
+    |> Nx.tensor(type: :s32)
+  end)
+```
+
+```elixir
+# 空画像を用意する
+empty_mat =
+  [0, 0, 0, 255]
+  |> Nx.tensor(type: :u8)
+  |> Nx.tile([fields_height, fields_width, 1])
+  |> Evision.Mat.from_nx_2d()
+```
+
+```elixir
+# NDVI 画像にポリゴンを重ねる
+empty_mat
+|> Evision.fillPoly(normalized_points, {1})
+|> Evision.Mat.to_nx(EXLA.Backend)
+|> Nx.slice_along_axis(3, 1, axis: 2)
+|> Nx.tile([3])
+|> Nx.select(0, city_tensor |> NDVI.to_heatmap() |> Evision.Mat.to_nx(EXLA.Backend))
+|> Nx.as_type(:u8)
+|> Evision.Mat.from_nx_2d()
+```
+
+## 田んぼ毎の平均NDVI算出
+
+```elixir
+fileds_mean_ndvi_tensor =
+  normalized_points
+  |> Enum.map(fn field_points ->
+    empty_mat
+    |> Evision.fillPoly([field_points], {1})
+    |> Evision.Mat.to_nx(EXLA.Backend)
+    |> Nx.slice_along_axis(3, 1, axis: 2)
+    |> Nx.squeeze()
+    # 田んぼ内だけで平均する
+    |> Nx.select(0, 1)
+    |> then(&Nx.weighted_mean(city_tensor, &1))
+    |> Nx.new_axis(0)
+  end)
+  |> Nx.concatenate()
+```
+
+NDVI の上位5つと下位5つについて、田んぼの NDVI を可視化する
+
+```elixir
+city_map =
+  city_tensor
+  |> NDVI.to_heatmap()
+  |> Evision.Mat.to_nx(EXLA.Backend)
+
+# NDVI の高い順にインデックスを取得
+ordered = Nx.argsort(fileds_mean_ndvi_tensor, direction: :desc)
+
+# 上位５つと下位5つを取得
+top_and_worst =
+  [ordered[0..4], ordered[-5..-1]]
+  |> Nx.concatenate()
+  |> Nx.to_flat_list()
+
+top_and_worst
+|> Enum.map(fn index ->
+  field_points = Enum.at(normalized_points, index)
+
+  [min_x, min_y] = field_points |> Nx.reduce_min(axes: [0]) |> Nx.to_flat_list()
+  [max_x, max_y] = field_points |> Nx.reduce_max(axes: [0]) |> Nx.to_flat_list()
+
+  empty_mat
+  |> Evision.fillPoly([field_points], {1})
+  |> Evision.Mat.to_nx(EXLA.Backend)
+  |> Nx.slice_along_axis(3, 1, axis: 2)
+  |> Nx.tile([3])
+  |> Nx.select(0, city_map)
+  |> then(& &1[[min_y..max_y, min_x..max_x]])
+  |> Nx.as_type(:u8)
+  |> Evision.Mat.from_nx_2d()
+  |> Evision.resize({(max_x - min_x + 1) * 100, (max_y - min_y + 1) * 100})
+  |> Evision.Mat.to_nx(EXLA.Backend)
+  |> Nx.reverse(axes: [2])
+  |> Kino.Image.new()
+end)
+|> Kino.Layout.grid(columns: 5)
+```
+
+## 時系列による推移
+
+```elixir
+defmodule FieldNDVI do
+  def get_fields_lat_lon(fields_geojson_data) do
+    # 緯度経度の最大最小を求める
+    fields_coordinates =
+      fields_geojson_data.geometries
+      |> Enum.map(& &1.coordinates)
+      |> List.flatten()
+
+    fields_longitudes = Enum.map(fields_coordinates, &elem(&1, 0))
+    fields_latitudes = Enum.map(fields_coordinates, &elem(&1, 1))
+
+    {
+      Enum.min(fields_longitudes),
+      Enum.max(fields_longitudes),
+      Enum.min(fields_latitudes),
+      Enum.max(fields_latitudes)
+    }
+  end
+
+  def get_pix_per_lat_lon(ndvi_tensor, header_info) do
+    {ndvi_height, ndvi_width} = Nx.shape(ndvi_tensor)
+
+    {ndvi_min_longitude, ndvi_max_longitude, ndvi_min_latitude, ndvi_max_latitude} =
+      NDVI.get_lat_lon(header_info)
+
+    {
+      ndvi_width / (ndvi_max_longitude - ndvi_min_longitude),
+      ndvi_height / (ndvi_max_latitude - ndvi_min_latitude)
+    }
+  end
+
+  def get_city_tensor(ndvi_tensor, header_info, fields_geojson_data) do
+    {
+      fields_min_longitude,
+      fields_max_longitude,
+      fields_min_latitude,
+      fields_max_latitude
+    } = get_fields_lat_lon(fields_geojson_data)
+
+    {ndvi_min_longitude, _, _, ndvi_max_latitude} = NDVI.get_lat_lon(header_info)
+
+    {pix_per_longitude, pix_per_latitude} = get_pix_per_lat_lon(ndvi_tensor, header_info)
+
+    {fields_width, fields_height} = {
+      trunc((fields_max_longitude - fields_min_longitude) * pix_per_longitude),
+      trunc((fields_max_latitude - fields_min_latitude) * pix_per_latitude)
+    }
+
+    {fields_lft_top_x, fields_lft_top_y} = {
+      trunc((fields_min_longitude - ndvi_min_longitude) * pix_per_longitude),
+      trunc((ndvi_max_latitude - fields_max_latitude) * pix_per_latitude)
+    }
+
+    ndvi_tensor[
+      [
+        fields_lft_top_y..(fields_lft_top_y + fields_height - 1),
+        fields_lft_top_x..(fields_lft_top_x + fields_width - 1)
+      ]
+    ]
+  end
+
+  def get_normalized_points(ndvi_tensor, header_info, fields_geojson_data) do
+    {
+      fields_min_longitude,
+      fields_max_longitude,
+      fields_min_latitude,
+      _
+    } = get_fields_lat_lon(fields_geojson_data)
+
+    {pix_per_longitude, pix_per_latitude} = get_pix_per_lat_lon(ndvi_tensor, header_info)
+
+    fields_height = trunc((fields_max_longitude - fields_min_longitude) * pix_per_longitude)
+
+    fields_geojson_data.geometries
+    |> Enum.map(& &1.coordinates)
+    |> Enum.map(fn coordinate ->
+      coordinate
+      |> Enum.at(0)
+      |> Enum.map(fn {x, y} ->
+        [
+          trunc((x - fields_min_longitude) * pix_per_longitude),
+          # 縦方向は緯度が北緯の場合逆転するため、高さから引く
+          trunc(fields_height - (y - fields_min_latitude) * pix_per_latitude)
+        ]
+      end)
+      |> Nx.tensor(type: :s32)
+    end)
+  end
+
+  def get_field_mean_ndvi(field_points, city_tensor, empty_mat) do
+    empty_mat
+    |> Evision.fillPoly([field_points], {1})
+    |> Evision.Mat.to_nx(EXLA.Backend)
+    |> Nx.slice_along_axis(3, 1, axis: 2)
+    |> Nx.squeeze()
+    # マスク内だけで平均する
+    |> Nx.select(0, 1)
+    |> then(&Nx.weighted_mean(city_tensor, &1))
+    |> Nx.new_axis(0)
+  end
+
+  def get_fields_mean_ndvi(ndvi_tensor, header_info, fields_geojson_data) do
+    normalized_points = get_normalized_points(ndvi_tensor, header_info, fields_geojson_data)
+
+    city_tensor = get_city_tensor(ndvi_tensor, header_info, fields_geojson_data)
+
+    {fields_height, fields_width} = Nx.shape(city_tensor)
+
+    # 空画像を用意する
+    empty_mat =
+      [0, 0, 0, 255]
+      |> Nx.tensor(type: :u8)
+      |> Nx.tile([fields_height, fields_width, 1])
+      |> Evision.Mat.from_nx_2d()
+
+    normalized_points
+    |> Enum.map(&get_field_mean_ndvi(&1, city_tensor, empty_mat))
+    |> Nx.concatenate()
+  end
+end
+```
+
+```elixir
+fields_mean_ndvi_tensor =
+  ndvi_list
+  |> Enum.map(fn {header_info, ndvi_tensor} ->
+    IO.inspect(header_info.datetime)
+    FieldNDVI.get_fields_mean_ndvi(ndvi_tensor, header_info, fields_geojson_data)
+  end)
+  |> Nx.stack()
+```
+
+田んぼ毎に時間経過に対するNDVIの標準偏差を計算する
+
+* 標準偏差が大きい = ばらつきが大きい = 季節に応じて植物が生えたり枯れたりしている = 耕地や落葉樹林
+* 標準偏差が小さい = ばらつきが小さい = 植物が常にない、または常に生えた状態 = 休耕地や常緑樹林
+
+```elixir
+fields_std_ndvi_tensor = Nx.standard_deviation(fields_mean_ndvi_tensor, axes: [0])
+```
+
+```elixir
+ordered = Nx.argsort(fields_std_ndvi_tensor, direction: :desc)
+```
+
+```elixir
+plot_ndvi = fn mean_ndvi_tensor, title ->
+  plot_data =
+    mean_ndvi_tensor
+    |> Nx.to_flat_list()
+    |> Enum.map(fn index ->
+      ndvi_list
+      |> Enum.with_index()
+      |> Enum.map(fn {{header_info, _}, scene_index} ->
+        %{
+          datetime: header_info.datetime,
+          index: index,
+          ndvi: Nx.to_number(fields_mean_ndvi_tensor[[scene_index, index]])
+        }
+      end)
+    end)
+    |> List.flatten()
+
+  VegaLite.new(width: 700, title: title)
+  |> VegaLite.data_from_values(plot_data)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "datetime", type: :temporal)
+  |> VegaLite.encode_field(:y, "ndvi", type: :quantitative, scale: %{"domain" => [-1.0, 1.0]})
+  |> VegaLite.encode_field(:color, "index", type: :nominal)
+end
+```
+
+NDVI 標準偏差の上位5つと下位5つについて、田んぼの NDVI 推移をグラフ化する
+
+```elixir
+[
+  {ordered[[0..4]], "top"},
+  {ordered[[-5..-1]], "worst"}
+]
+|> Enum.map(fn {tensor, title} -> plot_ndvi.(tensor, title) end)
+|> Kino.Layout.grid()
+```
+
+```elixir
+display_field_ndvi = fn index_list, ndvi_tensor, header_info, fields_geojson_data ->
+  normalized_points =
+    FieldNDVI.get_normalized_points(ndvi_tensor, header_info, fields_geojson_data)
+
+  city_tensor = FieldNDVI.get_city_tensor(ndvi_tensor, header_info, fields_geojson_data)
+
+  city_map =
+    city_tensor
+    |> NDVI.to_heatmap()
+    |> Evision.Mat.to_nx(EXLA.Backend)
+
+  {fields_height, fields_width} = Nx.shape(city_tensor)
+
+  # 空画像を用意する
+  empty_mat =
+    [0, 0, 0, 255]
+    |> Nx.tensor(type: :u8)
+    |> Nx.tile([fields_height, fields_width, 1])
+    |> Evision.Mat.from_nx_2d()
+
+  index_list
+  |> Enum.map(fn index ->
+    field_points = Enum.at(normalized_points, index)
+
+    [min_x, min_y] = field_points |> Nx.reduce_min(axes: [0]) |> Nx.to_flat_list()
+    [max_x, max_y] = field_points |> Nx.reduce_max(axes: [0]) |> Nx.to_flat_list()
+
+    empty_mat
+    |> Evision.fillPoly([field_points], {1})
+    |> Evision.Mat.to_nx(EXLA.Backend)
+    |> Nx.slice_along_axis(3, 1, axis: 2)
+    |> Nx.tile([3])
+    |> Nx.select(0, city_map)
+    |> then(& &1[[min_y..max_y, min_x..max_x]])
+    |> Nx.as_type(:u8)
+    |> Evision.Mat.from_nx_2d()
+    |> Evision.resize({(max_x - min_x + 1) * 100, (max_y - min_y + 1) * 100})
+    |> Evision.Mat.to_nx(EXLA.Backend)
+    |> Nx.reverse(axes: [2])
+    |> Kino.Image.new()
+  end)
+  |> Kino.Layout.grid(columns: 5)
+end
+```
+
+NDVI 標準偏差の上位5つと下位5つについて、田んぼの NDVI 推移を画像として可視化する
+
+```elixir
+top_and_worst =
+  [ordered[0..4], ordered[-5..-1]]
+  |> Nx.concatenate()
+  |> Nx.to_flat_list()
+
+ndvi_list
+|> Enum.map(fn {header_info, ndvi_tensor} ->
+  date =
+    header_info.datetime
+    |> NaiveDateTime.to_iso8601()
+    |> String.slice(0..9)
+
+  display = display_field_ndvi.(top_and_worst, ndvi_tensor, header_info, fields_geojson_data)
+
+  {date, display}
+end)
+|> Kino.Layout.tabs()
+```
