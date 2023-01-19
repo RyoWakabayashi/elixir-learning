@@ -1,0 +1,548 @@
+# Tellus から標高データを取得する
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.4"},
+    {:evision, "~> 0.1"},
+    {:exla, "~> 0.4"},
+    {:req, "~> 0.3"},
+    {:kino, "~> 0.8"},
+    {:kino_maplibre, "~> 0.1"},
+    {:kino_vega_lite, "~> 0.1"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## 著作権表記
+
+Credit: ASTER GDEM is courtesy of METI and NASA
+
+## 情報の設定
+
+```elixir
+# Tellus のトークンを入力する
+token_input = Kino.Input.password("Token")
+```
+
+## Tellus Traveler からデータを探す
+
+Tellus Satellite Data Traveler API を使用する
+
+API 仕様: https://www.tellusxdp.com/docs/travelers/
+
+<!-- livebook:{"break_markdown":true} -->
+
+### データセットの選択
+
+```elixir
+defmodule TellusTraveler do
+  @base_path "https://www.tellusxdp.com/api/traveler/v1"
+  @data_path "#{@base_path}/datasets"
+
+  defp get_headers(token) do
+    %{
+      "Authorization" => "Bearer #{token}",
+      "Content-Type" => "application/json"
+    }
+  end
+
+  def get_datasets(token, is_order_required) do
+    url = "#{@data_path}/?is_order_required=#{is_order_required}"
+    headers = get_headers(token)
+
+    url
+    |> Req.get!(headers: headers)
+    |> then(& &1.body["results"])
+  end
+
+  def get_dataset(token, dataset_id) do
+    url = "#{@data_path}/#{dataset_id}/"
+    headers = get_headers(token)
+
+    url
+    |> Req.get!(headers: headers)
+    |> then(& &1.body)
+  end
+
+  def search(token, dataset_id, coordinates) do
+    url =
+      if is_list(dataset_id) do
+        "#{@base_path}/data-search/"
+      else
+        "#{@data_path}/#{dataset_id}/data-search/"
+      end
+
+    headers = get_headers(token)
+
+    request_body =
+      %{
+        intersects: %{
+          type: "Polygon",
+          coordinates: coordinates
+        },
+        query: %{},
+        sortby: [
+          %{
+            field: "properties.start_datetime",
+            direction: "asc"
+          }
+        ]
+      }
+      |> Map.merge(
+        if is_list(dataset_id) do
+          %{datasets: dataset_id}
+        else
+          %{}
+        end
+      )
+      |> Jason.encode!()
+
+    url
+    |> Req.post!(body: request_body, headers: headers)
+    |> then(& &1.body["features"])
+  end
+
+  def get_data_files(token, dataset_id, data_id) do
+    url = "#{@data_path}/#{dataset_id}/data/#{data_id}/files/"
+    headers = get_headers(token)
+
+    url
+    |> Req.get!(headers: headers)
+    |> then(& &1.body["results"])
+  end
+
+  defp get_data_file_download_url(token, dataset_id, data_id, file_id) do
+    url = "#{@data_path}/#{dataset_id}/data/#{data_id}/files/#{file_id}/download-url/"
+    headers = get_headers(token)
+
+    url
+    |> Req.post!(headers: headers)
+    |> then(& &1.body["download_url"])
+  end
+
+  def download(token, dataset_id, scene_id, dist \\ "/tmp/") do
+    [dist, scene_id]
+    |> Path.join()
+    |> File.mkdir_p()
+
+    token
+    |> get_data_files(dataset_id, scene_id)
+    |> Enum.map(fn file ->
+      file_path = Path.join([dist, scene_id, file["name"]])
+
+      unless File.exists?(file_path) do
+        token
+        |> get_data_file_download_url(dataset_id, scene_id, file["id"])
+        |> Req.get!(output: file_path)
+      end
+
+      file_path
+    end)
+  end
+end
+```
+
+```elixir
+datasets =
+  token_input
+  |> Kino.Input.read()
+  |> TellusTraveler.get_datasets(false)
+```
+
+```elixir
+elevation_datasets =
+  datasets
+  |> Enum.filter(fn dataset ->
+    dataset["permission"]["allow_network_type"] == "global" &&
+      String.contains?(dataset["description"], "標高")
+  end)
+
+Kino.DataTable.new(elevation_datasets, keys: ["name", "id", "description"])
+```
+
+```elixir
+dataset_id = "3f865d0b-6410-453f-b124-e0bf48544b45"
+```
+
+### シーンの選択
+
+```elixir
+mt_fuji_location = {138.73, 35.36}
+```
+
+```elixir
+mt_fuji_rectangle = [
+  [
+    [elem(mt_fuji_location, 0) - 0.001, elem(mt_fuji_location, 1) - 0.001],
+    [elem(mt_fuji_location, 0) + 0.001, elem(mt_fuji_location, 1) - 0.001],
+    [elem(mt_fuji_location, 0) + 0.001, elem(mt_fuji_location, 1) + 0.001],
+    [elem(mt_fuji_location, 0) - 0.001, elem(mt_fuji_location, 1) + 0.001],
+    [elem(mt_fuji_location, 0) - 0.001, elem(mt_fuji_location, 1) - 0.001]
+  ]
+]
+```
+
+```elixir
+scenes_list =
+  token_input
+  |> Kino.Input.read()
+  |> TellusTraveler.search(dataset_id, mt_fuji_rectangle)
+```
+
+```elixir
+mt_fuji_scene_id =
+  scenes_list
+  |> Enum.at(0)
+  |> then(& &1["id"])
+```
+
+## データのダウンロード
+
+```elixir
+token_input
+|> Kino.Input.read()
+|> TellusTraveler.download(dataset_id, mt_fuji_scene_id)
+```
+
+## ダウンロードした画像を表示する
+
+```elixir
+"/tmp/#{mt_fuji_scene_id}"
+|> File.ls!()
+|> Enum.filter(fn filename -> Path.extname(filename) != ".txt" end)
+|> Enum.sort()
+|> Enum.map(fn filename ->
+  ["/tmp", mt_fuji_scene_id, filename]
+  |> Path.join()
+  # 色が 16bit で格納されているため、 IMREAD_ANYDEPTH と IMREAD_ANYCOLOR を指定する
+  |> Evision.imread(flags: Evision.cv_IMREAD_ANYDEPTH() + Evision.cv_IMREAD_ANYCOLOR())
+  # 大きすぎるのでリサイズ
+  |> Evision.resize({640, 640})
+end)
+|> Kino.Layout.grid(columns: 2)
+```
+
+```elixir
+mt_fuji_dem =
+  "/tmp/#{mt_fuji_scene_id}"
+  |> File.ls!()
+  |> Enum.find(fn filename -> String.ends_with?(filename, "_dem.tif") end)
+  |> then(&Path.join(["/tmp", mt_fuji_scene_id, &1]))
+  |> Evision.imread(flags: Evision.cv_IMREAD_ANYDEPTH() + Evision.cv_IMREAD_ANYCOLOR())
+  |> Evision.Mat.to_nx(EXLA.Backend)
+```
+
+```elixir
+{mt_fuji_min_dig, mt_fuji_max_dig} = {
+  mt_fuji_dem |> Nx.reduce_min() |> Nx.to_number(),
+  mt_fuji_dem |> Nx.reduce_max() |> Nx.to_number()
+}
+```
+
+```elixir
+mt_fuji_dem_u8 =
+  mt_fuji_dem
+  |> Nx.subtract(mt_fuji_min_dig)
+  |> Nx.multiply(255 / (mt_fuji_max_dig - mt_fuji_min_dig))
+  |> Nx.as_type(:u8)
+
+Evision.resize(mt_fuji_dem_u8, {640, 640})
+```
+
+```elixir
+mt_fuji_dem_color = Evision.applyColorMap(mt_fuji_dem_u8, Evision.cv_COLORMAP_JET())
+
+Evision.resize(mt_fuji_dem_color, {640, 640})
+```
+
+## 標高をグラフ化する
+
+```elixir
+display_elevation_at_x = fn dem, x_index, width, max_y ->
+  plot_data =
+    dem[[x_index]]
+    |> Nx.to_flat_list()
+    |> Enum.with_index()
+    |> Enum.map(fn {elevation, index} ->
+      %{
+        elevation: elevation,
+        index: index
+      }
+    end)
+
+  x_scale = %{"domain" => [0, 3601]}
+  y_scale = %{"domain" => [-500, max_y]}
+
+  VegaLite.new(width: width)
+  |> VegaLite.data_from_values(plot_data)
+  |> VegaLite.mark(:area)
+  |> VegaLite.encode_field(:x, "index", type: :quantitative, scale: x_scale)
+  |> VegaLite.encode_field(:y, "elevation", type: :quantitative, scale: y_scale)
+end
+```
+
+```elixir
+display_elevation_at_x.(mt_fuji_dem, 0, 700, 4000)
+```
+
+```elixir
+max_index = mt_fuji_dem |> Nx.argmax() |> Nx.to_number()
+
+max_x_index = div(max_index, 3601)
+max_y_index = max_index - max_x_index * 3601
+
+{max_x_index, max_y_index}
+```
+
+```elixir
+mt_fuji_dem[[max_x_index, max_y_index]]
+```
+
+```elixir
+display_elevation_at_x.(mt_fuji_dem, max_x_index, 700, 4000)
+```
+
+## グラフをアニメーションにする
+
+```elixir
+x_scale = %{"domain" => [0, 3601]}
+y_scale = %{"domain" => [-500, 4000]}
+
+widget =
+  VegaLite.new(width: 700)
+  |> VegaLite.mark(:area)
+  |> VegaLite.encode_field(:x, "index", type: :quantitative, scale: x_scale)
+  |> VegaLite.encode_field(:y, "elevation", type: :quantitative, scale: y_scale)
+  |> Kino.VegaLite.new()
+```
+
+```elixir
+animate = fn dem, x_index ->
+  plot_data =
+    dem[[x_index]]
+    |> Nx.to_flat_list()
+    |> Enum.with_index()
+    |> Enum.map(fn {elevation, y_index} ->
+      %{
+        elevation: elevation,
+        index: y_index
+      }
+    end)
+
+  Kino.VegaLite.clear(widget)
+  Kino.VegaLite.push_many(widget, plot_data)
+end
+```
+
+```elixir
+0..3600//20
+|> Enum.map(fn x_index ->
+  animate.(mt_fuji_dem, x_index)
+  Process.sleep(100)
+end)
+```
+
+## 富士山と大分市を比較する
+
+```elixir
+get_scene_id = fn location ->
+  rectangle = [
+    [
+      [elem(location, 0) - 0.001, elem(location, 1) - 0.001],
+      [elem(location, 0) + 0.001, elem(location, 1) - 0.001],
+      [elem(location, 0) + 0.001, elem(location, 1) + 0.001],
+      [elem(location, 0) - 0.001, elem(location, 1) + 0.001],
+      [elem(location, 0) - 0.001, elem(location, 1) - 0.001]
+    ]
+  ]
+
+  scenes_list =
+    token_input
+    |> Kino.Input.read()
+    |> TellusTraveler.search(dataset_id, rectangle)
+
+  scenes_list
+  |> Enum.at(0)
+  |> then(& &1["id"])
+end
+```
+
+```elixir
+oita_location = {131.64, 33.20}
+```
+
+```elixir
+oita_scene_id = get_scene_id.(oita_location)
+```
+
+```elixir
+token_input
+|> Kino.Input.read()
+|> TellusTraveler.download(dataset_id, oita_scene_id)
+```
+
+```elixir
+oita_dem =
+  "/tmp/#{oita_scene_id}"
+  |> File.ls!()
+  |> Enum.find(fn filename -> String.ends_with?(filename, "_dem.tif") end)
+  |> then(&Path.join(["/tmp", oita_scene_id, &1]))
+  |> Evision.imread(flags: Evision.cv_IMREAD_ANYDEPTH() + Evision.cv_IMREAD_ANYCOLOR())
+  |> Evision.Mat.to_nx(EXLA.Backend)
+
+oita_dem_u8 =
+  oita_dem
+  |> Nx.subtract(mt_fuji_min_dig)
+  |> Nx.multiply(255 / (mt_fuji_max_dig - mt_fuji_min_dig))
+  |> Nx.as_type(:u8)
+
+oita_dem_color = Evision.applyColorMap(oita_dem_u8, Evision.cv_COLORMAP_JET())
+
+[mt_fuji_dem_color, oita_dem_color]
+|> Kino.Layout.grid(columns: 2)
+```
+
+```elixir
+oita_max_index = oita_dem |> Nx.argmax() |> Nx.to_number()
+oita_max_x_index = div(oita_max_index, 3601)
+
+[
+  display_elevation_at_x.(mt_fuji_dem, max_x_index, 300, 4000),
+  display_elevation_at_x.(oita_dem, oita_max_x_index, 300, 4000)
+]
+|> Kino.Layout.grid(columns: 2)
+```
+
+## 富士山とエベレストを比較する
+
+```elixir
+mt_everest_location = {86.92, 27.99}
+```
+
+```elixir
+mt_everest_scene_id = get_scene_id.(mt_everest_location)
+```
+
+```elixir
+token_input
+|> Kino.Input.read()
+|> TellusTraveler.download(dataset_id, mt_everest_scene_id)
+```
+
+```elixir
+mt_everest_dem =
+  "/tmp/#{mt_everest_scene_id}"
+  |> File.ls!()
+  |> Enum.find(fn filename -> String.ends_with?(filename, "_dem.tif") end)
+  |> then(&Path.join(["/tmp", mt_everest_scene_id, &1]))
+  |> Evision.imread(flags: Evision.cv_IMREAD_ANYDEPTH() + Evision.cv_IMREAD_ANYCOLOR())
+  |> Evision.Mat.to_nx(EXLA.Backend)
+
+{mt_everest_min_dig, mt_everest_max_dig} = {
+  mt_everest_dem |> Nx.reduce_min() |> Nx.to_number(),
+  mt_everest_dem |> Nx.reduce_max() |> Nx.to_number()
+}
+```
+
+```elixir
+min_dig = Enum.min([mt_fuji_min_dig, mt_everest_min_dig])
+max_dig = Enum.max([mt_fuji_max_dig, mt_everest_max_dig])
+
+{min_dig, max_dig}
+```
+
+```elixir
+get_heatmap = fn dem, min_dig, max_dig ->
+  dem
+  |> Nx.subtract(min_dig)
+  |> Nx.multiply(256 / (max_dig - min_dig))
+  |> Nx.as_type(:u8)
+  |> Evision.applyColorMap(Evision.cv_COLORMAP_JET())
+end
+```
+
+```elixir
+[
+  get_heatmap.(mt_everest_dem, min_dig, max_dig),
+  get_heatmap.(mt_fuji_dem, min_dig, max_dig),
+  get_heatmap.(oita_dem, min_dig, max_dig)
+]
+|> Kino.Layout.grid(columns: 3)
+```
+
+```elixir
+mt_everest_max_x_index =
+  mt_everest_dem
+  |> Nx.argmax()
+  |> Nx.to_number()
+  |> div(3601)
+
+[
+  display_elevation_at_x.(mt_everest_dem, mt_everest_max_x_index, 200, 9000),
+  display_elevation_at_x.(mt_fuji_dem, max_x_index, 200, 9000),
+  display_elevation_at_x.(oita_dem, oita_max_x_index, 200, 9000)
+]
+|> Kino.Layout.grid(columns: 3)
+```
+
+## 海面上昇シミュレーション
+
+```elixir
+alpha =
+  Nx.logical_and(Nx.greater(oita_dem, 0), Nx.less_equal(oita_dem, 10))
+  |> Nx.select(255, 0)
+  |> Nx.new_axis(-1)
+
+alpha
+|> Nx.as_type(:u8)
+|> Evision.Mat.from_nx_2d()
+|> Evision.resize({640, 640})
+```
+
+```elixir
+bgra =
+  [0, 0, 255]
+  |> Nx.tensor()
+  |> Nx.tile([3601, 3601, 1])
+  |> then(&Nx.concatenate([&1, alpha], axis: 2))
+  |> Nx.as_type(:u8)
+  |> Evision.Mat.from_nx_2d()
+
+Evision.resize(bgra, {640, 640})
+```
+
+```elixir
+get_data_url = fn mat ->
+  Evision.imencode(".png", mat)
+  |> Base.encode64()
+  |> then(&"data:image/png;base64,#{&1}")
+end
+```
+
+```elixir
+center = {131.5, 33.5}
+
+coordinates = [
+  [131 - 1 / 3600 / 2, 34 - 9 / 3600 / 2],
+  [132 + 1 / 3600 / 2, 34 - 9 / 3600 / 2],
+  [132 + 1 / 3600 / 2, 33 - 11 / 3600 / 2],
+  [131 - 1 / 3600 / 2, 33 - 11 / 3600 / 2]
+]
+
+img_base64 = get_data_url.(bgra)
+
+MapLibre.new(center: center, zoom: 8, style: :terrain)
+|> MapLibre.add_source("image", type: :image, url: img_base64, coordinates: coordinates)
+|> MapLibre.add_layer(
+  id: "overlay",
+  source: "image",
+  type: :raster,
+  paint: %{"raster-opacity" => 0.5}
+)
+```
