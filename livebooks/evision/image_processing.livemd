@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:httpoison, "~> 1.8"},
+  {:req, "~> 0.3"},
   {:evision, "~> 0.1"},
   {:kino, "~> 0.8"},
   {:nx, "~> 0.4"}
@@ -33,7 +33,7 @@ Mix.install([
 # Evision のマトリックスに変換
 |> Evision.Mat.from_nx_2d()
 # 見やすいように拡大
-|> Evision.resize({300, 300}, interpolation: Evision.cv_INTER_AREA())
+|> Evision.resize({300, 300}, interpolation: Evision.Constant.cv_INTER_AREA())
 ```
 
 ## 画像のダウンロード
@@ -41,14 +41,12 @@ Mix.install([
 ```elixir
 img_binary =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
-  |> HTTPoison.get!()
+  |> Req.get!()
   |> then(& &1.body)
 ```
 
 ```elixir
-img =
-  img_binary
-  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+img = Evision.imdecode(img_binary, Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ## 画像の書込
@@ -84,11 +82,11 @@ Evision.resize(img, {256, 128})
 ## グレースケール
 
 ```elixir
-Evision.imread(lenna_path, flags: Evision.cv_IMREAD_GRAYSCALE())
+Evision.imread(lenna_path, flags: Evision.Constant.cv_IMREAD_GRAYSCALE())
 ```
 
 ```elixir
-Evision.cvtColor(img, Evision.cv_COLOR_BGR2GRAY())
+Evision.cvtColor(img, Evision.Constant.cv_COLOR_BGR2GRAY())
 ```
 
 ## 二値化
@@ -96,8 +94,8 @@ Evision.cvtColor(img, Evision.cv_COLOR_BGR2GRAY())
 ```elixir
 {threshold, mono_img} =
   lenna_path
-  |> Evision.imread(flags: Evision.cv_IMREAD_GRAYSCALE())
-  |> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
+  |> Evision.imread(flags: Evision.Constant.cv_IMREAD_GRAYSCALE())
+  |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
 
 IO.inspect(threshold)
 
@@ -112,8 +110,7 @@ affine =
     [1, 0, 100],
     [0, 1, 50]
   ]
-  |> Nx.tensor(type: {:f, 32})
-  |> Evision.Mat.from_nx()
+  |> Nx.tensor(type: :f32)
 
 Evision.warpAffine(img, affine, {512, 512})
 ```
@@ -183,7 +180,7 @@ img
   # 線の太さ
   thickness: 12,
   # 線の引き方（角がギザギザになる）
-  lineType: Evision.cv_LINE_4()
+  lineType: Evision.Constant.cv_LINE_4()
 )
 |> Evision.rectangle(
   # 左上{x, y}
@@ -195,7 +192,7 @@ img
   # 線の太さ
   thickness: 12,
   # 線の引き方（角が滑らかになる）
-  lineType: Evision.cv_LINE_AA()
+  lineType: Evision.Constant.cv_LINE_AA()
 )
 |> Evision.rectangle(
   # 左上{x, y}
@@ -268,7 +265,7 @@ img
   # 左下{x, y}
   {150, 200},
   # フォント種類
-  Evision.cv_FONT_HERSHEY_SIMPLEX(),
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
   # フォントサイズ
   2.5,
   # 文字色

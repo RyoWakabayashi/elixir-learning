@@ -6,8 +6,7 @@ Mix.install(
     {:exla, "~> 0.4"},
     {:axon_onnx, "~> 0.3"},
     {:stb_image, "~> 0.6"},
-    {:httpoison, "~> 1.8"},
-    {:jason, "~> 1.4"},
+    {:req, "~> 0.3"},
     {:kino, "~> 0.8"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
@@ -19,8 +18,8 @@ Mix.install(
 ```elixir
 classes =
   "https://s3.amazonaws.com/deep-learning-models/image-models/imagenet_class_index.json"
-  |> HTTPoison.get!()
-  |> then(&Jason.decode!(&1.body))
+  |> Req.get!()
+  |> then(& &1.body)
 ```
 
 ```elixir
@@ -28,8 +27,7 @@ model_path = "/data/resnet.onnx"
 
 unless File.exists?(model_path) do
   "https://media.githubusercontent.com/media/onnx/models/main/vision/classification/resnet/model/resnet18-v1-7.onnx"
-  |> HTTPoison.get!(receive_timeout: 300_000)
-  |> then(&File.write!(model_path, &1.body))
+  |> Req.get!(connect_options: [timeout: 300_000], output: model_path)
 end
 
 {model, params} = AxonOnnx.import(model_path)
@@ -40,7 +38,7 @@ img_path = "/data/shark.jpg"
 
 img_tensor =
   "https://www.collinsdictionary.com/images/full/greatwhiteshark_157273892.jpg"
-  |> HTTPoison.get!()
+  |> Req.get!()
   |> then(&StbImage.read_binary!(&1.body))
   |> StbImage.to_nx()
 

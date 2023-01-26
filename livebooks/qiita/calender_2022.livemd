@@ -3,8 +3,8 @@
 ```elixir
 Mix.install([
   {:req, "~> 0.3"},
-  {:floki, "~> 0.34"},
-  {:explorer, "~> 0.4"},
+  {:req_easyhtml, "~> 0.1"},
+  {:explorer, "~> 0.5"},
   {:kino, "~> 0.8"},
   {:kino_vega_lite, "~> 0.1"}
 ])
@@ -15,21 +15,23 @@ Mix.install([
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
-alias VegaLite, as: Vl
 require Explorer.DataFrame
 ```
 
 ## カレンダーデータの取得
 
 ```elixir
+req =
+  Req.new(http_errors: :raise)
+  |> ReqEasyHTML.attach()
+```
+
+```elixir
 calendar_df =
-  "https://qiita.com/advent-calendar/2022/elixir"
-  |> Req.get!()
-  |> then(& &1.body)
-  |> Floki.parse_document!()
-  |> Floki.find("[data-js-react-on-rails-store=AppStoreWithReactOnRails]")
-  |> Enum.at(0)
-  |> elem(2)
+  req
+  |> Req.get!(url: "https://qiita.com/advent-calendar/2022/elixir")
+  |> then(& &1.body["[data-js-react-on-rails-store=AppStoreWithReactOnRails]"].nodes())
+  |> Floki.text(js: true)
   |> Jason.decode!()
   |> get_in(["adventCalendars", "tableAdventCalendars"])
   |> Enum.at(0)
@@ -59,20 +61,9 @@ calendar_df
 x = Series.to_list(calendar_df["name"])
 y = Series.to_list(calendar_df["count"])
 
-Vl.new(width: 800, height: 400)
-|> Vl.data_from_values(x: x, y: y)
-|> Vl.mark(:bar)
-|> Vl.encode_field(
-  :x,
-  "x",
-  type: :nominal,
-  sort: "-y",
-  title: "アカウント名"
-)
-|> Vl.encode_field(
-  :y,
-  "y",
-  type: :quantitative,
-  title: "記事数"
-)
+VegaLite.new(width: 800, height: 400)
+|> VegaLite.data_from_values(x: x, y: y)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(:x, "x", type: :nominal, sort: "-y", title: "アカウント名")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "記事数")
 ```

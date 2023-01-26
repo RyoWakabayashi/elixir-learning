@@ -7,9 +7,9 @@ Mix.install([
   {:poison, "~> 5.0"},
   {:hackney, "~> 1.18"},
   {:sweet_xml, "~> 0.7"},
-  {:explorer, "~> 0.4"},
+  {:explorer, "~> 0.5"},
   {:evision, "~> 0.1"},
-  {:download, "~> 0.0.4"},
+  {:req, "~> 0.3"},
   {:kino, "~> 0.8"}
 ])
 ```
@@ -50,15 +50,11 @@ auth_config = [
 ## 物体検出
 
 ```elixir
-File.rm("Lenna_%28test_image%29.png")
-
-lenna =
-  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
-  |> elem(1)
-```
-
-```elixir
-lenna_mat = Evision.imread(lenna)
+lenna_mat =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ```elixir
@@ -88,17 +84,14 @@ detections_df =
   end)
   |> DataFrame.new()
 
-detections_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(detections_df)
 ```
 
 ```elixir
 detections_df =
-  detections_df
-  |> DataFrame.distinct(["left", "top", "width", "height"], keep_all: true)
+  DataFrame.distinct(detections_df, ["left", "top", "width", "height"], keep_all: true)
 
-detections_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(detections_df)
 ```
 
 ```elixir
@@ -125,7 +118,7 @@ detections_df
   |> Evision.putText(
     label,
     {left + 6, top + 26},
-    Evision.cv_FONT_HERSHEY_SIMPLEX(),
+    Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
     0.8,
     {0, 0, 255},
     thickness: 2
@@ -175,7 +168,7 @@ show_objects = fn input_mat ->
     |> Evision.putText(
       label,
       {left + 6, top + 26},
-      Evision.cv_FONT_HERSHEY_SIMPLEX(),
+      Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
       0.8,
       {0, 0, 255},
       thickness: 2
@@ -185,15 +178,11 @@ end
 ```
 
 ```elixir
-File.rm("dog.jpg")
-
-dog =
-  Download.from("https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg")
-  |> elem(1)
-```
-
-```elixir
-dog_mat = Evision.imread(dog)
+dog_mat =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ```elixir

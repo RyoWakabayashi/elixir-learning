@@ -221,7 +221,9 @@ token_input
   ["/tmp", mt_fuji_scene_id, filename]
   |> Path.join()
   # 色が 16bit で格納されているため、 IMREAD_ANYDEPTH と IMREAD_ANYCOLOR を指定する
-  |> Evision.imread(flags: Evision.cv_IMREAD_ANYDEPTH() + Evision.cv_IMREAD_ANYCOLOR())
+  |> Evision.imread(
+    flags: Evision.Constant.cv_IMREAD_ANYDEPTH() + Evision.Constant.cv_IMREAD_ANYCOLOR()
+  )
   # 大きすぎるのでリサイズ
   |> Evision.resize({640, 640})
 end)
@@ -234,7 +236,9 @@ mt_fuji_dem =
   |> File.ls!()
   |> Enum.find(fn filename -> String.ends_with?(filename, "_dem.tif") end)
   |> then(&Path.join(["/tmp", mt_fuji_scene_id, &1]))
-  |> Evision.imread(flags: Evision.cv_IMREAD_ANYDEPTH() + Evision.cv_IMREAD_ANYCOLOR())
+  |> Evision.imread(
+    flags: Evision.Constant.cv_IMREAD_ANYDEPTH() + Evision.Constant.cv_IMREAD_ANYCOLOR()
+  )
   |> Evision.Mat.to_nx(EXLA.Backend)
 ```
 
@@ -256,7 +260,7 @@ Evision.resize(mt_fuji_dem_u8, {640, 640})
 ```
 
 ```elixir
-mt_fuji_dem_color = Evision.applyColorMap(mt_fuji_dem_u8, Evision.cv_COLORMAP_JET())
+mt_fuji_dem_color = Evision.applyColorMap(mt_fuji_dem_u8, Evision.Constant.cv_COLORMAP_JET())
 
 Evision.resize(mt_fuji_dem_color, {640, 640})
 ```
@@ -393,7 +397,9 @@ oita_dem =
   |> File.ls!()
   |> Enum.find(fn filename -> String.ends_with?(filename, "_dem.tif") end)
   |> then(&Path.join(["/tmp", oita_scene_id, &1]))
-  |> Evision.imread(flags: Evision.cv_IMREAD_ANYDEPTH() + Evision.cv_IMREAD_ANYCOLOR())
+  |> Evision.imread(
+    flags: Evision.Constant.cv_IMREAD_ANYDEPTH() + Evision.Constant.cv_IMREAD_ANYCOLOR()
+  )
   |> Evision.Mat.to_nx(EXLA.Backend)
 
 oita_dem_u8 =
@@ -402,7 +408,7 @@ oita_dem_u8 =
   |> Nx.multiply(255 / (mt_fuji_max_dig - mt_fuji_min_dig))
   |> Nx.as_type(:u8)
 
-oita_dem_color = Evision.applyColorMap(oita_dem_u8, Evision.cv_COLORMAP_JET())
+oita_dem_color = Evision.applyColorMap(oita_dem_u8, Evision.Constant.cv_COLORMAP_JET())
 
 [mt_fuji_dem_color, oita_dem_color]
 |> Kino.Layout.grid(columns: 2)
@@ -441,7 +447,9 @@ mt_everest_dem =
   |> File.ls!()
   |> Enum.find(fn filename -> String.ends_with?(filename, "_dem.tif") end)
   |> then(&Path.join(["/tmp", mt_everest_scene_id, &1]))
-  |> Evision.imread(flags: Evision.cv_IMREAD_ANYDEPTH() + Evision.cv_IMREAD_ANYCOLOR())
+  |> Evision.imread(
+    flags: Evision.Constant.cv_IMREAD_ANYDEPTH() + Evision.Constant.cv_IMREAD_ANYCOLOR()
+  )
   |> Evision.Mat.to_nx(EXLA.Backend)
 
 {mt_everest_min_dig, mt_everest_max_dig} = {
@@ -463,7 +471,7 @@ get_heatmap = fn dem, min_dig, max_dig ->
   |> Nx.subtract(min_dig)
   |> Nx.multiply(256 / (max_dig - min_dig))
   |> Nx.as_type(:u8)
-  |> Evision.applyColorMap(Evision.cv_COLORMAP_JET())
+  |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_JET())
 end
 ```
 

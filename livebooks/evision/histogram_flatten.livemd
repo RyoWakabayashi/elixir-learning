@@ -17,13 +17,13 @@ img =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
   |> Req.get!()
   |> then(& &1.body)
-  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ## グレースケールの場合
 
 ```elixir
-gray_img = Evision.cvtColor(img, Evision.cv_COLOR_BGR2GRAY())
+gray_img = Evision.cvtColor(img, Evision.Constant.cv_COLOR_BGR2GRAY())
 ```
 
 ピクセル値のヒストグラムをグラフ化
@@ -69,7 +69,7 @@ VegaLite.new()
 BGR から HSV に変換し、明度情報だけをヒストグラム平坦化する
 
 ```elixir
-hsv_img = Evision.cvtColor(img, Evision.cv_COLOR_BGR2HSV())
+hsv_img = Evision.cvtColor(img, Evision.Constant.cv_COLOR_BGR2HSV())
 ```
 
 ```elixir
@@ -106,7 +106,7 @@ equalized_img =
   [hs, equalized_value]
   |> Nx.concatenate(axis: 2)
   |> Evision.Mat.from_nx_2d()
-  |> Evision.cvtColor(Evision.cv_COLOR_HSV2BGR())
+  |> Evision.cvtColor(Evision.Constant.cv_COLOR_HSV2BGR())
 ```
 
 ```elixir

@@ -2,9 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:httpoison, "~> 1.8"},
-  {:json, "~> 1.4"},
-  {:explorer, "~> 0.4"},
+  {:req, "~> 0.3"},
+  {:explorer, "~> 0.5"},
   {:kino, "~> 0.8"},
   {:kino_vega_lite, "~> 0.1"}
 ])
@@ -24,7 +23,6 @@ base_url = "https://qiita.com/api/v2"
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
-alias VegaLite, as: Vl
 require Explorer.DataFrame
 ```
 
@@ -38,8 +36,8 @@ auth_header = {"Authorization", "Bearer #{Kino.Input.read(token_input)}"}
 ```elixir
 articles =
   "#{base_url}/authenticated_user/items"
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body)
 ```
 
 ```elixir
@@ -68,8 +66,8 @@ defmodule Qiita do
   @spec get_articles(integer, tuple) :: list
   def get_articles(page, auth_header) do
     "#{@base_url}/authenticated_user/items?page=#{page}"
-    |> HTTPoison.get!([auth_header])
-    |> then(&JSON.decode!(&1.body))
+    |> Req.get!(headers: [auth_header])
+    |> then(& &1.body)
   end
 
   @doc """
@@ -170,33 +168,17 @@ qiita_df =
     "length"
   ])
 
-qiita_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(qiita_df)
 ```
 
 ## 記事一覧を分析する
 
 ```elixir
 qiita_df
-|> DataFrame.group_by(["private"])
-|> DataFrame.summarise(
-  page_views_count_sum: sum(page_views_count),
-  page_views_count_mean: mean(page_views_count),
-  page_views_count_max: max(page_views_count),
-  page_views_count_min: min(page_views_count),
-  likes_count_sum: sum(likes_count),
-  likes_count_mean: mean(likes_count),
-  likes_count_max: max(likes_count),
-  likes_count_min: min(likes_count),
-  stocks_count_sum: sum(stocks_count),
-  stocks_count_mean: mean(stocks_count),
-  stocks_count_max: max(stocks_count),
-  stocks_count_min: min(stocks_count)
-)
 |> DataFrame.filter(private == false)
-|> DataFrame.to_columns()
-|> Map.drop(["private"])
-|> dbg()
+|> DataFrame.select(["page_views_count", "likes_count", "stocks_count"])
+|> DataFrame.describe()
+|> Kino.DataTable.new()
 ```
 
 ```elixir
@@ -248,10 +230,10 @@ end
 x = get_values.(qiita_df, "title")
 y = get_values.(qiita_df, "page_views_count")
 
-Vl.new(width: 800, height: 400)
-|> Vl.data_from_values(x: x, y: y)
-|> Vl.mark(:bar)
-|> Vl.encode_field(
+VegaLite.new(width: 800, height: 400)
+|> VegaLite.data_from_values(x: x, y: y)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(
   :x,
   "x",
   type: :nominal,
@@ -259,7 +241,7 @@ Vl.new(width: 800, height: 400)
   # 閲覧数の降順に並べる
   sort: %{"field" => "y", "order" => "descending"}
 )
-|> Vl.encode_field(
+|> VegaLite.encode_field(
   :y,
   "y",
   type: :quantitative,
@@ -271,17 +253,17 @@ Vl.new(width: 800, height: 400)
 x = get_values.(qiita_df, "title")
 y = get_values.(qiita_df, "likes_count")
 
-Vl.new(width: 800, height: 400)
-|> Vl.data_from_values(x: x, y: y)
-|> Vl.mark(:bar)
-|> Vl.encode_field(
+VegaLite.new(width: 800, height: 400)
+|> VegaLite.data_from_values(x: x, y: y)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(
   :x,
   "x",
   type: :nominal,
   title: "title",
   sort: %{"field" => "y", "order" => "descending"}
 )
-|> Vl.encode_field(
+|> VegaLite.encode_field(
   :y,
   "y",
   type: :quantitative,
@@ -293,16 +275,16 @@ Vl.new(width: 800, height: 400)
 x = get_values.(qiita_df, "created_at")
 y = get_values.(qiita_df, "page_views_count")
 
-Vl.new(width: 800, height: 400)
-|> Vl.data_from_values(x: x, y: y)
-|> Vl.mark(:line)
-|> Vl.encode_field(
+VegaLite.new(width: 800, height: 400)
+|> VegaLite.data_from_values(x: x, y: y)
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(
   :x,
   "x",
   type: :temporal,
   title: "created_at"
 )
-|> Vl.encode_field(
+|> VegaLite.encode_field(
   :y,
   "y",
   type: :quantitative,
@@ -314,16 +296,16 @@ Vl.new(width: 800, height: 400)
 x = get_values.(qiita_df, "length")
 y = get_values.(qiita_df, "stocks_count")
 
-Vl.new(width: 800, height: 400)
-|> Vl.data_from_values(x: x, y: y)
-|> Vl.mark(:point)
-|> Vl.encode_field(
+VegaLite.new(width: 800, height: 400)
+|> VegaLite.data_from_values(x: x, y: y)
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(
   :x,
   "x",
   type: :quantitative,
   title: "length"
 )
-|> Vl.encode_field(
+|> VegaLite.encode_field(
   :y,
   "y",
   type: :quantitative,
@@ -351,8 +333,7 @@ qiita_tag_df =
   |> DataFrame.new()
   |> DataFrame.select(["title", "tag", "page_views_count", "likes_count", "stocks_count"])
 
-qiita_tag_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(qiita_tag_df)
 ```
 
 ```elixir
@@ -360,7 +341,7 @@ qiita_tag_summarised_df =
   qiita_tag_df
   |> DataFrame.group_by(["tag"])
   |> DataFrame.summarise(
-    page_views_count: count(page_views_count),
+    articles_count: count(page_views_count),
     page_views_count_sum: sum(page_views_count),
     page_views_count_mean: mean(page_views_count),
     likes_count_sum: sum(likes_count),
@@ -368,26 +349,26 @@ qiita_tag_summarised_df =
     stocks_count_sum: sum(stocks_count),
     stocks_count_mean: mean(stocks_count)
   )
+  |> DataFrame.arrange(desc: page_views_count_sum)
 
-qiita_tag_summarised_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(qiita_tag_summarised_df)
 ```
 
 ```elixir
 x = get_values.(qiita_tag_summarised_df, "tag")
-y = get_values.(qiita_tag_summarised_df, "page_views_count")
+y = get_values.(qiita_tag_summarised_df, "articles_count")
 
-Vl.new(width: 800, height: 400)
-|> Vl.data_from_values(x: x, y: y)
-|> Vl.mark(:bar)
-|> Vl.encode_field(
+VegaLite.new(width: 800, height: 400)
+|> VegaLite.data_from_values(x: x, y: y)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(
   :x,
   "x",
   type: :nominal,
   title: "tag",
   sort: %{"field" => "y", "order" => "descending"}
 )
-|> Vl.encode_field(
+|> VegaLite.encode_field(
   :y,
   "y",
   type: :quantitative,
@@ -400,17 +381,17 @@ plot_tag_bar = fn col, agg ->
   x = get_values.(qiita_tag_summarised_df, "tag")
   y = get_values.(qiita_tag_summarised_df, "#{col}_#{agg}")
 
-  Vl.new(width: 800, height: 400)
-  |> Vl.data_from_values(x: x, y: y)
-  |> Vl.mark(:bar)
-  |> Vl.encode_field(
+  VegaLite.new(width: 800, height: 400)
+  |> VegaLite.data_from_values(x: x, y: y)
+  |> VegaLite.mark(:bar)
+  |> VegaLite.encode_field(
     :x,
     "x",
     type: :nominal,
     title: "tag",
     sort: %{"field" => "y", "order" => "descending"}
   )
-  |> Vl.encode_field(
+  |> VegaLite.encode_field(
     :y,
     "y",
     type: :quantitative,

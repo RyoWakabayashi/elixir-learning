@@ -2,18 +2,20 @@
 
 ```elixir
 Mix.install([
-  {:explorer, "~> 0.4"},
+  {:explorer, "~> 0.5"},
   {:kino, "~> 0.8"}
 ])
 ```
 
-## Section
+## 準備
 
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
 require Explorer.DataFrame
 ```
+
+## データ作成
 
 ```elixir
 df =
@@ -26,6 +28,26 @@ df =
 df
 |> Kino.DataTable.new()
 ```
+
+x の nil 数
+
+```elixir
+df
+|> DataFrame.pull("x")
+|> Series.nil_count()
+```
+
+y の nil 数
+
+```elixir
+df
+|> DataFrame.pull("y")
+|> Series.nil_count()
+```
+
+## 補完処理
+
+### 固定値による補完
 
 ```elixir
 filled_df =
@@ -41,6 +63,8 @@ filled_df
 |> Kino.DataTable.new()
 ```
 
+### 集計値による補完
+
 ```elixir
 fill_df = fn target_df, value ->
   target_df
@@ -51,11 +75,15 @@ fill_df = fn target_df, value ->
 end
 ```
 
+一つの前の値（先頭は補完されない)
+
 ```elixir
 df
 |> fill_df.(:forward)
 |> Kino.DataTable.new()
 ```
+
+一つ後の値（末尾は補完されない）
 
 ```elixir
 df
@@ -63,11 +91,15 @@ df
 |> Kino.DataTable.new()
 ```
 
+最大値による補完
+
 ```elixir
 df
 |> fill_df.(:max)
 |> Kino.DataTable.new()
 ```
+
+最小値による補完
 
 ```elixir
 df
@@ -75,11 +107,15 @@ df
 |> Kino.DataTable.new()
 ```
 
+平均値による補完
+
 ```elixir
 df
 |> fill_df.(:mean)
 |> Kino.DataTable.new()
 ```
+
+## 型毎に補完処理を変える
 
 ```elixir
 df =

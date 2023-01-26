@@ -7,10 +7,10 @@ Mix.install([
   {:poison, "~> 5.0"},
   {:hackney, "~> 1.18"},
   {:sweet_xml, "~> 0.7"},
-  {:explorer, "~> 0.3"},
+  {:explorer, "~> 0.5"},
   {:evision, "~> 0.1"},
-  {:download, "~> 0.0.4"},
-  {:kino, "~> 0.7"}
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.8"}
 ])
 ```
 
@@ -144,13 +144,11 @@ all_contents_df
 ```
 
 ```elixir
-all_contents_df["size"]
-|> Series.sum()
+Series.sum(all_contents_df["size"])
 ```
 
 ```elixir
-all_contents_df["size"]
-|> Series.max()
+Series.max(all_contents_df["size"])
 ```
 
 ```elixir
@@ -199,17 +197,16 @@ end)
 ### アップロード用ファイル取得
 
 ```elixir
-File.rm("Lenna_%28test_image%29.png")
+lenna_path = "lenna.png"
 
-lenna =
-  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
-  |> elem(1)
+"https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+|> Req.get!(output: lenna_path)
 ```
 
 ### ファイル指定でアップロード
 
 ```elixir
-lenna
+lenna_path
 |> S3.Upload.stream_file()
 |> S3.upload(Kino.Input.read(bucket_name_input), "lenna.png")
 |> ExAws.request!(auth_config)
@@ -218,7 +215,7 @@ lenna
 ### インメモリからアップロード
 
 ```elixir
-mat = Evision.imread(lenna)
+mat = Evision.imread(lenna_path)
 ```
 
 ```elixir
@@ -257,20 +254,18 @@ bucket_name_input
 |> Kino.Input.read()
 |> S3.get_object("lenna.png")
 |> ExAws.request!(auth_config)
-|> then(&Evision.imdecode(&1.body, Evision.cv_IMREAD_COLOR()))
+|> then(&Evision.imdecode(&1.body, Evision.Constant.cv_IMREAD_COLOR()))
 ```
 
 ### ダウンロードして加工してアップロード
 
 ```elixir
-bucket_name =
-  bucket_name_input
-  |> Kino.Input.read()
+bucket_name = Kino.Input.read(bucket_name_input)
 
 bucket_name
 |> S3.get_object("lenna.png")
 |> ExAws.request!(auth_config)
-|> then(&Evision.imdecode(&1.body, Evision.cv_IMREAD_COLOR()))
+|> then(&Evision.imdecode(&1.body, Evision.Constant.cv_IMREAD_COLOR()))
 |> Evision.blur({9, 9})
 |> then(&S3.put_object(bucket_name, "lenna_blur.png", Evision.imencode(".png", &1)))
 |> ExAws.request!(auth_config)
@@ -281,5 +276,5 @@ bucket_name_input
 |> Kino.Input.read()
 |> S3.get_object("lenna_blur.png")
 |> ExAws.request!(auth_config)
-|> then(&Evision.imdecode(&1.body, Evision.cv_IMREAD_COLOR()))
+|> then(&Evision.imdecode(&1.body, Evision.Constant.cv_IMREAD_COLOR()))
 ```

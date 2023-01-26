@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:nx, "~> 0.4"},
-    {:evision, "0.1.25"},
+    {:evision, "~> 0.1"},
     {:exla, "~> 0.4"},
     {:netcdf, "~> 0.1"},
     {:geo, "~> 3.4"},
@@ -174,7 +174,7 @@ jet_map =
   |> Nx.tile([256, 1])
   |> Nx.as_type(:u8)
   |> Evision.Mat.from_nx_2d()
-  |> Evision.applyColorMap(Evision.cv_COLORMAP_JET())
+  |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_JET())
 ```
 
 ```elixir
@@ -676,7 +676,7 @@ points =
 ```elixir
 [vx, vy, x, y] =
   points
-  |> Evision.fitLine(Evision.cv_DIST_L2(), 0, 0.01, 0.01)
+  |> Evision.fitLine(Evision.Constant.cv_DIST_L2(), 0, 0.01, 0.01)
   |> Evision.Mat.to_nx(EXLA.Backend)
   |> Nx.to_flat_list()
 ```

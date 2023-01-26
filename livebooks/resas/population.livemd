@@ -2,9 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:httpoison, "~> 1.8"},
-  {:json, "~> 1.4"},
-  {:explorer, "~> 0.4"},
+  {:req, "~> 0.3"},
+  {:explorer, "~> 0.5"},
   {:kino, "~> 0.8"},
   {:kino_vega_lite, "~> 0.1"}
 ])
@@ -43,8 +42,8 @@ prefectures_url = "#{base_url}/api/v1/prefectures"
 
 prefectures =
   prefectures_url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body)
 ```
 
 ```elixir
@@ -80,12 +79,9 @@ get_cities = fn pref_code ->
         "?prefCode=#{pref_code}"
     end
 
-  cities_url = "#{base_url}/api/v1/cities#{query}"
-
-  cities_url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(& &1["result"])
+  "#{base_url}/api/v1/cities#{query}"
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body["result"])
 end
 ```
 
@@ -95,8 +91,7 @@ all_cities_df =
   |> get_cities.()
   |> DataFrame.new()
 
-all_cities_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(all_cities_df)
 ```
 
 ```elixir
@@ -105,8 +100,7 @@ oita_cities_df =
   |> get_cities.()
   |> DataFrame.new()
 
-oita_cities_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(oita_cities_df)
 ```
 
 ```elixir
@@ -159,12 +153,9 @@ get_population_composition = fn pref_code, city_code ->
           city_code
       end
 
-  url = "#{base_url}/api/v1/population/composition/perYear#{query}"
-
-  url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(& &1["result"]["data"])
+  "#{base_url}/api/v1/population/composition/perYear#{query}"
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body["result"]["data"])
 end
 ```
 
@@ -183,8 +174,7 @@ population_composition_df =
   end)
   |> DataFrame.new()
 
-population_composition_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(population_composition_df)
 ```
 
 <!-- livebook:{"attrs":{"chart_title":"大分県人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"population_composition_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
@@ -210,8 +200,7 @@ oita_city_population_composition_df =
   end)
   |> DataFrame.new()
 
-oita_city_population_composition_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(oita_city_population_composition_df)
 ```
 
 <!-- livebook:{"attrs":{"chart_title":"大分市人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"oita_city_population_composition_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->

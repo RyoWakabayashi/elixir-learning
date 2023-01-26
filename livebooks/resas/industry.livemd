@@ -2,9 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:httpoison, "~> 1.8"},
-  {:json, "~> 1.4"},
-  {:explorer, "~> 0.4"},
+  {:req, "~> 0.3"},
+  {:explorer, "~> 0.5"},
   {:nx, "~> 0.4"},
   {:kino, "~> 0.8"},
   {:kino_vega_lite, "~> 0.1"}
@@ -27,7 +26,6 @@ base_url = "https://opendata.resas-portal.go.jp"
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
-alias VegaLite, as: Vl
 require Explorer.DataFrame
 ```
 
@@ -45,9 +43,8 @@ prefectures_url = "#{base_url}/api/v1/prefectures"
 
 prefectures_df =
   prefectures_url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(&DataFrame.new(&1["result"]))
+  |> Req.get!(headers: [auth_header])
+  |> then(&DataFrame.new(&1.body["result"]))
 
 prefectures_df
 |> Kino.DataTable.new(sorting_enabled: true)
@@ -67,21 +64,18 @@ oita_pref_code =
 # 大分類
 industries_broad_df =
   "#{base_url}/api/v1/industries/broad"
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(&DataFrame.new(&1["result"]))
+  |> Req.get!(headers: [auth_header])
+  |> then(&DataFrame.new(&1.body["result"]))
 
-industries_broad_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(industries_broad_df)
 ```
 
 ```elixir
 # 中分類
 get_industries_middle = fn sic_code ->
   "#{base_url}/api/v1/industries/middle?sicCode=#{sic_code}"
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(&DataFrame.new(&1["result"]))
+  |> Req.get!(headers: [auth_header])
+  |> then(&DataFrame.new(&1.body["result"]))
 end
 
 industries_middle_df =
@@ -92,17 +86,15 @@ industries_middle_df =
   |> Enum.filter(&(DataFrame.n_rows(&1) > 0))
   |> DataFrame.concat_rows()
 
-industries_middle_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(industries_middle_df)
 ```
 
 ```elixir
 # 小分類
 get_industries_narrow = fn simc_code ->
   "#{base_url}/api/v1/industries/narrow?simcCode=#{simc_code}"
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(&DataFrame.new(&1["result"]))
+  |> Req.get!(headers: [auth_header])
+  |> then(&DataFrame.new(&1.body["result"]))
 end
 
 industries_narrow_df =
@@ -113,8 +105,7 @@ industries_narrow_df =
   |> Enum.filter(&(DataFrame.n_rows(&1) > 0))
   |> DataFrame.concat_rows()
 
-industries_narrow_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(industries_narrow_df)
 ```
 
 ## 地域別特化係数の取得
@@ -129,12 +120,9 @@ get_industry_power = fn year, pref_code, area_type, disp_type, sic_code, simc_co
       "&sicCode=#{sic_code}" <>
       "&simcCode=#{simc_code}"
 
-  url = "#{base_url}/api/v1/industry/power/forArea#{query}"
-
-  url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(& &1["result"])
+  "#{base_url}/api/v1/industry/power/forArea#{query}"
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body["result"])
 end
 ```
 
@@ -143,12 +131,9 @@ industry_power = get_industry_power.("2016", oita_pref_code, "1", "1", "A", "01"
 ```
 
 ```elixir
-prefectures_industry_power_df =
-  industry_power["prefectures"]
-  |> DataFrame.new()
+prefectures_industry_power_df = DataFrame.new(industry_power["prefectures"])
 
-prefectures_industry_power_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(prefectures_industry_power_df)
 ```
 
 ```elixir
@@ -165,21 +150,11 @@ prefectures_bar = fn df, col, value_label ->
   x = get_values.(df, "prefName")
   y = get_values.(df, col)
 
-  Vl.new(width: 800, height: 400, title: "都道府県別#{value_label}")
-  |> Vl.data_from_values(x: x, y: y)
-  |> Vl.mark(:bar)
-  |> Vl.encode_field(
-    :x,
-    "x",
-    type: :nominal,
-    title: "都道府県"
-  )
-  |> Vl.encode_field(
-    :y,
-    "y",
-    type: :quantitative,
-    title: value_label
-  )
+  VegaLite.new(width: 800, height: 400, title: "都道府県別#{value_label}")
+  |> VegaLite.data_from_values(x: x, y: y)
+  |> VegaLite.mark(:bar)
+  |> VegaLite.encode_field(:x, "x", type: :nominal, title: "都道府県")
+  |> VegaLite.encode_field(:y, "y", type: :quantitative, title: value_label)
 end
 ```
 
@@ -221,8 +196,7 @@ prefectures_industry_power_df =
   |> DataFrame.join(industries_broad_df)
   |> DataFrame.join(industries_middle_df)
 
-prefectures_industry_power_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(prefectures_industry_power_df)
 ```
 
 ```elixir
@@ -262,8 +236,7 @@ pivot_df =
   |> DataFrame.select(["prefCode", "prefName", "simcCode", "value"])
   |> DataFrame.pivot_wider("simcCode", "value")
 
-pivot_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(pivot_df)
 ```
 
 ```elixir
@@ -283,8 +256,7 @@ pivot_df =
     DataFrame.mutate_with(df, &%{col => Series.fill_missing(&1[col], 0.0)})
   end)
 
-pivot_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(pivot_df)
 ```
 
 ## 散布図の表示
@@ -294,24 +266,24 @@ scatter = fn df, x_col, y_col, size ->
   x = get_values.(df, x_col)
   y = get_values.(df, y_col)
 
-  Vl.new(width: size, height: size)
-  |> Vl.data_from_values(x: x, y: y)
-  |> Vl.encode_field(:x, "x",
+  VegaLite.new(width: size, height: size)
+  |> VegaLite.data_from_values(x: x, y: y)
+  |> VegaLite.encode_field(:x, "x",
     type: :quantitative,
     scale: [domain: [Enum.min(x), Enum.max(x)]],
     title: x_col
   )
-  |> Vl.encode_field(:y, "y",
+  |> VegaLite.encode_field(:y, "y",
     type: :quantitative,
     scale: [domain: [Enum.min(y), Enum.max(y)]],
     title: y_col
   )
-  |> Vl.layers([
-    Vl.new()
-    |> Vl.mark(:point),
-    Vl.new()
-    |> Vl.mark(:line)
-    |> Vl.transform(regression: "x", on: "y")
+  |> VegaLite.layers([
+    VegaLite.new()
+    |> VegaLite.mark(:point),
+    VegaLite.new()
+    |> VegaLite.mark(:line)
+    |> VegaLite.transform(regression: "x", on: "y")
   ])
 end
 ```
@@ -330,12 +302,9 @@ scatter.(pivot_df, "01", "80", 300)
 get_local_tax = fn pref_code ->
   query = "?prefCode=#{pref_code}&cityCode=-"
 
-  url = "#{base_url}/api/v1/municipality/taxes/perYear#{query}"
-
-  url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(& &1["result"]["data"])
+  "#{base_url}/api/v1/municipality/taxes/perYear#{query}"
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body["result"]["data"])
 end
 ```
 
@@ -352,22 +321,21 @@ local_tax_df =
   |> DataFrame.new()
   |> DataFrame.join(prefectures_df)
 
-local_tax_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(local_tax_df)
 ```
 
 ```elixir
 target_df = DataFrame.filter_with(local_tax_df, &Series.equal(&1["prefCode"], oita_pref_code))
 ```
 
-<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":600},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":null,"height":400,"layers":[{"chart_type":"line","color_field":null,"color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":null,"data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":600},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-Vl.new(width: 600, height: 400)
-|> Vl.data_from_values(target_df, only: ["year", "value"])
-|> Vl.mark(:line)
-|> Vl.encode_field(:x, "year", type: :quantitative)
-|> Vl.encode_field(:y, "value", type: :quantitative)
+VegaLite.new(width: 600, height: 400)
+|> VegaLite.data_from_values(target_df, only: ["year", "value"])
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "year", type: :quantitative)
+|> VegaLite.encode_field(:y, "value", type: :quantitative)
 ```
 
 ```elixir
@@ -382,12 +350,9 @@ local_tax_df
 get_population_composition = fn pref_code ->
   query = "?prefCode=#{pref_code}&cityCode=-"
 
-  url = "#{base_url}/api/v1/population/composition/perYear#{query}"
-
-  url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(& &1["result"]["data"])
+  "#{base_url}/api/v1/population/composition/perYear#{query}"
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body["result"]["data"])
 end
 ```
 
@@ -409,8 +374,7 @@ population_composition_df =
   |> DataFrame.new()
   |> DataFrame.join(prefectures_df)
 
-population_composition_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(population_composition_df)
 ```
 
 ```elixir
@@ -419,15 +383,15 @@ target_df =
   |> DataFrame.filter_with(&Series.equal(&1["prefCode"], oita_pref_code))
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"大分県人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":700},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":"大分県人口構成推移","height":400,"layers":[{"chart_type":"line","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"target_df","x_field":"year","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"quantitative","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":700},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-Vl.new(width: 700, height: 400, title: "大分県人口構成推移")
-|> Vl.data_from_values(target_df, only: ["year", "value", "label"])
-|> Vl.mark(:line)
-|> Vl.encode_field(:x, "year", type: :quantitative)
-|> Vl.encode_field(:y, "value", type: :quantitative)
-|> Vl.encode_field(:color, "label", type: :nominal)
+VegaLite.new(width: 700, height: 400, title: "大分県人口構成推移")
+|> VegaLite.data_from_values(target_df, only: ["year", "value", "label"])
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "year", type: :quantitative)
+|> VegaLite.encode_field(:y, "value", type: :quantitative)
+|> VegaLite.encode_field(:color, "label", type: :nominal)
 ```
 
 ```elixir
@@ -437,15 +401,15 @@ target_df =
   |> DataFrame.filter_with(&Series.not_equal(&1["label"], "総人口"))
 ```
 
-<!-- livebook:{"attrs":{"chart_title":"2015年都道府県別人口構成","height":400,"layers":[{"chart_type":"bar","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.Vl","width":650},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"chart_title":"2015年都道府県別人口構成","height":400,"layers":[{"chart_type":"bar","color_field":"label","color_field_aggregate":null,"color_field_bin":false,"color_field_scale_scheme":null,"color_field_type":"nominal","data_variable":"target_df","x_field":"prefName","x_field_aggregate":null,"x_field_bin":false,"x_field_scale_type":null,"x_field_type":"nominal","y_field":"value","y_field_aggregate":null,"y_field_bin":false,"y_field_scale_type":null,"y_field_type":"quantitative"}],"vl_alias":"Elixir.VegaLite","width":650},"chunks":null,"kind":"Elixir.KinoVegaLite.ChartCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-Vl.new(width: 650, height: 400, title: "2015年都道府県別人口構成")
-|> Vl.data_from_values(target_df, only: ["prefName", "value", "label"])
-|> Vl.mark(:bar)
-|> Vl.encode_field(:x, "prefName", type: :nominal)
-|> Vl.encode_field(:y, "value", type: :quantitative)
-|> Vl.encode_field(:color, "label", type: :nominal)
+VegaLite.new(width: 650, height: 400, title: "2015年都道府県別人口構成")
+|> VegaLite.data_from_values(target_df, only: ["prefName", "value", "label"])
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(:x, "prefName", type: :nominal)
+|> VegaLite.encode_field(:y, "value", type: :quantitative)
+|> VegaLite.encode_field(:color, "label", type: :nominal)
 ```
 
 ```elixir
@@ -457,13 +421,11 @@ population_df =
   |> DataFrame.pivot_wider("label", "value")
   |> DataFrame.mutate(老年率: 老年人口 / 総人口)
 
-population_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(population_df)
 ```
 
 ```elixir
-population_df
-|> prefectures_bar.("老年率", "老年率")
+prefectures_bar.(population_df, "老年率", "老年率")
 ```
 
 ## 相関係数の取得
@@ -478,8 +440,7 @@ target_df =
   |> DataFrame.join(population_df)
   |> DataFrame.join(pivot_df)
 
-target_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(target_df)
 ```
 
 ```elixir
@@ -543,8 +504,7 @@ standardized_df =
     standardize.(df, col)
   end)
 
-standardized_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(standardized_df)
 ```
 
 ```elixir
@@ -598,26 +558,22 @@ local_tax_heatmap =
   cols
   |> Stream.with_index()
   |> Enum.map(fn {col_1, index_1} ->
-    covariance =
-      covariance_tensor[0][index_1]
-      |> Nx.to_number()
-
     %{
       x: "localTax",
       y: col_1,
-      covariance: covariance
+      covariance: Nx.to_number(covariance_tensor[0][index_1])
     }
   end)
   |> List.flatten()
 ```
 
 ```elixir
-Vl.new(width: 100, height: 1600)
-|> Vl.data_from_values(local_tax_heatmap)
-|> Vl.mark(:rect)
-|> Vl.encode_field(:x, "x", type: :nominal)
-|> Vl.encode_field(:y, "y", type: :nominal)
-|> Vl.encode_field(
+VegaLite.new(width: 100, height: 1600)
+|> VegaLite.data_from_values(local_tax_heatmap)
+|> VegaLite.mark(:rect)
+|> VegaLite.encode_field(:x, "x", type: :nominal)
+|> VegaLite.encode_field(:y, "y", type: :nominal)
+|> VegaLite.encode_field(
   :fill,
   "covariance",
   type: :quantitative,
@@ -630,8 +586,7 @@ Vl.new(width: 100, height: 1600)
 
 ```elixir
 # 通信業
-target_df
-|> scatter.("localTax", "37", 300)
+scatter.(target_df, "localTax", "37", 300)
 ```
 
 ```elixir
@@ -675,26 +630,22 @@ elderly_heatmap =
   cols
   |> Stream.with_index()
   |> Enum.map(fn {col_1, index_1} ->
-    covariance =
-      covariance_tensor[5][index_1]
-      |> Nx.to_number()
-
     %{
       x: "老年率",
       y: col_1,
-      covariance: covariance
+      covariance: Nx.to_number(covariance_tensor[5][index_1])
     }
   end)
   |> List.flatten()
 ```
 
 ```elixir
-Vl.new(width: 100, height: 1600)
-|> Vl.data_from_values(elderly_heatmap)
-|> Vl.mark(:rect)
-|> Vl.encode_field(:x, "x", type: :nominal)
-|> Vl.encode_field(:y, "y", type: :nominal)
-|> Vl.encode_field(
+VegaLite.new(width: 100, height: 1600)
+|> VegaLite.data_from_values(elderly_heatmap)
+|> VegaLite.mark(:rect)
+|> VegaLite.encode_field(:x, "x", type: :nominal)
+|> VegaLite.encode_field(:y, "y", type: :nominal)
+|> VegaLite.encode_field(
   :fill,
   "covariance",
   type: :quantitative,
@@ -707,8 +658,8 @@ Vl.new(width: 100, height: 1600)
 
 ```elixir
 # 不動産取引業
-target_df
-|> scatter.("老年率", "68", 300)
+
+|> scatter.(target_df, "老年率", "68", 300)
 ```
 
 ```elixir

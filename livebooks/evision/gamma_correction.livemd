@@ -23,7 +23,7 @@ img =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
   |> Req.get!()
   |> then(& &1.body)
-  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ## ガンマ補正

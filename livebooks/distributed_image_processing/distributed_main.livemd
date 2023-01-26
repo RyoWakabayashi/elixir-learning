@@ -3,9 +3,9 @@
 ```elixir
 Mix.install(
   [
-    {:httpoison, "~> 1.8"},
+    {:req, "~> 0.3"},
     {:evision, "~> 0.1"},
-    {:kino, "~> 0.7"},
+    {:kino, "~> 0.8"},
     {:nx, "~> 0.4"},
     {:flow, "~> 1.2"},
     {:benchee, "~> 1.1"}
@@ -21,10 +21,10 @@ Mix.install(
 ```elixir
 img_mat =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
-  |> HTTPoison.get!()
+  |> Req.get!()
   |> then(& &1.body)
   # Evision で PNG 画像を読込
-  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ## 画像の保存
@@ -59,13 +59,13 @@ dst_binary =
   |> Evision.Mat.from_nx_2d()
   # 閾値処理
   # image processing
-  |> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
+  |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
   |> elem(1)
   # 文字を描画
   |> Evision.putText(
     Node.self() |> Atom.to_string(),
     {10, 30},
-    Evision.cv_FONT_HERSHEY_SIMPLEX(),
+    Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
     1.0,
     {0, 0, 0},
     [{:thickness, 2}]
@@ -228,12 +228,12 @@ defmodule DistributedImageProcessing do
       |> Nx.reshape(shape)
       |> Evision.Mat.from_nx_2d()
       # image processing
-      |> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
+      |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
       |> elem(1)
       |> Evision.putText(
         Node.self() |> Atom.to_string(),
         {10, 30},
-        Evision.cv_FONT_HERSHEY_SIMPLEX(),
+        Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
         1.0,
         {0, 0, 0},
         [{:thickness, 2}]

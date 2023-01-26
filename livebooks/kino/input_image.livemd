@@ -25,7 +25,7 @@ image.data
 |> Nx.from_binary(:u8)
 |> Nx.reshape({image.height, image.width, 3})
 |> Evision.Mat.from_nx_2d()
-|> Evision.cvtColor(Evision.cv_COLOR_RGB2BGR())
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_RGB2BGR())
 ```
 
 ```elixir
@@ -47,7 +47,7 @@ image = Kino.Input.read(image_input)
 
 ```elixir
 image.data
-|> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+|> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ## JPEG指定
@@ -60,7 +60,7 @@ image_input = Kino.Input.image("IMAGE", format: :jpeg)
 image_input
 |> Kino.Input.read()
 |> then(& &1.data)
-|> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+|> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ## リサイズ

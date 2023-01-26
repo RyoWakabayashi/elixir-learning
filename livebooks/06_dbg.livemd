@@ -4,25 +4,22 @@
 Mix.install([
   {:nx, "~> 0.4"},
   {:evision, "~> 0.1"},
-  {:explorer, "~> 0.4"},
-  {:httpoison, "~> 1.8"},
+  {:explorer, "~> 0.5"},
+  {:req, "~> 0.3"},
   {:kino, "~> 0.8"},
   {:kino_vega_lite, "~> 0.1"}
 ])
 ```
 
-## Section
-
-```elixir
-System.version()
-```
+## 準備
 
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
-alias VegaLite, as: Vl
 require Explorer.DataFrame
 ```
+
+## 文字列
 
 ```elixir
 "Elixir is cool!"
@@ -32,6 +29,8 @@ require Explorer.DataFrame
 |> List.first()
 |> dbg()
 ```
+
+## Section
 
 ```elixir
 [1, 2, 3]
@@ -50,14 +49,16 @@ require Explorer.DataFrame
 |> dbg()
 ```
 
+## 画像処理
+
 ```elixir
 image_path = "dog.jpg"
 
 img =
   "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
-  |> HTTPoison.get!()
+  |> Req.get!()
   |> then(& &1.body)
-  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ```elixir
@@ -77,11 +78,13 @@ img
 |> Evision.warpAffine(rotation, {512, 512})
 |> Evision.rectangle({150, 120}, {225, 320}, {0, 0, 255},
   thickness: 5,
-  lineType: Evision.cv_LINE_4()
+  lineType: Evision.Constant.cv_LINE_4()
 )
 |> Evision.ellipse({300, 300}, {100, 200}, 30, 0, 360, {255, 255, 0}, thickness: 3)
 |> dbg()
 ```
+
+## データフレーム
 
 ```elixir
 iris = Explorer.Datasets.iris()
@@ -98,6 +101,8 @@ iris
 |> dbg()
 ```
 
+## グラフ
+
 ```elixir
 get_values = fn df, col ->
   df
@@ -110,20 +115,20 @@ scatter = fn df, x_col, y_col ->
   y = get_values.(df, y_col)
   class = get_values.(df, "species")
 
-  Vl.new(width: 300, height: 300)
-  |> Vl.data_from_values(x: x, y: y, class: class)
-  |> Vl.mark(:point)
-  |> Vl.encode_field(:x, "x",
+  VegaLite.new(width: 300, height: 300)
+  |> VegaLite.data_from_values(x: x, y: y, class: class)
+  |> VegaLite.mark(:point)
+  |> VegaLite.encode_field(:x, "x",
     type: :quantitative,
     scale: [domain: [Enum.min(x), Enum.max(x)]],
     title: x_col
   )
-  |> Vl.encode_field(:y, "y",
+  |> VegaLite.encode_field(:y, "y",
     type: :quantitative,
     scale: [domain: [Enum.min(y), Enum.max(y)]],
     title: y_col
   )
-  |> Vl.encode_field(:color, "class", type: :nominal)
+  |> VegaLite.encode_field(:color, "class", type: :nominal)
 end
 ```
 

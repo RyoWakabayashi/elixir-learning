@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:httpoison, "~> 1.8"},
+  {:req, "~> 0.3"},
   {:evision, "~> 0.1"},
   {:kino, "~> 0.8"},
   {:nx, "~> 0.4"},
@@ -16,10 +16,10 @@ Mix.install([
 ```elixir
 img_mat =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
-  |> HTTPoison.get!()
+  |> Req.get!()
   |> then(& &1.body)
   # Evision で PNG 画像を読込
-  |> Evision.imdecode(Evision.cv_IMREAD_COLOR())
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
 ## 画像の保存
@@ -36,13 +36,13 @@ Evision.imwrite(img_path, img_mat)
 ```elixir
 proc = fn mat ->
   mat
-  |> Evision.threshold(127, 255, Evision.cv_THRESH_BINARY())
+  |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
   |> elem(1)
   |> Evision.rectangle({50, 10}, {125, 60}, {255, 0, 0})
   |> Evision.rectangle({250, 60}, {325, 110}, {0, 255, 0}, thickness: -1)
   |> Evision.rectangle({150, 120}, {225, 320}, {0, 0, 255},
     thickness: 5,
-    lineType: Evision.cv_LINE_4()
+    lineType: Evision.Constant.cv_LINE_4()
   )
   |> Evision.ellipse({300, 300}, {100, 200}, 30, 0, 360, {255, 255, 0}, thickness: 3)
 end

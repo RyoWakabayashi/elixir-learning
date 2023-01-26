@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:httpoison, "~> 1.8"},
+  {:req, "~> 0.3"},
   {:evision, "~> 0.1"},
   {:kino, "~> 0.7"},
   {:nx, "~> 0.4"}
@@ -19,20 +19,17 @@ label_path = "/data/label.txt"
 
 ```elixir
 "https://pjreddie.com/media/files/yolov3.weights"
-|> HTTPoison.get!(recv_timeout: 300_000)
-|> then(&File.write(weights_path, &1.body))
+|> Req.get!(connect_options: [timeout: 300_000], output: weights_path)
 ```
 
 ```elixir
 "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
-|> HTTPoison.get!()
-|> then(&File.write(cfg_path, &1.body))
+|> Req.get!(output: cfg_path)
 ```
 
 ```elixir
 "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
-|> HTTPoison.get!()
-|> then(&File.write(label_path, &1.body))
+|> Req.get!(output: label_path)
 ```
 
 ## Load model
@@ -58,8 +55,7 @@ label_list =
 img_path = "/data/dog.jpg"
 
 "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
-|> HTTPoison.get!()
-|> then(&File.write(img_path, &1.body))
+|> Req.get!(output: img_path)
 ```
 
 ## Load image
@@ -93,12 +89,21 @@ predictions =
 ```elixir
 score_threshold = 0.8
 
+predictions_tensor =
+  predictions
+  # テンソルに変換
+  |> Enum.map(&Evision.Mat.to_nx(&1, Nx.BinaryBackend))
+  # くっつける
+  |> Nx.concatenate()
+```
+
+```elixir
+score_threshold = 0.8
+
 formed_predictions =
   predictions
   # テンソルに変換
-  |> Enum.map(fn prediction ->
-    Evision.Mat.to_nx(prediction, Nx.BinaryBackend)
-  end)
+  |> Enum.map(&Evision.Mat.to_nx(&1, Nx.BinaryBackend))
   # くっつける
   |> Nx.concatenate()
   # 配列にする
@@ -180,7 +185,7 @@ selected_predictions
   |> Evision.putText(
     label,
     {left + 6, top + 26},
-    Evision.cv_FONT_HERSHEY_SIMPLEX(),
+    Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
     0.8,
     {0, 0, 255},
     thickness: 2

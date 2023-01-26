@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:explorer, "~> 0.4"},
+  {:explorer, "~> 0.5"},
   {:kino, "~> 0.8"}
 ])
 ```
@@ -28,6 +28,12 @@ sample_df =
 
 ```elixir
 sample_df
+|> Kino.DataTable.new()
+```
+
+```elixir
+sample_df
+|> DataFrame.describe()
 |> Kino.DataTable.new()
 ```
 
@@ -206,6 +212,13 @@ DataFrame.table(population_df, limit: :infinity)
 ```elixir
 population_df
 |> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+population_df
+|> DataFrame.mutate(人口_千人: cast(人口_千人, :integer))
+|> DataFrame.describe()
+|> Kino.DataTable.new()
 ```
 
 ## データ分析

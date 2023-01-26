@@ -7,7 +7,7 @@ Mix.install([
   {:poison, "~> 5.0"},
   {:hackney, "~> 1.18"},
   {:sweet_xml, "~> 0.7"},
-  {:explorer, "~> 0.4"},
+  {:explorer, "~> 0.5"},
   {:kino, "~> 0.8"}
 ])
 ```
@@ -50,8 +50,7 @@ auth_config = [
 ```elixir
 df = Explorer.Datasets.fossil_fuels()
 
-df
-|> Kino.DataTable.new()
+Kino.DataTable.new(df)
 ```
 
 ```elixir
@@ -63,18 +62,13 @@ key_schema = [
   year: :hash,
   country: :range
 ]
-```
 
-```elixir
 key_types = [
   year: :number,
   country: :string
 ]
-```
 
-```elixir
-read_capacity = 1
-write_capacity = 1
+{read_capacity, write_capacity} = {1, 1}
 ```
 
 ```elixir

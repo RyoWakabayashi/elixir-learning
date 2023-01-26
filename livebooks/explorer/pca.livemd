@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:explorer, "~> 0.4"},
+  {:explorer, "~> 0.5"},
   {:nx, "~> 0.4"},
   {:kino, "~> 0.8"},
   {:kino_vega_lite, "~> 0.1"}
@@ -14,7 +14,6 @@ Mix.install([
 ```elixir
 alias Explorer.DataFrame
 alias Explorer.Series
-alias VegaLite, as: Vl
 require Explorer.DataFrame
 ```
 
@@ -108,42 +107,9 @@ Python における pandas の DataFrame.describe を再現する
 
 データのおおよその傾向を知ることができる
 
-<!-- livebook:{"break_markdown":true} -->
-
-列毎に集計する関数を定義する
-
 ```elixir
-get_stats = fn df, col ->
-  series = DataFrame.pull(df, col)
-
-  [
-    DataFrame.n_rows(df),
-    Series.mean(series),
-    Series.standard_deviation(series),
-    Series.min(series),
-    Series.quantile(series, 0.25),
-    Series.median(series),
-    Series.quantile(series, 0.75),
-    Series.max(series)
-  ]
-end
-
-get_stats.(wine_df, "alcohol")
-```
-
-集計したいすべての列に対して関数を適用し、各行のラベルを先頭列に追加する
-
-```elixir
-add_stats_label = fn list ->
-  [{"Stats", ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]} | list]
-end
-
-cols
-|> Enum.map(fn col ->
-  {col, get_stats.(wine_df, col)}
-end)
-|> add_stats_label.()
-|> DataFrame.new()
+wine_df
+|> DataFrame.describe()
 |> Kino.DataTable.new()
 ```
 
@@ -166,17 +132,17 @@ histgram = fn df, col ->
   x = get_values.(df, col)
   y = List.duplicate(1, DataFrame.n_rows(df))
 
-  Vl.new(width: 300, height: 300, title: col)
-  |> Vl.data_from_values(x: x, y: y)
-  |> Vl.mark(:bar)
-  |> Vl.encode_field(
+  VegaLite.new(width: 200, height: 200, title: col)
+  |> VegaLite.data_from_values(x: x, y: y)
+  |> VegaLite.mark(:bar)
+  |> VegaLite.encode_field(
     :x,
     "x",
     type: :quantitative,
     bin: %{maxbins: 20},
     title: col
   )
-  |> Vl.encode_field(
+  |> VegaLite.encode_field(
     :y,
     "y",
     type: :quantitative,
@@ -190,14 +156,11 @@ histgram.(wine_df, "alcohol")
 すべての列に対してヒストグラムを作成する
 
 ```elixir
-histgram_list =
-  cols
-  |> Enum.map(fn col ->
-    histgram.(wine_df, col)
-  end)
-
-Vl.new(width: 300, height: 300 * Enum.count(cols))
-|> Vl.concat(histgram_list, :vertical)
+cols
+|> Enum.map(fn col ->
+  histgram.(wine_df, col)
+end)
+|> Kino.Layout.grid(columns: 3)
 ```
 
 クラス（ワインの品種）毎の分布を見る
@@ -212,16 +175,16 @@ get_class_values = fn df, col, class ->
 end
 
 class_histgram = fn class, color ->
-  Vl.new(width: 300, height: 300)
-  |> Vl.mark(:bar, color: color, opacity: 0.5)
-  |> Vl.encode_field(
+  VegaLite.new(width: 200, height: 200)
+  |> VegaLite.mark(:bar, color: color, opacity: 0.5)
+  |> VegaLite.encode_field(
     :x,
     "x#{class}",
     type: :quantitative,
     bin: %{maxbins: 20},
     title: "class#{class}"
   )
-  |> Vl.encode_field(
+  |> VegaLite.encode_field(
     :y,
     "y",
     type: :quantitative,
@@ -235,9 +198,9 @@ all_class_histgram = fn df, col ->
   x3 = get_class_values.(df, col, 3)
   y = List.duplicate(0, DataFrame.n_rows(df))
 
-  Vl.new(width: 300, height: 300, title: col)
-  |> Vl.data_from_values(x1: x1, x2: x2, x3: x3, y: y)
-  |> Vl.layers([
+  VegaLite.new(width: 200, height: 200, title: col)
+  |> VegaLite.data_from_values(x1: x1, x2: x2, x3: x3, y: y)
+  |> VegaLite.layers([
     class_histgram.(1, :blue),
     class_histgram.(2, :yellow),
     class_histgram.(3, :red)
@@ -248,14 +211,11 @@ all_class_histgram.(wine_df, "alcohol")
 ```
 
 ```elixir
-histgram_list =
-  cols
-  |> Enum.map(fn col ->
-    all_class_histgram.(wine_df, col)
-  end)
-
-Vl.new(width: 300, height: 300 * Enum.count(cols))
-|> Vl.concat(histgram_list, :vertical)
+cols
+|> Enum.map(fn col ->
+  all_class_histgram.(wine_df, col)
+end)
+|> Kino.Layout.grid(columns: 3)
 ```
 
 `flavanoids` 、 `color_intensity` あたりが、クラスによって分布の頂点が違います
@@ -274,20 +234,20 @@ scatter = fn df, x_col, y_col ->
   y = get_values.(df, y_col)
   class = get_values.(wine_df, "class")
 
-  Vl.new(width: 300, height: 300)
-  |> Vl.data_from_values(x: x, y: y, class: class)
-  |> Vl.mark(:point)
-  |> Vl.encode_field(:x, "x",
+  VegaLite.new(width: 200, height: 200)
+  |> VegaLite.data_from_values(x: x, y: y, class: class)
+  |> VegaLite.mark(:point)
+  |> VegaLite.encode_field(:x, "x",
     type: :quantitative,
     scale: [domain: [Enum.min(x), Enum.max(x)]],
     title: x_col
   )
-  |> Vl.encode_field(:y, "y",
+  |> VegaLite.encode_field(:y, "y",
     type: :quantitative,
     scale: [domain: [Enum.min(y), Enum.max(y)]],
     title: y_col
   )
-  |> Vl.encode_field(:color, "class", type: :nominal)
+  |> VegaLite.encode_field(:color, "class", type: :nominal)
 end
 ```
 
@@ -329,12 +289,12 @@ graphs =
         end
       end)
 
-    Vl.new(width: 300 * Enum.count(cols), height: 300)
-    |> Vl.concat(h_graphs, :horizontal)
+    VegaLite.new(width: 200 * Enum.count(cols), height: 200)
+    |> VegaLite.concat(h_graphs, :horizontal)
   end)
 
-Vl.new(width: 300 * Enum.count(cols), height: 300 * Enum.count(cols))
-|> Vl.concat(graphs, :vertical)
+VegaLite.new(width: 200 * Enum.count(cols), height: 200 * Enum.count(cols))
+|> VegaLite.concat(graphs, :vertical)
 ```
 
 ## Standardization
@@ -465,12 +425,12 @@ heatmap =
 ```
 
 ```elixir
-Vl.new(width: 300, height: 300)
-|> Vl.data_from_values(heatmap)
-|> Vl.mark(:rect)
-|> Vl.encode_field(:x, "x", type: :nominal)
-|> Vl.encode_field(:y, "y", type: :nominal)
-|> Vl.encode_field(
+VegaLite.new(width: 300, height: 300)
+|> VegaLite.data_from_values(heatmap)
+|> VegaLite.mark(:rect)
+|> VegaLite.encode_field(:x, "x", type: :nominal)
+|> VegaLite.encode_field(:y, "y", type: :nominal)
+|> VegaLite.encode_field(
   :fill,
   "covariance",
   type: :quantitative,
@@ -542,19 +502,19 @@ contribution_rate_df
 第１主成分、第２主成分で寄与率の半数以上を占めている
 
 ```elixir
-Vl.new(width: 300, height: 300)
-|> Vl.data_from_values(
+VegaLite.new(width: 300, height: 300)
+|> VegaLite.data_from_values(
   x: 0..Nx.size(eigenvals),
   y: [0 | cumulative_contribution_rate_list]
 )
-|> Vl.mark(:line)
-|> Vl.encode_field(
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(
   :x,
   "x",
   type: :quantitative,
   title: "PC"
 )
-|> Vl.encode_field(
+|> VegaLite.encode_field(
   :y,
   "y",
   type: :quantitative,

@@ -5,7 +5,7 @@ Mix.install([
   {:aws, "~> 0.13"},
   {:uuid, "~> 1.1"},
   {:hackney, "~> 1.18"},
-  {:explorer, "~> 0.3"},
+  {:explorer, "~> 0.5"},
   {:kino, "~> 0.7"}
 ])
 ```
@@ -46,16 +46,14 @@ client =
 ```elixir
 wine_df = Explorer.Datasets.wine()
 
-wine_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(wine_df)
 ```
 
 ```elixir
 # CSV に保存
 csv_filename = "wine.csv"
 
-wine_df
-|> DataFrame.to_csv(csv_filename)
+DataFrame.to_csv(wine_df, csv_filename)
 ```
 
 ## データアップロード
@@ -69,8 +67,7 @@ buckets_res =
 ```
 
 ```elixir
-buckets_res["ListAllMyBucketsResult"]["Buckets"]["Bucket"]
-|> Kino.DataTable.new()
+Kino.DataTable.new(buckets_res["ListAllMyBucketsResult"]["Buckets"]["Bucket"])
 ```
 
 ```elixir
@@ -291,8 +288,7 @@ parsed_df =
 ```
 
 ```elixir
-parsed_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(parsed_df)
 ```
 
 ```elixir

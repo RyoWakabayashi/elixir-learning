@@ -6,8 +6,7 @@ Mix.install(
     {:exla, "~> 0.4"},
     {:axon_onnx, "~> 0.3"},
     {:stb_image, "~> 0.6"},
-    {:httpoison, "~> 1.8"},
-    {:jason, "~> 1.4"},
+    {:req, "~> 0.3"},
     {:kino, "~> 0.8"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
@@ -21,7 +20,7 @@ classes_path = "/data/coco.names"
 
 classes =
   "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
-  |> HTTPoison.get!()
+  |> Req.get!()
   |> then(&String.split(&1.body, "\n"))
   |> Enum.map(&String.trim(&1))
   |> Enum.filter(&(String.length(&1) > 0))
@@ -36,8 +35,7 @@ model_path = "/data/yolov2.onnx"
 
 unless File.exists?(model_path) do
   "https://media.githubusercontent.com/media/onnx/models/main/vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx"
-  |> HTTPoison.get!(receive_timeout: 300_000)
-  |> then(&File.write!(model_path, &1.body))
+  |> Req.get!(connect_options: [timeout: 300_000], output: model_path)
 end
 
 {model, params} = AxonOnnx.import(model_path)
@@ -72,7 +70,7 @@ anchors_tensor = Nx.reshape(anchors, {1, 1, 1, num_anchors, 2})
 ```elixir
 img_tensor =
   "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
-  |> HTTPoison.get!()
+  |> Req.get!()
   |> then(&StbImage.read_binary!(&1.body))
   |> StbImage.resize(416, 416)
   |> StbImage.to_nx()
@@ -394,7 +392,7 @@ selected_predictions = Enum.map(index_list, &Enum.at(formed_predictions, &1))
 ```elixir
 img_tensor =
   "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
-  |> HTTPoison.get!()
+  |> Req.get!()
   |> then(&StbImage.read_binary!(&1.body))
   |> StbImage.to_nx()
 

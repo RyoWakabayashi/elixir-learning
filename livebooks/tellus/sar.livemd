@@ -3,10 +3,9 @@
 ```elixir
 Mix.install([
   {:evision, "~> 0.1"},
-  {:httpoison, "~> 1.8"},
-  {:json, "~> 1.4"},
+  {:req, "~> 0.3"},
   {:kino, "~> 0.8"},
-  {:kino_maplibre, "~> 0.1.3"}
+  {:kino_maplibre, "~> 0.1"}
 ])
 ```
 
@@ -41,13 +40,12 @@ auth_url = "https://www.tellusxdp.com/api/manager/v2/auth/token/"
 json_header = {"Content-Type", "application/json"}
 
 get_auth_header = fn product_id ->
-  request_body = JSON.encode!(%{product_id: product_id})
+  request_body = %{product_id: product_id}
   auth_header = {"Authorization", "Bearer " <> Kino.Input.read(token_input)}
 
   auth_url
-  |> HTTPoison.post!(request_body, [auth_header, json_header])
-  |> then(&JSON.decode!(&1.body))
-  |> then(&{"Authorization", "Bearer " <> &1["token"]})
+  |> Req.post!(json: request_body, headers: [auth_header, json_header])
+  |> then(&{"Authorization", "Bearer " <> &1.body["token"]})
 end
 ```
 
@@ -60,8 +58,8 @@ scenes_url = "#{base_url}/api/v2/#{satellite_id}/search"
 
 scenes =
   scenes_url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body)
 ```
 
 ```elixir
@@ -81,8 +79,8 @@ scenes_info_url = "#{base_url}/api/v2/#{satellite_id}/search/#{scene_id}"
 
 scenes_info =
   scenes_info_url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body)
 ```
 
 ```elixir
@@ -92,8 +90,8 @@ scenes_after_url = "#{base_url}/api/v2/#{satellite_id}/search/#{scene_id}/afters
 
 scenes_after =
   scenes_after_url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body)
 ```
 
 ## 差分干渉データ作成依頼
@@ -120,8 +118,8 @@ work_body = %{
 
 work =
   work_url
-  |> HTTPoison.post!(JSON.encode!(work_body), [auth_header, json_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.post!(json: work_body, headers: [auth_header, json_header])
+  |> then(& &1.body)
 ```
 
 ```elixir
@@ -135,8 +133,8 @@ work_status_url = "#{base_url}/api/v2/works/#{work_id}"
 
 work_status =
   work_status_url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body)
 ```
 
 ## PNGの取得
@@ -181,13 +179,9 @@ get_png = fn type, work_id, z, x, y ->
 
   png_url = "#{base_url}/api/v2/works/#{work_id}/pngs/#{type}s/#{z}/#{x}/#{y}.png"
 
-  %HTTPoison.Response{body: body} =
-    png_url
-    |> HTTPoison.get!([auth_header])
-
   img_path = "sar_#{type}_#{work_id}_#{z}_#{x}_#{y}.png"
 
-  File.write!(img_path, body)
+  Req.get!(png_url, headers: [auth_header], output: img_path)
 
   img_path
   |> Evision.imread()
@@ -221,13 +215,9 @@ get_tif = fn type, work_id ->
 
   tiff_url = "#{base_url}/api/v2/works/#{work_id}/tifs/#{type}.tif"
 
-  %HTTPoison.Response{body: body} =
-    tiff_url
-    |> HTTPoison.get!([auth_header])
-
   tiff_path = "sar_#{type}_#{work_id}.tif"
 
-  File.write!(tiff_path, body)
+  Req.get!(tiff_url, headers: [auth_header], output: tiff_path)
 
   tiff_path
   |> Evision.imread()
@@ -305,21 +295,13 @@ end
 ```
 
 ```elixir
-alias MapLibre, as: Ml
-```
-
-```elixir
 show_map_overlay = fn z, {bottom_lat, left_lon, top_lat, right_lon}, img_base64 ->
   center = {(left_lon + right_lon) / 2, (bottom_lat + top_lat) / 2}
 
   # タイルの中心を地図の中心にする
-  Ml.new(
-    center: center,
-    zoom: z,
-    style: :terrain
-  )
+  MapLibre.new(center: center, zoom: z, style: :terrain)
   # 画像をタイルの座標に配置する
-  |> Ml.add_source(
+  |> MapLibre.add_source(
     "sar-source",
     type: :image,
     url: img_base64,
@@ -331,7 +313,7 @@ show_map_overlay = fn z, {bottom_lat, left_lon, top_lat, right_lon}, img_base64 
     ]
   )
   # 画像をレイヤーとして地図に重ね、透過する
-  |> Ml.add_layer(
+  |> MapLibre.add_layer(
     id: "overlay",
     source: "sar-source",
     type: :raster,

@@ -2,8 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:httpoison, "~> 1.8"},
-  {:json, "~> 1.4"},
+  {:req, "~> 0.3"},
   {:kino, "~> 0.8"},
   {:kino_maplibre, "~> 0.1"}
 ])
@@ -32,12 +31,12 @@ auth_url = "https://www.tellusxdp.com/api/manager/v2/auth/token/"
 json_header = {"Content-Type", "application/json"}
 
 get_product_info = fn product_id ->
-  request_body = JSON.encode!(%{product_id: product_id})
+  request_body = %{product_id: product_id}
   auth_header = {"Authorization", "Bearer " <> Kino.Input.read(token_input)}
 
   auth_url
-  |> HTTPoison.post!(request_body, [auth_header, json_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.post!(json: request_body, headers: [auth_header, json_header])
+  |> then(& &1.body)
 end
 ```
 
@@ -57,19 +56,19 @@ typhoon_events_url = "#{typhoon_product_info["base_url"]}/archive/typhoon/events
 
 typhoon_events =
   typhoon_events_url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body)
 ```
 
 ## 台風情報の取得
 
 ```elixir
 get_typhoon_points = fn event_id ->
-  url = "#{typhoon_product_info["base_url"]}/archive/typhoon/" <> event_id <> "_point.json"
+  url = "#{typhoon_product_info["base_url"]}/archive/typhoon/#{event_id}_point.json"
 
   url
-  |> HTTPoison.get!([auth_header])
-  |> then(&JSON.decode!(&1.body))
+  |> Req.get!(headers: [auth_header])
+  |> then(& &1.body)
 end
 ```
 
