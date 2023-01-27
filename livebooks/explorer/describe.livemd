@@ -1,0 +1,50 @@
+# Describe
+
+```elixir
+Mix.install([
+  {:explorer, "~> 0.5"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## エイリアス
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Datasets
+alias Explorer.Series
+```
+
+## データセットの読込
+
+```elixir
+wine_df = Datasets.wine()
+
+Kino.DataTable.new(wine_df)
+```
+
+```elixir
+wine_df
+|> DataFrame.describe()
+|> Kino.DataTable.new()
+```
+
+```elixir
+wine_df
+|> DataFrame.describe(percentiles: [0.33, 0.66])
+|> Kino.DataTable.new()
+```
+
+## 文字列の扱い
+
+```elixir
+fuels_df = Datasets.fossil_fuels()
+
+Kino.DataTable.new(fuels_df)
+```
+
+```elixir
+fuels_df
+|> DataFrame.describe()
+|> Kino.DataTable.new()
+```
