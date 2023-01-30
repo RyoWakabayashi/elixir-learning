@@ -13,9 +13,9 @@ RUN apt-get upgrade -y \
     curl \
     erlang-dev \
     gnupg2 \
-    libopencv-dev \
     lsb-release \
     sudo \
+    unzip \
     vim \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
@@ -54,6 +54,26 @@ RUN chmod +x /home/livebook/setup_for_wsl.sh
 # For Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH=$PATH:$HOME/.cargo/bin
+
+# For ffmpeg
+RUN apt-get upgrade -y \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y \
+    ffmpeg \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libswscale-dev \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+# For OpenCV
+RUN apt-get upgrade -y \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y \
+    libopencv-dev \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY ./livebooks /home/livebook
 

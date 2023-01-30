@@ -1,0 +1,244 @@
+# Evision DetectionModel
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.4"},
+    {:evision, "~> 0.1"},
+    {:req, "~> 0.3"},
+    {:kino, "~> 0.8"}
+  ],
+  system_env: [
+    {"EVISION_PREFER_PRECOMPILED", "false"}
+  ]
+)
+```
+
+## Download model
+
+```elixir
+weights_path = "/data/yolov3.weights"
+cfg_path = "/data/yolov3.cfg"
+label_path = "/data/label.txt"
+
+"https://pjreddie.com/media/files/yolov3.weights"
+|> Req.get!(connect_options: [timeout: 300_000], output: weights_path)
+
+"https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
+|> Req.get!(output: cfg_path)
+
+"https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
+|> Req.get!(output: label_path)
+```
+
+## Load model
+
+```elixir
+model =
+  weights_path
+  |> Evision.DNN.DetectionModel.detectionModel(config: cfg_path)
+  |> Evision.DNN.DetectionModel.setInputParams(
+    scale: 1.0 / 255.0,
+    size: {608, 608},
+    swapRB: true,
+    crop: false
+  )
+```
+
+```elixir
+label_list =
+  label_path
+  |> File.stream!()
+  |> Enum.map(&String.trim/1)
+```
+
+## Download image
+
+```elixir
+img =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
+```
+
+## Detect objects from an image
+
+```elixir
+predictions =
+  model
+  |> Evision.DNN.DetectionModel.detect(img, confThreshold: 0.8, nmsThreshold: 0.7)
+  |> then(fn {class_ids, scores, boxes} ->
+    Enum.zip_with([class_ids, scores, boxes], fn [class_id, score, box] ->
+      %{
+        box: box,
+        score: Float.round(score, 2),
+        class: Enum.at(label_list, class_id)
+      }
+    end)
+  end)
+```
+
+## Draw predictions
+
+```elixir
+predictions
+|> Enum.reduce(img, fn prediction, drawn_img ->
+  {left, top, width, height} = prediction.box
+
+  drawn_img
+  # 四角形を描画する
+  |> Evision.rectangle(
+    {left, top},
+    {left + width, top + height},
+    {255, 0, 0},
+    thickness: 4
+  )
+  # ラベル文字を書く
+  |> Evision.putText(
+    prediction.class,
+    {left + 6, top + 26},
+    Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+    0.8,
+    {0, 0, 255},
+    thickness: 2
+  )
+end)
+```
+
+## Load a video
+
+```elixir
+input_video = Evision.VideoCapture.videoCapture("/tmp/sample.mp4")
+```
+
+```elixir
+Evision.VideoCapture.read(input_video)
+```
+
+```elixir
+Evision.VideoCapture.get(input_video, Evision.Constant.cv_CAP_PROP_POS_FRAMES())
+```
+
+```elixir
+Evision.VideoCapture.set(input_video, Evision.Constant.cv_CAP_PROP_POS_FRAMES(), 0)
+
+Kino.animate(1, 0, fn _, frame_index ->
+  frame = Evision.VideoCapture.read(input_video)
+
+  if frame do
+    {:cont, frame, frame_index + 1}
+  else
+    :halt
+  end
+end)
+```
+
+## Detect objects from a video
+
+```elixir
+detect = fn img, model ->
+  model
+  |> Evision.DNN.DetectionModel.detect(img, confThreshold: 0.8, nmsThreshold: 0.7)
+  |> then(fn {class_ids, scores, boxes} ->
+    Enum.zip_with([class_ids, scores, boxes], fn [class_id, score, box] ->
+      %{
+        box: box,
+        score: Float.round(score, 2),
+        class: Enum.at(label_list, class_id)
+      }
+    end)
+  end)
+  |> Enum.reduce(img, fn prediction, drawn_img ->
+    {left, top, width, height} = prediction.box
+
+    drawn_img
+    |> Evision.rectangle(
+      {left, top},
+      {left + width, top + height},
+      {255, 0, 0},
+      thickness: 8
+    )
+    |> Evision.putText(
+      "#{prediction.class} #{prediction.score}",
+      {left + 6, top + 52},
+      Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+      1.6,
+      {0, 0, 255},
+      thickness: 4
+    )
+  end)
+end
+```
+
+```elixir
+Evision.VideoCapture.set(input_video, Evision.Constant.cv_CAP_PROP_POS_FRAMES(), 0)
+
+Kino.animate(100, 0, fn _, frame_index ->
+  frame = Evision.VideoCapture.read(input_video)
+
+  if frame do
+    {:cont, detect.(frame, model), frame_index + 1}
+  else
+    :halt
+  end
+end)
+```
+
+## Write results to a video file
+
+```elixir
+fourcc = Evision.VideoWriter.fourcc(hd('m'), hd('p'), hd('4'), hd('v'))
+```
+
+```elixir
+output_video =
+  Evision.VideoWriter.videoWriter(
+    "/tmp/sample_detected.mp4",
+    fourcc,
+    input_video.fps,
+    {
+      trunc(input_video.frame_width),
+      trunc(input_video.frame_height)
+    }
+  )
+```
+
+```elixir
+Evision.VideoCapture.set(input_video, Evision.Constant.cv_CAP_PROP_POS_FRAMES(), 0)
+
+0
+|> Stream.iterate(&(&1 + 1))
+|> Stream.map(fn frame_index ->
+  IO.inspect("#{frame_index}/#{trunc(input_video.frame_count)}")
+  input_frame = Evision.VideoCapture.read(input_video)
+
+  if input_frame do
+    output_frame = detect.(input_frame, model)
+    Evision.VideoWriter.write(output_video, output_frame)
+    true
+  else
+    false
+  end
+end)
+|> Stream.take_while(& &1)
+|> Enum.to_list()
+```
+
+```elixir
+Evision.VideoWriter.release(output_video)
+```
+
+```elixir
+detected_video = Evision.VideoCapture.videoCapture("/tmp/sample_detected.mp4")
+
+Kino.animate(1, 0, fn _, frame_index ->
+  frame = Evision.VideoCapture.read(detected_video)
+
+  if frame do
+    {:cont, frame, frame_index + 1}
+  else
+    :halt
+  end
+end)
+```
