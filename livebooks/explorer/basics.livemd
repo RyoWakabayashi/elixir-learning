@@ -27,8 +27,7 @@ sample_df =
 ```
 
 ```elixir
-sample_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(sample_df)
 ```
 
 ```elixir
@@ -119,12 +118,11 @@ nil_df =
   }
   |> DataFrame.new()
 
-nil_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(nil_df)
 ```
 
 ```elixir
-sample_df
+nil_df
 |> DataFrame.mutate(
   is_nil: is_nil(values),
   is_not_nil: is_not_nil(values)
@@ -210,8 +208,7 @@ DataFrame.table(population_df, limit: :infinity)
 ```
 
 ```elixir
-population_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(population_df)
 ```
 
 ```elixir
@@ -226,15 +223,8 @@ population_df
 ```elixir
 population_df
 |> DataFrame.distinct(["年齢層"])
-|> DataFrame.to_columns()
-|> Map.get("年齢層")
-```
-
-```elixir
-population_df
-|> DataFrame.filter(都道府県 == "東京都")
-|> DataFrame.select(["年齢層", "性別", "人口_千人"])
-|> Kino.DataTable.new(sorting_enabled: true)
+|> DataFrame.pull("年齢層")
+|> Series.to_list()
 ```
 
 ```elixir
@@ -242,7 +232,7 @@ population_df
 |> DataFrame.mutate(人口_千人: cast(人口_千人, :float))
 |> DataFrame.filter(都道府県 == "東京都")
 |> DataFrame.select(["年齢層", "性別", "人口_千人"])
-|> Kino.DataTable.new(sorting_enabled: true)
+|> Kino.DataTable.new()
 ```
 
 ```elixir
@@ -262,7 +252,7 @@ population_df = DataFrame.put(population_df, "人口_千人", trimmed)
 population_df
 |> DataFrame.filter(都道府県 == "東京都")
 |> DataFrame.select(["年齢層", "性別", "人口_千人"])
-|> Kino.DataTable.new(sorting_enabled: true)
+|> Kino.DataTable.new()
 ```
 
 ```elixir
@@ -275,7 +265,7 @@ population_df =
 population_df
 |> DataFrame.filter(都道府県 == "東京都")
 |> DataFrame.select(["年齢層", "性別", "人口"])
-|> Kino.DataTable.new(sorting_enabled: true)
+|> Kino.DataTable.new()
 ```
 
 ```elixir
@@ -298,12 +288,12 @@ population_df
 sum_df =
   population_df
   |> DataFrame.group_by(["都道府県"])
-  |> DataFrame.summarise(人口: sum(人口))
-  |> DataFrame.mutate(人口: cast(人口, :float))
+  |> DataFrame.summarise(人口_千人: sum(人口 / 1_000))
+  |> DataFrame.mutate(人口_千人: cast(人口_千人, :float))
 
 sum_df
-|> DataFrame.arrange(desc: 人口)
-|> Kino.DataTable.new(sorting_enabled: true)
+|> DataFrame.arrange(desc: 人口_千人)
+|> Kino.DataTable.new()
 ```
 
 ```elixir
@@ -320,7 +310,7 @@ sex_ratio_df =
 
 sex_ratio_df
 |> DataFrame.arrange(desc: 男性率)
-|> Kino.DataTable.new(sorting_enabled: true)
+|> Kino.DataTable.new()
 ```
 
 ```elixir
@@ -344,11 +334,8 @@ elderly_rate_df
 
 ```elixir
 assets_df = DataFrame.from_csv!("/home/livebook/explorer/assets_20151216.csv")
-```
 
-```elixir
-assets_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(assets_df)
 ```
 
 ```elixir
@@ -370,8 +357,7 @@ assets_df =
   |> parse_float.("貯蓄現在高")
   |> parse_float.("負債現在高")
 
-assets_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(assets_df)
 ```
 
 ```elixir
@@ -381,8 +367,7 @@ joined_df =
   |> DataFrame.join(elderly_rate_df, how: :left)
   |> DataFrame.join(assets_df, how: :left)
 
-joined_df
-|> Kino.DataTable.new(sorting_enabled: true)
+Kino.DataTable.new(joined_df)
 ```
 
 ```elixir
@@ -390,13 +375,10 @@ DataFrame.to_csv(joined_df, "/tmp/joined.csv")
 ```
 
 ```elixir
-joined_df
-|> DataFrame.arrange(desc: 高齢者率)
-|> Kino.DataTable.new(sorting_enabled: true)
-```
-
-```elixir
-cols = ["人口", "男性率", "女性率", "高齢者率", "世帯人員", "持ち家率", "年間収入", "貯蓄現在高"]
+cols =
+  joined_df
+  |> DataFrame.names()
+  |> Enum.filter(&(&1 != "都道府県"))
 ```
 
 ```elixir
@@ -428,16 +410,14 @@ covariance_df =
 ```
 
 ```elixir
-select_rows =
+select_cols =
   covariance_df
   |> DataFrame.names()
   |> Enum.filter(&(&1 != "都道府県"))
-```
 
-```elixir
 mean_map =
   covariance_df
-  |> DataFrame.select(select_rows)
+  |> DataFrame.select(select_cols)
   |> DataFrame.to_series()
   |> Enum.map(fn {key, value} -> {key, Series.mean(value)} end)
   |> Enum.into(%{})
@@ -486,26 +466,6 @@ correlation_map =
   |> Enum.reduce(fn map, merged_map ->
     Map.merge(merged_map, map)
   end)
-```
-
-```elixir
-cols
-|> Enum.map(fn col_1 ->
-  %{
-    col_1 =>
-      cols
-      |> Enum.map(fn col_2 ->
-        Map.get(covariance_map, col_1 <> "*" <> col_2)
-      end)
-  }
-end)
-|> Enum.reduce(fn map, merged_map ->
-  Map.merge(merged_map, map)
-end)
-|> Map.merge(%{"x" => cols})
-|> DataFrame.new()
-|> DataFrame.select(["x" | cols])
-|> Kino.DataTable.new(keys: ["x" | cols], sorting_enabled: true)
 ```
 
 ```elixir
