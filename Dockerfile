@@ -75,6 +75,14 @@ RUN apt-get upgrade -y \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
+# For Vix, Image
+RUN apt-get upgrade -y \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y \
+    libvips-dev \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY ./livebooks /home/livebook
 
 CMD ["/app/bin/livebook", "start"]

@@ -1,0 +1,224 @@
+# Image
+
+```elixir
+Mix.install([
+  {:image, "~> 0.23.2"},
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## 画像の読込
+
+### ファイルから
+
+```elixir
+puppies_img = Image.open!("/tmp/puppies.jpg")
+```
+
+### Kino.Input から
+
+```elixir
+chroma_key_img_input = Kino.Input.image("CHROMA KEY IMAGE", format: :png)
+```
+
+```elixir
+chroma_key_img =
+  chroma_key_img_input
+  |> Kino.Input.read()
+  |> then(& &1.data)
+  |> Image.from_binary()
+  |> elem(1)
+
+Image.Kino.show(chroma_key_img, max_height: 400)
+```
+
+### Web から
+
+```elixir
+lenna_img =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Image.from_binary()
+  |> elem(1)
+
+Image.Kino.show(lenna_img, max_height: 400)
+```
+
+## 画像処理
+
+### 色変換
+
+```elixir
+puppies_img
+|> Image.to_colorspace!(:bw)
+|> Image.Kino.show()
+```
+
+### ぼかし
+
+```elixir
+puppies_img
+|> Image.blur!()
+|> Image.Kino.show()
+```
+
+```elixir
+1..10
+|> Enum.map(fn sigma ->
+  puppies_img
+  |> Image.blur!(sigma: sigma)
+  |> Image.Kino.show()
+end)
+|> Kino.Layout.grid(columns: 5)
+```
+
+### モザイク
+
+```elixir
+puppies_img
+|> Image.pixelate!()
+|> Image.Kino.show()
+```
+
+```elixir
+1..10
+|> Enum.map(fn scale ->
+  puppies_img
+  |> Image.pixelate!(scale / 100)
+  |> Image.Kino.show()
+end)
+|> Kino.Layout.grid(columns: 5)
+```
+
+### リサイズ
+
+```elixir
+puppies_img
+|> Image.resize!(0.2)
+|> Image.Kino.show()
+```
+
+### 反転
+
+```elixir
+puppies_img
+|> Image.flip!(:horizontal)
+|> Image.Kino.show()
+```
+
+```elixir
+puppies_img
+|> Image.flip!(:vertical)
+|> Image.Kino.show()
+```
+
+### 回転
+
+```elixir
+puppies_img
+|> Image.rotate!(45)
+|> Image.Kino.show()
+```
+
+```elixir
+Stream.interval(1)
+|> Stream.take(361)
+|> Kino.animate(fn angle ->
+  puppies_img
+  |> Image.rotate!(angle)
+  |> Image.Kino.show()
+end)
+```
+
+### 切り抜き
+
+```elixir
+puppies_img
+|> Image.crop!(0.3, 0.2, 0.5, 0.7)
+|> Image.Kino.show()
+```
+
+## 合成
+
+```elixir
+puppies_img
+|> Image.compose!(lenna_img, blend_mode: :over)
+|> Image.Kino.show()
+```
+
+```elixir
+puppies_img
+|> Image.compose!(lenna_img, blend_mode: :lighten)
+|> Image.Kino.show()
+```
+
+```elixir
+puppies_img
+|> Image.compose!(lenna_img, blend_mode: :add)
+|> Image.Kino.show()
+```
+
+```elixir
+puppies_img
+|> Image.compose!(lenna_img, blend_mode: :difference)
+|> Image.Kino.show()
+```
+
+### 膨張、収縮(ノイズ除去)
+
+```elixir
+noize_img = Image.open!("/tmp/noize.png")
+
+Image.Kino.show(noize_img)
+```
+
+```elixir
+[
+  noize_img |> Image.dilate!(3),
+  noize_img |> Image.erode!(3)
+]
+|> Enum.map(&Image.Kino.show(&1, max_height: 400))
+|> Kino.Layout.grid(columns: 2)
+```
+
+```elixir
+[
+  noize_img,
+  noize_img |> Image.erode!(3) |> Image.dilate!(3)
+]
+|> Enum.map(&Image.Kino.show(&1, max_height: 400))
+|> Kino.Layout.grid(columns: 2)
+```
+
+### クロマキー
+
+```elixir
+chroma_key_img
+|> Image.chroma_color()
+|> then(&Image.new!(200, 200, color: &1, bands: 3))
+|> Image.Kino.show()
+```
+
+```elixir
+{rgb, alpha} = Image.split_alpha(chroma_key_img)
+```
+
+```elixir
+[
+  chroma_key_img,
+  Image.chroma_mask!(rgb)
+]
+|> Enum.map(&Image.Kino.show(&1, max_height: 400))
+|> Kino.Layout.grid(columns: 2)
+```
+
+```elixir
+[
+  chroma_key_img,
+  Image.chroma_key!(rgb)
+]
+|> Enum.map(&Image.Kino.show(&1, max_height: 400))
+|> Kino.Layout.grid(columns: 2)
+```
