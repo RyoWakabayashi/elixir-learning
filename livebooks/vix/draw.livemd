@@ -1,0 +1,295 @@
+# Draw
+
+```elixir
+Mix.install([
+  {:image, "~> 0.23.2"},
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## 画像の生成
+
+```elixir
+Image.new!(100, 200)
+|> Image.Kino.show()
+```
+
+```elixir
+Image.new!(200, 200, color: "#FF0000")
+|> Image.Kino.show()
+```
+
+```elixir
+Image.new!(200, 200, color: [0, 255, 0])
+|> Image.Kino.show()
+```
+
+```elixir
+Image.new!(200, 200, color: :blue)
+|> Image.Kino.show()
+```
+
+```elixir
+Image.Color.color_map()
+```
+
+```elixir
+img = Image.new!(100, 100)
+
+Image.Kino.show(img)
+```
+
+## 図形描画
+
+### 点
+
+```elixir
+img
+|> Image.Draw.point!(80, 30, color: :white)
+|> Image.resize!(5)
+|> Image.Kino.show(max_height: 500)
+```
+
+### 直線
+
+```elixir
+img
+|> Image.Draw.line!(10, 20, 30, 40, color: :white)
+|> Image.resize!(5)
+|> Image.Kino.show(max_height: 500)
+```
+
+### 四角形
+
+```elixir
+{left, top, width, height} = {10, 20, 30, 40}
+```
+
+```elixir
+img
+|> Image.Draw.rect!(left, top, width, height, color: :blue)
+|> Image.Kino.show()
+```
+
+```elixir
+img
+|> Image.Draw.rect!(left, top, width, height, color: :green, fill: false)
+|> Image.Kino.show()
+```
+
+### 塗りつぶし
+
+```elixir
+color = "#FF0000"
+
+img
+|> Image.Draw.rect!(left, top, width, height, color: color, fill: false)
+|> Image.Draw.flood(left + 10, top + 10, color: color)
+|> elem(1)
+|> elem(0)
+|> Image.Kino.show()
+```
+
+```elixir
+img
+|> Image.Draw.rect!(left, top, width, height, color: color, fill: false)
+|> Image.Draw.flood(left + 10, top + 10, color: color)
+```
+
+```elixir
+thickness = 8
+
+img
+# 外側の枠
+|> Image.Draw.rect!(left, top, width, height, color: color, fill: false)
+# 内側の枠
+|> Image.Draw.rect!(
+  left + thickness,
+  top + thickness,
+  width - thickness * 2,
+  height - thickness * 2,
+  color: color,
+  fill: false
+)
+# 塗りつぶし
+|> Image.Draw.flood(left + 1, top + 1, color: color)
+|> elem(1)
+|> elem(0)
+|> Image.Kino.show()
+```
+
+### 円
+
+```elixir
+{center_x, center_y, radius} = {30, 40, 20}
+```
+
+```elixir
+img
+|> Image.Draw.circle!(center_x, center_y, radius, color: :blue)
+|> Image.Kino.show()
+```
+
+```elixir
+img
+|> Image.Draw.circle!(center_x, center_y, radius, color: :green, fill: false)
+|> Image.Kino.show()
+```
+
+```elixir
+thickness = 4
+color = :red
+
+img
+|> Image.Draw.circle!(center_x, center_y, radius, color: color, fill: false)
+|> Image.Draw.circle!(
+  center_x,
+  center_y,
+  radius - thickness,
+  color: color,
+  fill: false
+)
+|> Image.Draw.flood(center_x - radius + 1, center_y, color: color)
+|> elem(1)
+|> elem(0)
+|> Image.Kino.show()
+```
+
+### 多角形
+
+```elixir
+Image.Shape.polygon!(
+  [
+    [100, 20],
+    [20, 180],
+    [180, 180]
+  ],
+  width: 200,
+  height: 100,
+  opacity: 1.0,
+  fill_color: :red,
+  stroke_color: :blue,
+  stroke_width: 8
+)
+|> Image.Kino.show()
+```
+
+```elixir
+Image.Shape.polygon!(
+  5,
+  fill_color: :green,
+  opacity: 0.5,
+  radius: 100,
+  rotation: 90
+)
+|> Image.Kino.show()
+```
+
+```elixir
+star_img = Image.Shape.star!(5, width: 100, opacity: 1.0, fill_color: :yellow)
+
+Image.Kino.show(star_img)
+```
+
+```elixir
+Image.Shape.star!(10, inner_radius: 20, outer_radius: 180, opacity: 1.0, fill_color: :yellow)
+|> Image.Kino.show()
+```
+
+## 文字描画
+
+```elixir
+Image.Text.text!("Hello, Livebook!", background_fill_color: :black)
+|> Image.Kino.show()
+```
+
+```elixir
+text_image =
+  Image.Text.text!(
+    "Hello, Livebook!",
+    font_weight: 600,
+    text_fill_color: :yellow,
+    text_stroke_color: :black,
+    text_stroke_width: 4,
+    background_fill_color: :green,
+    background_fill_opacity: 1.0,
+    background_stroke_color: :blue,
+    background_stroke_width: 4,
+    background_stroke_opacity: 1.0,
+    padding: 8,
+    font_size: 54
+  )
+
+Image.Kino.show(text_image)
+```
+
+## 画像との合成
+
+```elixir
+lenna_img =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Image.from_binary()
+  |> elem(1)
+
+Image.Kino.show(lenna_img, max_height: 400)
+```
+
+```elixir
+Image.shape(lenna_img)
+```
+
+```elixir
+alpha = Image.new!(lenna_img, bands: 1, color: Image.Color.max_opacity())
+
+Image.Kino.show(alpha)
+```
+
+```elixir
+rgba_lenna_img = Vix.Vips.Operation.bandjoin!([lenna_img, alpha])
+
+Image.Kino.show(rgba_lenna_img, max_height: 400)
+```
+
+```elixir
+Image.shape(rgba_lenna_img)
+```
+
+```elixir
+rgba_lenna_img
+|> Image.compose!(star_img, x: 30, y: 100)
+|> Image.Draw.image(text_image, 10, 10)
+|> elem(1)
+|> Image.Kino.show(max_height: 400)
+```
+
+```elixir
+star_img =
+  Image.Shape.star!(10,
+    inner_radius: 20,
+    outer_radius: 180,
+    width: 100,
+    opacity: 1.0,
+    fill_color: :yellow
+  )
+
+rect_img =
+  Image.Shape.polygon!(4,
+    width: 180,
+    height: 200,
+    opacity: 1.0,
+    stroke_color: :red,
+    stroke_width: 32,
+    rotation: 45
+  )
+
+text_image = Image.Text.text!("Hello, Livebook!", text_fill_color: :blue, font_size: 54)
+
+rgba_lenna_img
+|> Image.compose!(star_img, x: 30, y: 100)
+|> Image.compose!(rect_img, x: 190, y: 200)
+|> Image.compose!(text_image, x: 10, y: 10)
+|> Image.Kino.show(max_height: 400)
+```
