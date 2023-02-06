@@ -1,4 +1,4 @@
-# 分散処理 メイン
+# Distributed Image Processing Main
 
 ```elixir
 Mix.install(
@@ -16,17 +16,17 @@ Mix.install(
 )
 ```
 
-## 他のノード
+## Other nodes
 
-* [ワーカー 1](distributed_worker_1.livemd)
-* [ワーカー 2](distributed_worker_2.livemd)
-* [ワーカー 3](distributed_worker_3.livemd)
-* [ワーカー 4](distributed_worker_4.livemd)
+* [Worker 1](distributed_worker_1_en.livemd)
+* [Worker 2](distributed_worker_2_en.livemd)
+* [Worker 3](distributed_worker_3_en.livemd)
+* [Worker 4](distributed_worker_4_en.livemd)
 
-## 画像の取得
+## Get the image
 
 ```elixir
-# 指定したパスにダウンロードする
+# Download the image
 img_path = "lenna.png"
 
 Req.get!(
@@ -37,9 +37,9 @@ Req.get!(
 img_mat = Evision.imread(img_path)
 ```
 
-## ノード間で画像処理する方法
+## How to process an image between nodes
 
-ノード間でデータをやり取りするため、バイナリにする
+Convert an image to binary to exchange data between nodes
 
 ```elixir
 img_tensor = Evision.Mat.to_nx(img_mat)
@@ -51,22 +51,22 @@ binary = Nx.to_binary(img_tensor)
 {type, shape, binary}
 ```
 
-二つの画像処理を実行する
+Perform two image processing
 
-- 閾値処理
-- ノード名の描画
+- Thresholding
+- Draw the node name
 
 ```elixir
 dst_binary =
   binary
-  # 画像の再構築
+  # Reconstruction of an image
   |> Nx.from_binary(type)
   |> Nx.reshape(shape)
   |> Evision.Mat.from_nx_2d()
-  # 閾値処理
+  # Thresholding
   |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
   |> elem(1)
-  # ノード名を描画
+  # Draw the node name
   |> Evision.putText(
     Node.self() |> Atom.to_string(),
     {10, 30},
@@ -79,7 +79,7 @@ dst_binary =
   |> Nx.to_binary()
 ```
 
-バイナリで返ってきた処理結果をマトリックスに戻す
+Converts the processing results returned in binary to a matrix
 
 ```elixir
 dst_img_mat =
@@ -89,7 +89,7 @@ dst_img_mat =
   |> Evision.Mat.from_nx_2d()
 ```
 
-## ノード接続
+## Node Connection
 
 ```elixir
 Node.list(:connected)
@@ -122,7 +122,7 @@ Node.disconnect(worker_1_atom)
 Node.list(:connected)
 ```
 
-## 画像をコピー
+## Copy images
 
 ```elixir
 file_ext = Path.extname(img_path)
@@ -132,7 +132,7 @@ file_basename = Path.basename(img_path, file_ext)
 ```
 
 ```elixir
-# コピー枚数
+# Number of copies
 copy_count = 32
 
 src_file_paths =
@@ -148,17 +148,17 @@ src_file_paths =
   end)
 ```
 
-## 処理の定義
+## Define the processing module
 
-分散処理するため、処理内容をモジュールとして定義する
+Define image processing as a module for distributed processing
 
 ```elixir
 defmodule DistributedImageProcessing do
   def distribute(workers, images_stream) do
-    # ワーカーノードに接続する
+    # Connect to worker nodes
     Enum.each(workers, &Node.connect/1)
 
-    # ワーカーストリームを生成する
+    # Generate a stream of worker nodes
     worker_stream =
       Stream.repeatedly(fn -> workers end)
       |> Stream.flat_map(& &1)
@@ -173,13 +173,13 @@ defmodule DistributedImageProcessing do
 
       {
         Node.spawn_link(worker, fn ->
-          # ワーカーがメインから画像を受け取る
+          # Receive the image from the main
           receive do
             {:img, sender_pid, img} ->
-              # 画像処理を呼び出す
+              # Perform image processing
               {dst_file, img} = process_image(img)
 
-              # 画像をバイナリ、形、型としてメインに送る
+              # Send the processed image to the main
               binary = Nx.to_binary(img)
               shape = Nx.shape(img)
               type = Nx.type(img)
@@ -199,7 +199,7 @@ defmodule DistributedImageProcessing do
         |> Evision.imread()
         |> Evision.Mat.to_nx()
 
-      # 画像をバイナリ、形、型としてワーカーに送る
+      # Send the image to the worker
       binary = Nx.to_binary(img)
       shape = Nx.shape(img)
       type = Nx.type(img)
@@ -227,14 +227,14 @@ defmodule DistributedImageProcessing do
 
     dst_img =
       binary
-      # 画像の再構築
+      # Reconstruction of an image
       |> Nx.from_binary(type)
       |> Nx.reshape(shape)
       |> Evision.Mat.from_nx_2d()
-      # 閾値処理
+      # Thresholding
       |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
       |> elem(1)
-      # ノード名を描画
+      # Draw the node name
       |> Evision.putText(
         Node.self() |> Atom.to_string(),
         {10, 30},
@@ -262,7 +262,7 @@ defmodule DistributedImageProcessing do
 end
 ```
 
-### 自身のノードで1つだけ実行
+### Process one image on own node
 
 ```elixir
 {img_path, type, shape, binary}
@@ -274,7 +274,7 @@ end)
 |> Evision.imread()
 ```
 
-### ワーカーノード1つで1枚だけ実行
+### Process one image on one worker node
 
 ```elixir
 [worker_1_atom]
@@ -283,10 +283,10 @@ end)
 |> Evision.imread()
 ```
 
-### ワーカーノード1つで32枚実行
+### Process 32 images on one worker node
 
 ```elixir
-# 存在するファイルを取得
+# Get files that exist
 images_stream =
   Stream.unfold(0, fn counter -> {counter, counter + 1} end)
   |> Stream.map(&"#{file_basename}_d_#{&1}#{file_ext}")
@@ -300,7 +300,7 @@ images_stream =
 |> Kino.Layout.grid(columns: 4)
 ```
 
-### ワーカーノード4つで分散処理
+### Process 32 images on 4 worker nodes
 
 ```elixir
 worker_2_input = Kino.Input.text("WORKER_2_NODE_NAME")
@@ -331,7 +331,7 @@ workers
 |> Kino.Layout.grid(columns: 4)
 ```
 
-## 速度比較
+## Speed Comparison
 
 ```elixir
 distributed = fn worker_input_list ->

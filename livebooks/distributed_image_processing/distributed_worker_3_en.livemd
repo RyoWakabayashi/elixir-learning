@@ -1,4 +1,4 @@
-# 分散処理 ワーカー4
+# Distributed Image Processing Worker 3
 
 ```elixir
 Mix.install(
@@ -14,23 +14,23 @@ Mix.install(
 )
 ```
 
-## ノード名の取得
+## Get the node name
 
 ```elixir
 Node.self()
 ```
 
-## 処理の定義
+## Define the processing module
 
-メインと同じもの
+Same as the main node
 
 ```elixir
 defmodule DistributedImageProcessing do
   def distribute(workers, images_stream) do
-    # ワーカーノードに接続する
+    # Connect to worker nodes
     Enum.each(workers, &Node.connect/1)
 
-    # worker_stream is generated repeatedly
+    # Generate a stream of worker nodes
     worker_stream =
       Stream.repeatedly(fn -> workers end)
       |> Stream.flat_map(& &1)
@@ -45,13 +45,13 @@ defmodule DistributedImageProcessing do
 
       {
         Node.spawn_link(worker, fn ->
-          # worker receives an image from main
+          # Receive the image from the main
           receive do
             {:img, sender_pid, img} ->
-              # call process_image
+              # Perform image processing
               {dst_file, img} = process_image(img)
 
-              # An image should be converted into binary, shape and type before sending.
+              # Send the processed image to the main
               binary = Nx.to_binary(img)
               shape = Nx.shape(img)
               type = Nx.type(img)
@@ -71,7 +71,7 @@ defmodule DistributedImageProcessing do
         |> Evision.imread()
         |> Evision.Mat.to_nx()
 
-      # An image should be converted into binary, shape and type before sending.
+      # Send the image to the worker
       binary = Nx.to_binary(img)
       shape = Nx.shape(img)
       type = Nx.type(img)
@@ -93,20 +93,20 @@ defmodule DistributedImageProcessing do
   def process_image({src_file, type, shape, binary}) do
     IO.puts("enter processor #{Node.self()}")
 
-    # file name conversion
     src_file_ext = Path.extname(src_file)
     src_file_basename = Path.basename(src_file, src_file_ext)
     dst_file = "#{src_file_basename}_processed#{src_file_ext}"
 
     dst_img =
       binary
-      # reconstruction of an image
+      # Reconstruction of an image
       |> Nx.from_binary(type)
       |> Nx.reshape(shape)
       |> Evision.Mat.from_nx_2d()
-      # image processing
+      # Thresholding
       |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
       |> elem(1)
+      # Draw the node name
       |> Evision.putText(
         Node.self() |> Atom.to_string(),
         {10, 30},

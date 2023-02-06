@@ -1,4 +1,4 @@
-# Parallel image processing
+# Parallel Image Processing
 
 ```elixir
 Mix.install([
@@ -85,7 +85,7 @@ end)
 |> Kino.Layout.grid(columns: 3)
 ```
 
-## 逐次処理
+## Sequential Processing
 
 ```elixir
 # Get the list of existing files

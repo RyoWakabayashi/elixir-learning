@@ -3,13 +3,13 @@
 ```elixir
 Mix.install(
   [
-    {:evision, "~> 0.1"},
-    {:kino, "~> 0.8"},
     {:nx, "~> 0.4"},
-    {:flow, "~> 1.2"}
+    {:evision, "~> 0.1"},
+    {:flow, "~> 1.2"},
+    {:kino, "~> 0.8"}
   ],
   system_env: [
-    {"EVISION_PRECOMPILED_CACHE_DIR", "/tmp/.cache"}
+    {"EVISION_PRECOMPILED_CACHE_DIR", ".cache"}
   ]
 )
 ```
@@ -91,12 +91,12 @@ defmodule DistributedImageProcessing do
   end
 
   def process_image({src_file, type, shape, binary}) do
-    IO.puts("enter processor")
+    IO.puts("enter processor #{Node.self()}")
 
     # file name conversion
     src_file_ext = Path.extname(src_file)
     src_file_basename = Path.basename(src_file, src_file_ext)
-    dst_file = "#{src_file_basename}_d#{src_file_ext}"
+    dst_file = "#{src_file_basename}_processed#{src_file_ext}"
 
     dst_img =
       binary
