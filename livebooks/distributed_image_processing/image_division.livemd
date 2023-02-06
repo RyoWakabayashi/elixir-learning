@@ -25,11 +25,11 @@ img_mat = Evision.imread(img_path)
 
 ```elixir
 # ファイル名、拡張子、画像サイズの取得
-{file_basename, file_ext, img_shape} = {
-  Path.basename(img_path, Path.extname(img_path)),
-  Path.extname(img_path),
-  img_mat.shape
-}
+file_ext = Path.extname(img_path)
+file_basename = Path.basename(img_path, file_ext)
+img_shape = img_mat.shape
+
+{file_basename, file_ext, img_shape}
 ```
 
 ```elixir

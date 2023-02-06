@@ -1,4 +1,4 @@
-# 並列画像処理
+# Parallel image processing
 
 ```elixir
 Mix.install([
@@ -11,10 +11,10 @@ Mix.install([
 ])
 ```
 
-## 画像の取得
+## Get the image
 
 ```elixir
-# 指定したパスにダウンロードする
+# Download the image
 img_path = "lenna.png"
 
 Req.get!(
@@ -25,7 +25,7 @@ Req.get!(
 img_mat = Evision.imread(img_path)
 ```
 
-## 単体処理
+## Single image processing
 
 ```elixir
 proc = fn mat ->
@@ -46,7 +46,7 @@ end
 proc.(img_mat)
 ```
 
-## 画像をコピー
+## Copy images
 
 ```elixir
 file_ext = Path.extname(img_path)
@@ -56,7 +56,7 @@ file_basename = Path.basename(img_path, file_ext)
 ```
 
 ```elixir
-# コピー数
+# Number og copies
 copy_count = 128
 
 file_path_list =
@@ -73,7 +73,7 @@ file_path_list =
 ```
 
 ```elixir
-# コピーしたファイル先頭6件を読込
+# Display the first 6 copied files
 file_path_list
 |> Enum.slice(0..5)
 |> Enum.map(fn filename ->
@@ -88,7 +88,7 @@ end)
 ## 逐次処理
 
 ```elixir
-# 存在するファイルを取得
+# Get the list of existing files
 stream =
   Stream.unfold(0, fn counter -> {counter, counter + 1} end)
   |> Stream.map(&{&1, "#{file_basename}_p_#{&1}#{file_ext}"})
@@ -96,7 +96,7 @@ stream =
 ```
 
 ```elixir
-# Enum.map で処理
+# Process with Enum.map
 enum_proc = fn stream ->
   stream
   |> Enum.map(fn {_, filename} ->
@@ -113,7 +113,7 @@ imgs_tuple = enum_proc.(stream)
 ```
 
 ```elixir
-# 先頭6件を表示
+# Display the first 6 copied files
 imgs_tuple
 |> Enum.slice(0..5)
 |> Enum.map(fn {filename, img} ->
@@ -126,7 +126,7 @@ end)
 ## 並列処理
 
 ```elixir
-# Flow.map で処理
+# Process with Flow.map
 flow_proc = fn stream, stages ->
   stream
   |> Flow.from_enumerable(stages: stages, max_demand: 1)
@@ -145,7 +145,7 @@ imgs_tuple = flow_proc.(stream, 4)
 ```
 
 ```elixir
-# 先頭6件を表示
+# Display the first 6 copied files
 imgs_tuple
 |> Enum.slice(0..5)
 |> Enum.map(fn {filename, img} ->
@@ -155,7 +155,7 @@ end)
 |> Kino.Layout.grid(columns: 3)
 ```
 
-## 速度比較
+## Speed Comparison
 
 ```elixir
 Benchee.run(%{
