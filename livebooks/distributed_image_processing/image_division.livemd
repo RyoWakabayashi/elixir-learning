@@ -49,7 +49,7 @@ save_img_tensor_list = fn img_tensor_list, kind ->
 end
 ```
 
-## 縦に分割
+## 水平に分割
 
 ```elixir
 # 分割サイズ（分割した画像一つの幅、高さのピクセル数）
@@ -103,7 +103,7 @@ end)
 |> Kino.Image.new()
 ```
 
-## 横に分割
+## 垂直に分割
 
 ```elixir
 # 分割した画像を並べて表示
@@ -113,7 +113,7 @@ img_mat
 |> Nx.transpose(axes: [1, 0, 2])
 # 分割
 |> Nx.to_batched(chunk_size)
-# 　縦横入れ替え
+# 縦横入れ替え
 |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
 # BGR to RGB
 |> Enum.map(&Nx.reverse(&1, axes: [2]))
@@ -167,9 +167,9 @@ end)
 # 分割した画像を並べて表示
 img_mat
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
-# 縦方向に分割
+# 水平に分割
 |> Nx.to_batched(chunk_size)
-# 横方向に分割
+# 垂直に分割
 |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
 |> Enum.flat_map(&Nx.to_batched(&1, chunk_size))
 |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
@@ -184,9 +184,9 @@ img_mat
 # 分割した画像をファイルに保存
 img_mat
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
-# 縦方向に分割
+# 水平に分割
 |> Nx.to_batched(chunk_size)
-# 横方向に分割
+# 垂直に分割
 |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
 |> Enum.flat_map(&Nx.to_batched(&1, chunk_size))
 |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
@@ -194,7 +194,6 @@ img_mat
 ```
 
 ```elixir
-# 横方向の分割数を取得
 {width, _, _} = img_shape
 h_size = div(width, chunk_size)
 

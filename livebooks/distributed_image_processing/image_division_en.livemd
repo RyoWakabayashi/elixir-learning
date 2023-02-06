@@ -1,4 +1,4 @@
-# 画像分割
+# Image division
 
 ```elixir
 Mix.install([
@@ -9,7 +9,7 @@ Mix.install([
 ])
 ```
 
-## 画像の取得
+## Get the image
 
 ```elixir
 # Download the image
@@ -49,7 +49,7 @@ save_img_tensor_list = fn img_tensor_list, kind ->
 end
 ```
 
-## 縦に分割
+## Divide horizontally
 
 ```elixir
 # Number of pixels in width and height of the divided image
@@ -102,7 +102,7 @@ end)
 |> Kino.Image.new()
 ```
 
-## 横に分割
+## Divide vertically
 
 ```elixir
 # Display split images
@@ -159,7 +159,7 @@ end)
 |> Kino.Image.new()
 ```
 
-## タイル状に分割
+## Divide into tiles
 
 ```elixir
 # Display split images
@@ -192,7 +192,6 @@ img_mat
 ```
 
 ```elixir
-# 横方向の分割数を取得
 {width, _, _} = img_shape
 h_size = div(width, chunk_size)
 
