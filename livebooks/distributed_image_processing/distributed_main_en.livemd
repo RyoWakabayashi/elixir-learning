@@ -53,8 +53,8 @@ binary = Nx.to_binary(img_tensor)
 
 Perform two image processing
 
-- Thresholding
-- Draw the node name
+* Thresholding
+* Draw the node name
 
 ```elixir
 dst_binary =
@@ -79,7 +79,7 @@ dst_binary =
   |> Nx.to_binary()
 ```
 
-Converts the processing results returned in binary to a matrix
+Convert the processing results returned in binary to a matrix
 
 ```elixir
 dst_img_mat =
@@ -91,9 +91,17 @@ dst_img_mat =
 
 ## Node Connection
 
+Check the connections between notebooks as nodes
+
 ```elixir
 Node.list(:connected)
 ```
+
+Currently this notebook is only connected to the Livebook process.
+
+Now let's connect to a worker notebook.
+
+Input the worker 1 node name from worker 1 notebook.
 
 ```elixir
 worker_1_input = Kino.Input.text("WORKER_1_NODE_NAME")
@@ -114,6 +122,10 @@ Node.connect(worker_1_atom)
 Node.list(:connected)
 ```
 
+Worker 1 node name has been added to the list.
+
+Disconnect worker 1 because we will connect later.
+
 ```elixir
 Node.disconnect(worker_1_atom)
 ```
@@ -123,6 +135,8 @@ Node.list(:connected)
 ```
 
 ## Copy images
+
+Copy images for distributed processing
 
 ```elixir
 file_ext = Path.extname(img_path)
@@ -135,7 +149,7 @@ file_basename = Path.basename(img_path, file_ext)
 # Number of copies
 copy_count = 32
 
-src_file_paths =
+file_path_list =
   img_mat
   |> List.duplicate(copy_count)
   |> Enum.with_index()
@@ -148,9 +162,28 @@ src_file_paths =
   end)
 ```
 
+```elixir
+# Display the first 6 copied files
+file_path_list
+|> Enum.slice(0..5)
+|> Enum.map(fn filename ->
+  img = Evision.imread(filename)
+
+  [filename, img]
+  |> Kino.Layout.grid(columns: 1)
+end)
+|> Kino.Layout.grid(columns: 3)
+```
+
 ## Define the processing module
 
-Define image processing as a module for distributed processing
+Define image processing as a module for distributed processing.
+
+Send images as binaries from the main node (this notebook) to each worker.
+
+Workes convert the binary back to an image and returns the result as binaries to the main.
+
+Main saves the returned binaries as each images.
 
 ```elixir
 defmodule DistributedImageProcessing do

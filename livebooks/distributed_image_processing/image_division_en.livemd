@@ -9,10 +9,18 @@ Mix.install([
 ])
 ```
 
+## Modules
+
+* Nx: Perform matrix operations in Elixir
+* evision: Image processing in Elixir
+* Req: Download the image in this notebook
+* Kino: Powerful UI/UX in notebooks
+
 ## Get the image
 
+Get an image of Lenna, which is very commonly used in image processing.
+
 ```elixir
-# Download the image
 img_path = "lenna.png"
 
 Req.get!(
@@ -22,6 +30,8 @@ Req.get!(
 
 img_mat = Evision.imread(img_path)
 ```
+
+When you load an image with evision, the image will appear in the notebook.
 
 ```elixir
 # Get the filename, extension, shape
@@ -33,7 +43,7 @@ img_shape = img_mat.shape
 ```
 
 ```elixir
-# function to save image tensor list
+# Prepare a function to save a list of images
 save_img_tensor_list = fn img_tensor_list, kind ->
   img_tensor_list
   |> Enum.with_index()
@@ -51,20 +61,25 @@ end
 
 ## Divide horizontally
 
+First, let's divide the image horizontally
+
 ```elixir
 # Number of pixels in width and height of the divided image
 chunk_size = 64
 ```
 
 ```elixir
-# Display divided images
 img_mat
+# Convert evision image data to Nx tensor
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
+# Nx.to_batched divides the tensor into pieces of the specified size
 |> Nx.to_batched(chunk_size)
-# BGR to RGB
+# Evision OpenCV keeps colors in BGR order, so invert to RGB
 |> Enum.map(&Nx.reverse(&1, axes: [2]))
+# Display divided images
 |> Enum.map(&Kino.Image.new(&1))
 |> Kino.Layout.grid(columns: 1)
+# dbg shows the output of each pipeline
 |> dbg()
 ```
 
@@ -104,8 +119,9 @@ end)
 
 ## Divide vertically
 
+Next, let's divide the image vertically.
+
 ```elixir
-# Display split images
 img_mat
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
 # Swap the vertical and horizontal
@@ -118,6 +134,7 @@ img_mat
 |> Enum.map(&Nx.reverse(&1, axes: [2]))
 |> Enum.map(&Kino.Image.new(&1))
 |> Kino.Layout.grid(columns: 8)
+# If not transposed, the image can only be divided horizontally
 |> dbg()
 ```
 
@@ -161,8 +178,9 @@ end)
 
 ## Divide into tiles
 
+Finally, divide the image into tiles.
+
 ```elixir
-# Display split images
 img_mat
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
 # Divide horizontally

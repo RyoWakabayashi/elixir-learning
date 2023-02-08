@@ -11,6 +11,11 @@ Mix.install([
 ])
 ```
 
+## Modules
+
+* Flow: Parallel Processing in Elixir
+* Benchee: Benchmark in Elixir
+
 ## Get the image
 
 ```elixir
@@ -27,11 +32,15 @@ img_mat = Evision.imread(img_path)
 
 ## Single image processing
 
+Let's process only one image first.
+
 ```elixir
 proc = fn mat ->
   mat
+  # Thresholding
   |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
   |> elem(1)
+  # Draw many shapes
   |> Evision.rectangle({50, 10}, {125, 60}, {255, 0, 0})
   |> Evision.rectangle({250, 60}, {325, 110}, {0, 255, 0}, thickness: -1)
   |> Evision.rectangle({150, 120}, {225, 320}, {0, 0, 255},
@@ -47,6 +56,8 @@ proc.(img_mat)
 ```
 
 ## Copy images
+
+Copy images for parallel processing.
 
 ```elixir
 file_ext = Path.extname(img_path)
@@ -87,6 +98,8 @@ end)
 
 ## Sequential Processing
 
+Let's try sequential processing with Enum.map
+
 ```elixir
 # Get the list of existing files
 stream =
@@ -109,12 +122,12 @@ end
 ```
 
 ```elixir
-imgs_tuple = enum_proc.(stream)
+img_tuple_list = enum_proc.(stream)
 ```
 
 ```elixir
 # Display the first 6 copied files
-imgs_tuple
+img_tuple_list
 |> Enum.slice(0..5)
 |> Enum.map(fn {filename, img} ->
   [filename, img]
@@ -123,7 +136,9 @@ end)
 |> Kino.Layout.grid(columns: 3)
 ```
 
-## 並列処理
+## Parallel Processing
+
+Next, let's try parallel processing with Flow.map
 
 ```elixir
 # Process with Flow.map
@@ -141,12 +156,12 @@ end
 ```
 
 ```elixir
-imgs_tuple = flow_proc.(stream, 4)
+img_tuple_list = flow_proc.(stream, 4)
 ```
 
 ```elixir
 # Display the first 6 copied files
-imgs_tuple
+img_tuple_list
 |> Enum.slice(0..5)
 |> Enum.map(fn {filename, img} ->
   [filename, img]
@@ -156,6 +171,8 @@ end)
 ```
 
 ## Speed Comparison
+
+Compare speeds with Benchee
 
 ```elixir
 Benchee.run(%{
