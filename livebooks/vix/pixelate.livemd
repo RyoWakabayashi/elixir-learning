@@ -1,0 +1,67 @@
+# Pixelate Face
+
+```elixir
+Mix.install([
+  {:image, "~> 0.24"},
+  {:evision, "~> 0.1"},
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## 画像の読込
+
+```elixir
+lenna_img =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Image.from_binary()
+  |> elem(1)
+```
+
+## モデルのダウンロード
+
+```elixir
+face_model_path = "face_model.xml"
+
+"https://github.com/opencv/opencv/raw/master/data/haarcascades/haarcascade_frontalface_default.xml"
+|> Req.get!(connect_options: [timeout: 300_000], output: face_model_path)
+
+face_model = Evision.CascadeClassifier.cascadeClassifier(face_model_path)
+```
+
+## 顔を検出する
+
+```elixir
+face_rect =
+  {left, top, width, height} =
+  lenna_img
+  |> Image.to_evision()
+  |> elem(1)
+  |> then(&Evision.CascadeClassifier.detectMultiScale(face_model, &1))
+  |> List.first()
+```
+
+## 顔にモザイクをかける
+
+```elixir
+face_img = Image.crop!(lenna_img, left, top, width, height)
+```
+
+```elixir
+pixelated_face_img = Image.pixelate!(face_img)
+```
+
+```elixir
+pixelated_lenna_img = Image.compose!(lenna_img, pixelated_face_img, x: left, y: top)
+```
+
+### モザイク処理を繋げた場合
+
+```elixir
+lenna_img
+|> Image.crop!(left, top, width, height)
+|> Image.pixelate!()
+|> then(&Image.compose!(lenna_img, &1, x: left, y: top))
+```
