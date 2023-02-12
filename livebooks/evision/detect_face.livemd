@@ -1,0 +1,131 @@
+# Detect Face
+
+```elixir
+Mix.install([
+  {:req, "~> 0.3"},
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## Download model
+
+```elixir
+prefix = "https://github.com/opencv/opencv/raw/master/data/haarcascades"
+
+frontal_face_model_path = "frontal_face_model.xml"
+
+"#{prefix}/haarcascade_frontalface_default.xml"
+|> Req.get!(connect_options: [timeout: 300_000], output: frontal_face_model_path)
+
+eye_model_path = "eye_model.xml"
+
+"#{prefix}/haarcascade_eye.xml"
+|> Req.get!(connect_options: [timeout: 300_000], output: eye_model_path)
+
+profile_face_model_path = "profile_face_model.xml"
+
+"#{prefix}/haarcascade_profileface.xml"
+|> Req.get!(connect_options: [timeout: 300_000], output: profile_face_model_path)
+```
+
+## Load models
+
+```elixir
+frontal_face_model = Evision.CascadeClassifier.cascadeClassifier(frontal_face_model_path)
+
+eye_model = Evision.CascadeClassifier.cascadeClassifier(eye_model_path)
+
+profile_face_model = Evision.CascadeClassifier.cascadeClassifier(profile_face_model_path)
+```
+
+## Download image
+
+```elixir
+img =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
+```
+
+## Detect frontal face
+
+```elixir
+face_rect_list = Evision.CascadeClassifier.detectMultiScale(frontal_face_model, img)
+```
+
+```elixir
+draw_rects = fn img, rect_list ->
+  Enum.reduce(rect_list, img, fn rect, drawed_mat ->
+    {left, top, width, height} = rect
+
+    Evision.rectangle(
+      drawed_mat,
+      {left, top},
+      {left + width, top + height},
+      {255, 0, 0},
+      thickness: 4
+    )
+  end)
+end
+```
+
+```elixir
+draw_rects.(img, face_rect_list)
+```
+
+```elixir
+{face_rect_list, number_of_detections} =
+  Evision.CascadeClassifier.detectMultiScale2(frontal_face_model, img)
+```
+
+```elixir
+hd(number_of_detections)
+```
+
+```elixir
+{face_rect_list, reject_levels, level_weights} =
+  Evision.CascadeClassifier.detectMultiScale3(frontal_face_model, img, outputRejectLevels: true)
+```
+
+## Detect eyes
+
+```elixir
+eye_rect_list = Evision.CascadeClassifier.detectMultiScale(eye_model, img)
+```
+
+```elixir
+draw_rects.(img, eye_rect_list)
+```
+
+```elixir
+Evision.CascadeClassifier.detectMultiScale2(eye_model, img)
+```
+
+```elixir
+Evision.CascadeClassifier.detectMultiScale3(eye_model, img, outputRejectLevels: true)
+```
+
+## Detect profile face
+
+```elixir
+profile_face_rect_list = Evision.CascadeClassifier.detectMultiScale(profile_face_model, img)
+```
+
+```elixir
+Evision.flip(img, 1)
+```
+
+```elixir
+profile_face_rect_list =
+  img
+  |> Evision.flip(1)
+  |> then(&Evision.CascadeClassifier.detectMultiScale(profile_face_model, &1))
+```
+
+```elixir
+img
+|> Evision.flip(1)
+|> draw_rects.(profile_face_rect_list)
+```
