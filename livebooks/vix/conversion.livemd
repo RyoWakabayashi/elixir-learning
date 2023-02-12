@@ -1,0 +1,97 @@
+# Conversion
+
+```elixir
+Mix.install([
+  {:image, "~> 0.24"},
+  {:nx, "~> 0.4"},
+  {:evision, "~> 0.1"},
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## 画像の読込
+
+```elixir
+lenna_img =
+  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Image.from_binary()
+  |> elem(1)
+```
+
+## Image -> Nx
+
+```elixir
+{:ok, nx_lenna_img} = Image.to_nx(lenna_img)
+
+nx_lenna_img
+```
+
+```elixir
+lenna_img
+|> Image.to_nx()
+|> elem(1)
+|> Kino.Image.new()
+```
+
+## Nx -> Image
+
+```elixir
+{:ok, image_lenna_img} = Image.from_nx(nx_lenna_img)
+
+image_lenna_img
+```
+
+## Image -> evision
+
+```elixir
+{:ok, evision_lenna_img} = Image.to_evision(lenna_img)
+
+evision_lenna_img
+```
+
+## evision -> Image
+
+```elixir
+{:ok, image_lenna_img} = Image.from_evision(evision_lenna_img)
+
+image_lenna_img
+```
+
+## 組み合わせ処理
+
+```elixir
+input =
+  Nx.tensor(
+    [
+      [0, 0],
+      [0, 512],
+      [512, 0],
+      [512, 512]
+    ],
+    type: :f32
+  )
+
+output =
+  Nx.tensor(
+    [
+      [192, 256],
+      [0, 512],
+      [320, 256],
+      [512, 512]
+    ],
+    type: :f32
+  )
+
+perspective_mat = Evision.getPerspectiveTransform(input, output)
+
+lenna_img
+|> Image.Draw.rect!(190, 200, 180, 200, fill: false, color: :red, stroke_width: 24)
+|> Image.to_evision()
+|> elem(1)
+|> Evision.warpPerspective(perspective_mat, {512, 512})
+|> Image.from_evision()
+|> elem(1)
+```
