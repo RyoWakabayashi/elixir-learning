@@ -1,0 +1,26 @@
+# SVG to PNG
+
+```elixir
+Mix.install([
+  {:image, "~> 0.24"},
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## Download SVG
+
+```elixir
+svg_img =
+  "https://www.elixirconf.eu/assets/images/drops.svg"
+  |> Req.get!()
+  |> then(& &1.body)
+  |> Image.from_binary()
+  |> elem(1)
+```
+
+## Save as PNG
+
+```elixir
+Image.write(svg_img, "png_img.png")
+```
