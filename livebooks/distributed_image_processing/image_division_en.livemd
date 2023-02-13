@@ -12,13 +12,13 @@ Mix.install([
 ## Modules
 
 * Nx: Perform matrix operations in Elixir
-* evision: Image processing in Elixir
+* evision: An OpenCV wrapper, Process images in Elixir
 * Req: Download the image in this notebook
 * Kino: Powerful UI/UX in notebooks
 
 ## Get the image
 
-Get an image of Lenna, which is very commonly used in image processing.
+Download the image of Lenna, which is very commonly used in image processing.
 
 ```elixir
 img_path = "lenna.png"
@@ -33,8 +33,10 @@ img_mat = Evision.imread(img_path)
 
 When you load an image with evision, the image will appear in the notebook.
 
+Then prepare for image processing.
+
 ```elixir
-# Get the filename, extension, shape
+# Get the filename, extension, and shape
 file_ext = Path.extname(img_path)
 file_basename = Path.basename(img_path, file_ext)
 img_shape = img_mat.shape
@@ -64,7 +66,7 @@ end
 First, let's divide the image horizontally
 
 ```elixir
-# Number of pixels in width and height of the divided image
+# chunk_size is number of pixels in width and height of the divided image
 chunk_size = 64
 ```
 
@@ -72,37 +74,47 @@ chunk_size = 64
 img_mat
 # Convert evision image data to Nx tensor
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
-# Nx.to_batched divides the tensor into pieces of the specified size
+# Nx.to_batched divides the tensor into pieces of the chunk_size
 |> Nx.to_batched(chunk_size)
 # Evision OpenCV keeps colors in BGR order, so invert to RGB
 |> Enum.map(&Nx.reverse(&1, axes: [2]))
 # Display divided images
 |> Enum.map(&Kino.Image.new(&1))
 |> Kino.Layout.grid(columns: 1)
-# dbg shows the output of each pipeline
 |> dbg()
 ```
 
+Lenna is divided horizontally.
+
+`Kino.Layout.grid` makes it easy to display images side by side.
+
+`dbg` shows the output of each pipeline
+
 ```elixir
-# Save divided images
+# Save divided images with the prepared funtion
 img_mat
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
 |> Nx.to_batched(chunk_size)
 |> save_img_tensor_list.("h")
 ```
 
+The file name of the saved image is now displayed.
+
+Now let's concatenate the divided images.
+
 ```elixir
-# Concatenate divided images
+# Get a list of divided images
 Stream.unfold(0, fn counter -> {counter, counter + 1} end)
 |> Stream.map(&{&1, "#{file_basename}_h_#{&1}#{file_ext}"})
 |> Stream.take_while(fn {_, f} -> File.exists?(f) end)
+# Load each image
 |> Enum.map(fn {index, filename} ->
   new_tensor =
     filename
     |> Evision.imread()
     |> Evision.Mat.to_nx(Nx.BinaryBackend)
 
-  # Invert color for even numbers
+  # Invert color for even numbers to show that they were divided
   case rem(index, 2) do
     0 ->
       Nx.reverse(new_tensor, axes: [2])
@@ -111,15 +123,22 @@ Stream.unfold(0, fn counter -> {counter, counter + 1} end)
       new_tensor
   end
 end)
+# Concatenate the images
 |> Nx.concatenate()
 # Trim to image size
 |> Nx.slice([0, 0, 0], Tuple.to_list(img_shape))
 |> Kino.Image.new()
 ```
 
+The images were concatenated and horizontal striped.
+
 ## Divide vertically
 
 Next, let's divide the image vertically.
+
+Lay the image to divide it vertically.
+
+Bacause, `Nx.to_batched` can only split horizontally.
 
 ```elixir
 img_mat
@@ -138,14 +157,17 @@ img_mat
 |> dbg()
 ```
 
+Lenna is divided vertically.
+
 ```elixir
-# Save divided images
+# Save the divided images
 img_mat
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
 # Swap the vertical and horizontal
 |> Nx.transpose(axes: [1, 0, 2])
 # Divide
 |> Nx.to_batched(chunk_size)
+# Swap the vertical and horizontal
 |> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
 |> save_img_tensor_list.("v")
 ```
@@ -171,14 +193,17 @@ Stream.unfold(0, fn counter -> {counter, counter + 1} end)
   end
 end)
 |> Nx.concatenate(axis: 1)
-# Trim to image size
 |> Nx.slice([0, 0, 0], Tuple.to_list(img_shape))
 |> Kino.Image.new()
 ```
 
+The images were concatenated and vertical striped.
+
 ## Divide into tiles
 
 Finally, divide the image into tiles.
+
+To tile, divide both horizontally and vertically.
 
 ```elixir
 img_mat
@@ -195,6 +220,8 @@ img_mat
 |> Kino.Layout.grid(columns: 8)
 |> dbg()
 ```
+
+Lenna is divided into tiles.
 
 ```elixir
 # Save divided images
@@ -248,3 +275,5 @@ end)
 |> Nx.slice([0, 0, 0], Tuple.to_list(img_shape))
 |> Kino.Image.new()
 ```
+
+Lenna is in a check pattern.

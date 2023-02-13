@@ -170,9 +170,17 @@ end)
 |> Kino.Layout.grid(columns: 3)
 ```
 
+Same result as `Enum.map`
+
 ## Speed Comparison
 
-Compare speeds with Benchee
+Compare speeds with Benchee.
+
+* Sequential processing with Enum.map
+* Parallel Processing with Flow.map 1 stage
+* Parallel Processing with Flow.map 2 stage
+* Parallel Processing with Flow.map 4 stage
+* Parallel Processing with Flow.map 8 stage
 
 ```elixir
 Benchee.run(%{
