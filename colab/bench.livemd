@@ -1,17 +1,26 @@
-# Untitled notebook
+# Benchmark for Nx
 
 ```elixir
-Mix.install([
-  {:benchee, "~> 1.1"},
-  {:nx, "~> 0.4"},
-  {:exla, "~> 0.4"},
-  {:torchx, "~> 0.4"},
-  {:evision, "~> 0.1"},
-  {:kino, "~> 0.7"}
-])
+Mix.install(
+  [
+    {:benchee, "~> 1.1"},
+    {:nx, "~> 0.5"},
+    {:exla, "~> 0.5"},
+    {:torchx, "~> 0.5"},
+    {:evision, "~> 0.1"},
+    {:kino, "~> 0.8"}
+  ],
+  system_env: [
+    {"XLA_TARGET", "cuda111"},
+    {"EXLA_TARGET", "cuda"},
+    {"LIBTORCH_TARGET", "cu113"},
+    {"EVISION_ENABLE_CUDA", "true"},
+    {"EVISION_CUDA_VERSION", "111"}
+  ]
+)
 ```
 
-## Section
+## Generate each backend tensors
 
 ```elixir
 tensor = Nx.tensor([1.0, 2.0, 3.0], backend: {Nx.BinaryBackend, device: :gpu})
@@ -32,6 +41,8 @@ Nx.add(tensor, tensor)
 tensor = Nx.tensor([1.0, 2.0, 3.0], backend: Evision.Backend)
 Nx.add(tensor, tensor)
 ```
+
+## Benchmark
 
 ```elixir
 bench = fn backend ->
