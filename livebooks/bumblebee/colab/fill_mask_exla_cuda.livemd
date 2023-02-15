@@ -72,7 +72,12 @@ serving
 ## 時間計測
 
 ```elixir
-:timer.tc(Nx.Serving, :run, [serving, text])
+1..10
+|> Enum.map(fn _ ->
+  {time, _} = :timer.tc(Nx.Serving, :run, [serving, text])
+  time
+end)
+|> then(&(Enum.sum(&1) / 10))
 ```
 
 ## 他のモデル

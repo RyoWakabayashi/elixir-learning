@@ -112,6 +112,17 @@ serving
 |> then(&Kino.DataTable.new(&1.predictions))
 ```
 
+## 時間計測
+
+```elixir
+1..10
+|> Enum.map(fn _ ->
+  {time, _} = :timer.tc(Nx.Serving, :run, [serving, image])
+  time
+end)
+|> then(&(Enum.sum(&1) / 10))
+```
+
 ## 他のモデル
 
 ```elixir

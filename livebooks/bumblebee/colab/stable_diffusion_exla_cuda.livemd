@@ -143,5 +143,10 @@ end)
 ## 時間計測
 
 ```elixir
-:timer.tc(Nx.Serving, :run, [serving, Kino.Input.read(prompt_input)])
+1..10
+|> Enum.map(fn _ ->
+  {time, _} = :timer.tc(Nx.Serving, :run, [serving, Kino.Input.read(prompt_input)])
+  time
+end)
+|> then(&(Enum.sum(&1) / 10))
 ```

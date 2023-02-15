@@ -98,3 +98,37 @@ answer_tokens =
 ```elixir
 Bumblebee.Tokenizer.decode(tokenizer, answer_tokens)
 ```
+
+## 時間計測
+
+```elixir
+proc = fn question, context ->
+  inputs = Bumblebee.apply_tokenizer(tokenizer, {question, context})
+  outputs = Axon.predict(roberta.model, roberta.params, inputs)
+
+  answer_start_index =
+    outputs.start_logits
+    |> Nx.argmax()
+    |> Nx.to_number()
+
+  answer_end_index =
+    outputs.end_logits
+    |> Nx.argmax()
+    |> Nx.to_number()
+
+  answer_tokens =
+    inputs["input_ids"][[0, answer_start_index..answer_end_index]]
+    |> Nx.to_flat_list()
+
+  Bumblebee.Tokenizer.decode(tokenizer, answer_tokens)
+end
+```
+
+```elixir
+1..10
+|> Enum.map(fn _ ->
+  {time, _} = :timer.tc(proc, [question, context])
+  time
+end)
+|> then(&(Enum.sum(&1) / 10))
+```
