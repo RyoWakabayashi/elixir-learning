@@ -1,0 +1,147 @@
+# Stable Diffusion with EXLA CUDA
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.1"},
+    {:nx, "~> 0.4"},
+    {:exla, "~> 0.4"},
+    {:kino, "~> 0.8"}
+  ],
+  system_env: [
+    {"XLA_TARGET", "cuda114"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## 設定
+
+```elixir
+Nx.default_backend()
+```
+
+```elixir
+repository_id = "CompVis/stable-diffusion-v1-4"
+```
+
+```elixir
+cache_dir = "/tmp/bumblebee_cache"
+```
+
+## モデルのダウンロード
+
+```elixir
+{:ok, tokenizer} =
+  Bumblebee.load_tokenizer({
+    :hf,
+    "openai/clip-vit-large-patch14",
+    cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, clip} =
+  Bumblebee.load_model({
+    :hf,
+    repository_id,
+    subdir: "text_encoder", cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, unet} =
+  Bumblebee.load_model(
+    {
+      :hf,
+      repository_id,
+      subdir: "unet", cache_dir: cache_dir
+    },
+    params_filename: "diffusion_pytorch_model.bin"
+  )
+```
+
+```elixir
+{:ok, vae} =
+  Bumblebee.load_model(
+    {
+      :hf,
+      repository_id,
+      subdir: "vae", cache_dir: cache_dir
+    },
+    architecture: :decoder,
+    params_filename: "diffusion_pytorch_model.bin"
+  )
+```
+
+```elixir
+{:ok, scheduler} =
+  Bumblebee.load_scheduler({
+    :hf,
+    repository_id,
+    subdir: "scheduler", cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, featurizer} =
+  Bumblebee.load_featurizer({
+    :hf,
+    repository_id,
+    subdir: "feature_extractor", cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, safety_checker} =
+  Bumblebee.load_model({
+    :hf,
+    repository_id,
+    subdir: "safety_checker", cache_dir: cache_dir
+  })
+```
+
+```elixir
+serving =
+  Bumblebee.Diffusion.StableDiffusion.text_to_image(
+    clip,
+    unet,
+    vae,
+    tokenizer,
+    scheduler,
+    num_steps: 20,
+    num_images_per_prompt: 2,
+    safety_checker: safety_checker,
+    safety_checker_featurizer: featurizer,
+    compile: [batch_size: 1, sequence_length: 60],
+    defn_options: [compiler: EXLA]
+  )
+```
+
+## 画像生成
+
+```elixir
+prompt_input = Kino.Input.text("PROMPT")
+```
+
+```elixir
+output = Nx.Serving.run(serving, Kino.Input.read(prompt_input))
+```
+
+```elixir
+output.results
+|> Enum.map(fn result ->
+  Kino.Image.new(result.image)
+end)
+|> Kino.Layout.grid(columns: 2)
+```
+
+## 時間計測
+
+```elixir
+:timer.tc(Nx.Serving, :run, [serving, Kino.Input.read(prompt_input)])
+```

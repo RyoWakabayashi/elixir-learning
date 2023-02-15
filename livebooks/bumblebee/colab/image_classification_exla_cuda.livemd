@@ -1,0 +1,156 @@
+# Image Classification
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.1"},
+    {:nx, "~> 0.4"},
+    {:exla, "~> 0.4"},
+    {:kino, "~> 0.8"}
+  ],
+  system_env: [
+    {"XLA_TARGET", "cuda114"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## 設定
+
+```elixir
+Nx.default_backend()
+```
+
+```elixir
+cache_dir = "/tmp/bumblebee_cache"
+```
+
+## モデルのダウンロード
+
+```elixir
+{:ok, resnet} =
+  Bumblebee.load_model({
+    :hf,
+    "microsoft/resnet-50",
+    cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, featurizer} =
+  Bumblebee.load_featurizer({
+    :hf,
+    "microsoft/resnet-50",
+    cache_dir: cache_dir
+  })
+```
+
+## 画像分類の実行
+
+### 画像の準備
+
+```elixir
+image_input = Kino.Input.image("IMAGE", size: {224, 224})
+```
+
+```elixir
+image =
+  image_input
+  |> Kino.Input.read()
+  |> then(fn input ->
+    input.data
+    |> Nx.from_binary(:u8)
+    |> Nx.reshape({input.height, input.width, 3})
+  end)
+
+Kino.Image.new(image)
+```
+
+### 手動推論
+
+```elixir
+inputs = Bumblebee.apply_featurizer(featurizer, image)
+```
+
+```elixir
+outputs = Axon.predict(resnet.model, resnet.params, inputs)
+```
+
+```elixir
+outputs.logits
+|> Nx.squeeze()
+|> Axon.Activations.softmax()
+|> Bumblebee.Utils.Nx.top_k(k: 5)
+|> then(fn {scores, class_ids} ->
+  scores
+  |> Nx.to_flat_list()
+  |> Enum.zip(Nx.to_flat_list(class_ids))
+  |> Enum.map(fn {score, class_id} ->
+    [
+      label: resnet.spec.id_to_label[class_id],
+      score: score
+    ]
+  end)
+end)
+|> Kino.DataTable.new()
+|> dbg()
+```
+
+### Nx.Serving による提供
+
+```elixir
+serving = Bumblebee.Vision.image_classification(resnet, featurizer)
+```
+
+```elixir
+serving
+|> Nx.Serving.run(image)
+|> then(&Kino.DataTable.new(&1.predictions))
+```
+
+## 他のモデル
+
+```elixir
+serve_model = fn repository_id ->
+  {:ok, model} =
+    Bumblebee.load_model({
+      :hf,
+      repository_id,
+      cache_dir: cache_dir
+    })
+
+  {:ok, featurizer} =
+    Bumblebee.load_featurizer({
+      :hf,
+      repository_id,
+      cache_dir: cache_dir
+    })
+
+  Bumblebee.Vision.image_classification(model, featurizer)
+end
+```
+
+```elixir
+"facebook/convnext-tiny-224"
+|> serve_model.()
+|> Nx.Serving.run(image)
+|> then(&Kino.DataTable.new(&1.predictions))
+```
+
+```elixir
+"google/vit-base-patch16-224"
+|> serve_model.()
+|> Nx.Serving.run(image)
+|> then(&Kino.DataTable.new(&1.predictions))
+```
+
+```elixir
+"facebook/deit-base-distilled-patch16-224"
+|> serve_model.()
+|> Nx.Serving.run(image)
+|> then(&Kino.DataTable.new(&1.predictions))
+```

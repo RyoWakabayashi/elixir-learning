@@ -12,7 +12,6 @@ Mix.install(
   ],
   system_env: [
     {"XLA_TARGET", "cuda111"},
-    {"EXLA_TARGET", "cuda"},
     {"LIBTORCH_TARGET", "cu113"},
     {"EVISION_ENABLE_CUDA", "true"},
     {"EVISION_CUDA_VERSION", "111"}

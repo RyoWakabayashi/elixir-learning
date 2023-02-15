@@ -1,0 +1,100 @@
+# Question answering
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.1"},
+    {:nx, "~> 0.4"},
+    {:exla, "~> 0.4"},
+    {:kino, "~> 0.8"}
+  ],
+  system_env: [
+    {"XLA_TARGET", "cuda114"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## 設定
+
+```elixir
+cache_dir = "/tmp/bumblebee_cache"
+```
+
+## モデルのダウンロード
+
+```elixir
+{:ok, roberta} =
+  Bumblebee.load_model({
+    :hf,
+    "deepset/roberta-base-squad2",
+    cache_dir: cache_dir
+  })
+```
+
+```elixir
+{:ok, tokenizer} =
+  Bumblebee.load_tokenizer({
+    :hf,
+    "roberta-base",
+    cache_dir: cache_dir
+  })
+```
+
+## 文章の準備
+
+```elixir
+question_input =
+  Kino.Input.text("QUESTION",
+    default: "What industries does Elixir help?"
+  )
+```
+
+```elixir
+context_input =
+  Kino.Input.textarea("CONTEXT",
+    default:
+      ~s/Elixir is a dynamic, functional language for building scalable and maintainable applications. Elixir runs on the Erlang VM, known for creating low-latency, distributed, and fault-tolerant systems. These capabilities and Elixir tooling allow developers to be productive in several domains, such as web development, embedded software, data pipelines, and multimedia processing, across a wide range of industries./
+  )
+```
+
+```elixir
+question = Kino.Input.read(question_input)
+context = Kino.Input.read(context_input)
+```
+
+```elixir
+inputs = Bumblebee.apply_tokenizer(tokenizer, {question, context})
+```
+
+```elixir
+outputs = Axon.predict(roberta.model, roberta.params, inputs)
+```
+
+```elixir
+answer_start_index =
+  outputs.start_logits
+  |> Nx.argmax()
+  |> Nx.to_number()
+```
+
+```elixir
+answer_end_index =
+  outputs.end_logits
+  |> Nx.argmax()
+  |> Nx.to_number()
+```
+
+```elixir
+answer_tokens =
+  inputs["input_ids"][[0, answer_start_index..answer_end_index]]
+  |> Nx.to_flat_list()
+```
+
+```elixir
+Bumblebee.Tokenizer.decode(tokenizer, answer_tokens)
+```
