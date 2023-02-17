@@ -1,0 +1,109 @@
+# Search from Algolia
+
+```elixir
+Mix.install([
+  {:algoliax, "~> 0.7"},
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## Set credentials
+
+```elixir
+application_id = Kino.Input.text("Application ID")
+```
+
+```elixir
+application_id
+|> Kino.Input.read()
+|> then(&System.put_env("ALGOLIA_APPLICATION_ID", &1))
+```
+
+```elixir
+api_key = Kino.Input.password("API Key")
+```
+
+```elixir
+api_key
+|> Kino.Input.read()
+|> then(&System.put_env("ALGOLIA_API_KEY", &1))
+```
+
+## Get Index settings
+
+```elixir
+configuration =
+  "https://raw.githubusercontent.com/algolia/datasets/master/ecommerce-federated/products_configuration.json"
+  |> Req.get!()
+  |> then(&Jason.decode!(&1.body))
+```
+
+```elixir
+settings =
+  configuration["settings"]
+  |> Enum.into([], fn {key, value} ->
+    {
+      key |> Inflex.underscore() |> String.to_atom(),
+      value
+    }
+  end)
+```
+
+## Define module
+
+```elixir
+defmodule Products do
+  use Algoliax.Indexer,
+    index_name: :products,
+    algolia: settings
+end
+```
+
+## Search
+
+```elixir
+{:ok, %Algoliax.Response{response: response}} = Products.search("Shirt")
+
+response
+```
+
+```elixir
+{
+  response["hitsPerPage"],
+  response["nbHits"],
+  response["nbPages"],
+  response["page"]
+}
+```
+
+```elixir
+{:ok, %Algoliax.Response{response: response}} = Products.search("Shirt", %{page: 1})
+
+response["page"]
+```
+
+```elixir
+{:ok, %Algoliax.Response{response: response}} = Products.search("Shirt", %{hits_per_page: 100})
+
+response["nbPages"]
+```
+
+```elixir
+response["hits"]
+|> List.first()
+|> Kino.Tree.new()
+```
+
+```elixir
+response["hits"]
+|> List.first()
+|> then(& &1["_highlightResult"])
+```
+
+```elixir
+response["hits"]
+|> Enum.filter(&(&1["_snippetResult"]["description"]["value"] != ""))
+|> List.first()
+|> then(& &1["_snippetResult"])
+```
