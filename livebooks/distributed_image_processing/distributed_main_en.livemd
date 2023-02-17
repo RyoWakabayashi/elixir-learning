@@ -39,7 +39,9 @@ img_mat = Evision.imread(img_path)
 
 ## How to process an image between nodes
 
-Convert an image to binary to exchange data between nodes
+Convert an image to binary.
+
+This is to exchange images between nodes.
 
 ```elixir
 img_tensor = Evision.Mat.to_nx(img_mat)
@@ -51,10 +53,9 @@ binary = Nx.to_binary(img_tensor)
 {type, shape, binary}
 ```
 
-Perform two image processing
+In this notebook, I will threshold the image and draw the node name.
 
-* Thresholding
-* Draw the node name
+This is to specify which node the image was processed at.
 
 ```elixir
 dst_binary =
@@ -79,7 +80,9 @@ dst_binary =
   |> Nx.to_binary()
 ```
 
-Convert the processing results returned in binary to a matrix
+Convert the processing results returned in binary to a matrix.
+
+Node name of this notebook is drawn in the image.
 
 ```elixir
 dst_img_mat =
@@ -133,6 +136,8 @@ Node.disconnect(worker_1_atom)
 ```elixir
 Node.list(:connected)
 ```
+
+Worker 1 node name has been removed from the list.
 
 ## Copy images
 
@@ -316,6 +321,10 @@ end)
 |> Evision.imread()
 ```
 
+Worker 1 node name is drawn in the image.
+
+<!-- livebook:{"break_markdown":true} -->
+
 ### Process 32 images on one worker node
 
 ```elixir
@@ -332,6 +341,10 @@ images_stream =
 |> Enum.map(&Evision.imread(&1))
 |> Kino.Layout.grid(columns: 4)
 ```
+
+Worker 1 node name is drawn in all images.
+
+<!-- livebook:{"break_markdown":true} -->
 
 ### Process 32 images on 4 worker nodes
 
@@ -364,7 +377,11 @@ workers
 |> Kino.Layout.grid(columns: 4)
 ```
 
+Node name in images are disparate, indicating that they were processed in a distributed processing.
+
 ## Speed Comparison
+
+Prepare a function to process a given list of workers.
 
 ```elixir
 distributed = fn worker_input_list ->
@@ -378,6 +395,8 @@ distributed = fn worker_input_list ->
 end
 ```
 
+Compare speeds with different numbers of workers.
+
 ```elixir
 Benchee.run(%{
   "1 worker" => fn -> distributed.([worker_1_input]) end,
@@ -387,3 +406,5 @@ Benchee.run(%{
   end
 })
 ```
+
+In reality, the distributed processing was not effective because it was running on a single machine.

@@ -34,6 +34,8 @@ img_mat = Evision.imread(img_path)
 
 Let's process only one image first.
 
+In this notebook, I will threshold the image and draw some rectangles and ellipses.
+
 ```elixir
 proc = fn mat ->
   mat
@@ -98,7 +100,7 @@ end)
 
 ## Sequential Processing
 
-Let's try sequential processing with Enum.map
+Let's try sequential processing with `Enum.map`
 
 ```elixir
 # Get the list of existing files
@@ -125,6 +127,8 @@ end
 img_tuple_list = enum_proc.(stream)
 ```
 
+All images processed.
+
 ```elixir
 # Display the first 6 copied files
 img_tuple_list
@@ -138,7 +142,17 @@ end)
 
 ## Parallel Processing
 
-Next, let's try parallel processing with Flow.map
+Next, let's try parallel processing with `Flow.map`.
+
+Replace `Enum.map` to `Flow.map`.
+
+And, insert `Flow.from_enumerable` before `Flow.map`.
+
+Set the number of parallels for `stages`.
+
+`max_demand` is set to 1 so that Flow processes all images in parallel.
+
+If `max_demand` is not set, Flow will group targets for sequential processing, and then process each group in parallel.
 
 ```elixir
 # Process with Flow.map
@@ -191,3 +205,7 @@ Benchee.run(%{
   "flow 8" => fn -> flow_proc.(stream, 8) end
 })
 ```
+
+Benchee displays the fastest process and how slow the others.
+
+My machine's CPU has 4 cores, so it doesn't make much sense if the number of parallelism exceeds this.

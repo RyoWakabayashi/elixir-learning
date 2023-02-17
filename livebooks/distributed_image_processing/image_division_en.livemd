@@ -11,6 +11,9 @@ Mix.install([
 
 ## Modules
 
+Install dependent modules in the setup cell.
+It's good to see the dependencies made explicit.
+
 * Nx: Perform matrix operations in Elixir
 * evision: An OpenCV wrapper, Process images in Elixir
 * Req: Download the image in this notebook
@@ -88,7 +91,13 @@ Lenna is divided horizontally.
 
 `Kino.Layout.grid` makes it easy to display images side by side.
 
-`dbg` shows the output of each pipeline
+`dbg` shows the output of each pipeline.
+
+* Original image
+* Converted to a tensor
+* Batched to a list of tensors
+* Inverted
+* Displayed
 
 ```elixir
 # Save divided images with the prepared funtion
@@ -158,6 +167,10 @@ img_mat
 ```
 
 Lenna is divided vertically.
+
+When `Nx.transpose` is turned off, Lena falls on its side and divided horizontally.
+
+This is why Livebook and `dbg` work so well together for image processing.
 
 ```elixir
 # Save the divided images
