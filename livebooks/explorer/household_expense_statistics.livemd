@@ -1,0 +1,307 @@
+# 家計支出統計
+
+```elixir
+Mix.install(
+  [
+    {:explorer, "~> 0.5"},
+    {:codepagex, "~> 0.1"},
+    {:kino, "~> 0.8"},
+    {:kino_vega_lite, "~> 0.1"},
+    {:req, "~> 0.3"}
+  ],
+  config: [
+    codepagex: [
+      encodings: ["VENDORS/MICSFT/WINDOWS/CP932"]
+    ]
+  ]
+)
+```
+
+## 出典
+
+出典：「家計調査（家計収支編）　調査結果」（総務省統計局）
+
+<https://www.stat.go.jp/data/kakei/2.html>
+
+## 準備
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+require Explorer.DataFrame
+```
+
+```elixir
+shift_jis = "VENDORS/MICSFT/WINDOWS/CP932"
+```
+
+## データ取得
+
+```elixir
+string_value =
+  "https://www.stat.go.jp/data/kakei/longtime/csv/h-mon-2020.csv"
+  |> Req.get!()
+  |> then(&Codepagex.to_string!(&1.body, shift_jis))
+```
+
+## 整形
+
+```elixir
+[header_row | data_rows] =
+  string_value
+  |> String.split("\r\n")
+  |> Enum.slice(3..-1)
+  |> Enum.map(&String.split(&1, ","))
+```
+
+```elixir
+fixed_cols = Enum.slice(header_row, 0..7)
+```
+
+```elixir
+month_cols =
+  header_row
+  |> Enum.slice(8..-1)
+  |> Enum.map(fn month ->
+    month
+    |> String.trim()
+    |> String.replace("月", "")
+    |> then(&String.slice("0" <> &1, -2..-1))
+  end)
+  |> Enum.chunk_every(12)
+  |> Enum.zip([2020, 2021, 2022])
+  |> Enum.flat_map(fn {month_list, year} ->
+    Enum.map(month_list, fn month -> "#{year}-#{month}-01" end)
+  end)
+```
+
+```elixir
+header_row = fixed_cols ++ month_cols
+```
+
+```elixir
+df_2020 =
+  [header_row | data_rows]
+  |> Enum.map(&Enum.join(&1, ","))
+  |> Enum.join("\n")
+  |> DataFrame.load_csv!()
+
+Kino.DataTable.new(df_2020)
+```
+
+```elixir
+df_2015 =
+  "https://www.stat.go.jp/data/kakei/longtime/csv/h-mon-2015.csv"
+  |> Req.get!()
+  |> then(&Codepagex.to_string!(&1.body, shift_jis))
+  |> String.split("\r\n")
+  |> Enum.slice(3..-1)
+  |> Enum.map(&String.split(&1, ","))
+  |> then(fn [header_row | data_rows] ->
+    fixed_cols = Enum.slice(header_row, 0..7)
+
+    month_cols =
+      header_row
+      |> Enum.slice(8..-1)
+      |> Enum.map(fn month ->
+        month
+        |> String.trim()
+        |> String.replace("月", "")
+        |> then(&String.slice("0" <> &1, -2..-1))
+      end)
+      |> Enum.chunk_every(12)
+      |> Enum.zip([2015, 2016, 2017, 2018, 2019])
+      |> Enum.flat_map(fn {month_list, year} ->
+        Enum.map(month_list, fn month -> "#{year}-#{month}-01" end)
+      end)
+
+    header_row = fixed_cols ++ month_cols
+
+    [header_row | data_rows]
+    |> Enum.map(&Enum.join(&1, ","))
+    |> Enum.join("\n")
+  end)
+  |> DataFrame.load_csv!()
+
+Kino.DataTable.new(df_2015)
+```
+
+```elixir
+DataFrame.select(df_2015, &(&1 != "表側連番"))
+```
+
+```elixir
+df_all =
+  DataFrame.join(
+    DataFrame.select(df_2015, &(&1 != "表側連番")),
+    DataFrame.select(df_2020, &(&1 != "表側連番")),
+    how: :outer
+  )
+
+Kino.DataTable.new(df_all)
+```
+
+```elixir
+pivot_df =
+  DataFrame.pivot_longer(
+    df_all,
+    &String.starts_with?(&1, "20"),
+    names_to: "年月",
+    values_to: "支出金額"
+  )
+
+Kino.DataTable.new(pivot_df)
+```
+
+```elixir
+date_list = Series.to_list(pivot_df["年月"])
+
+date_series =
+  date_list
+  |> Enum.map(&Date.from_iso8601!(&1))
+  |> Series.from_list()
+
+month_series =
+  date_list
+  |> Enum.map(&(&1 |> String.split("-") |> Enum.at(1) |> String.to_integer()))
+  |> Series.from_list()
+
+year_series =
+  date_list
+  |> Enum.map(&(&1 |> String.split("-") |> Enum.at(0) |> String.to_integer()))
+  |> Series.from_list()
+
+household_df =
+  pivot_df
+  |> DataFrame.put("年月", date_series)
+  |> DataFrame.put("月", month_series)
+  |> DataFrame.put("年", year_series)
+
+Kino.DataTable.new(household_df)
+```
+
+## ローカルへのダウンロード
+
+```elixir
+Kino.Download.new(
+  fn -> DataFrame.dump_csv!(household_df) end,
+  filename: "家計支出統計_品目年月別.csv"
+)
+```
+
+## 集約項目一覧
+
+```elixir
+household_df
+|> DataFrame.filter(大分類 == "-")
+|> DataFrame.distinct(["品目分類"])
+|> Kino.DataTable.new()
+```
+
+## 大分類一覧
+
+```elixir
+household_df
+|> DataFrame.filter(
+  大分類 != "-" and
+    中分類 == "-" and
+    小分類 == "-" and
+    中間計 == "-" and
+    符号 == "-"
+)
+|> DataFrame.distinct(["大分類", "品目分類"])
+|> Kino.DataTable.new()
+```
+
+## 中分類一覧
+
+```elixir
+household_df
+|> DataFrame.filter(
+  大分類 != "-" and
+    中分類 != "-" and
+    小分類 == "-" and
+    中間計 == "-" and
+    符号 == "-"
+)
+|> DataFrame.distinct(["中分類", "品目分類"])
+|> Kino.DataTable.new()
+```
+
+## 小分類一覧
+
+```elixir
+household_df
+|> DataFrame.filter(
+  大分類 != "-" and
+    中分類 != "-" and
+    小分類 != "-" and
+    中間計 == "-" and
+    符号 == "-"
+)
+|> DataFrame.distinct(["小分類", "品目分類"])
+|> Kino.DataTable.new()
+```
+
+## 中間計一覧
+
+```elixir
+household_df
+|> DataFrame.filter(
+  大分類 != "-" and
+    中分類 != "-" and
+    小分類 != "-" and
+    中間計 != "-" and
+    符号 == "-"
+)
+|> DataFrame.distinct(["中間計", "品目分類"])
+|> Kino.DataTable.new()
+```
+
+## 符号一覧
+
+```elixir
+household_df
+|> DataFrame.filter(符号 != "-")
+|> DataFrame.distinct(["符号", "品目分類"])
+|> Kino.DataTable.new()
+```
+
+## チョコレートの支出推移
+
+```elixir
+choco_df = DataFrame.filter(household_df, 符号 == "352")
+
+Kino.DataTable.new(choco_df)
+```
+
+```elixir
+month = Series.to_list(choco_df["年月"])
+expenses = Series.to_list(choco_df["支出金額"])
+
+VegaLite.new(width: 700, title: "チョコレート支出金額推移")
+|> VegaLite.data_from_values(x: month, y: expenses)
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
+```
+
+```elixir
+2015..2022
+|> Enum.map(fn year ->
+  df = DataFrame.filter(choco_df, 年 == ^year)
+
+  month = Series.to_list(df["年月"])
+  expenses = Series.to_list(df["支出金額"])
+
+  graph =
+    VegaLite.new(width: 700, title: "チョコレート支出金額推移")
+    |> VegaLite.data_from_values(x: month, y: expenses)
+    |> VegaLite.mark(:line)
+    |> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
+    |> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
+
+  {year, graph}
+end)
+|> Kino.Layout.tabs()
+```
