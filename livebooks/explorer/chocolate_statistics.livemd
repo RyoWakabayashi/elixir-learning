@@ -1,0 +1,255 @@
+# チョコレート統計
+
+```elixir
+Mix.install([
+  {:explorer, "~> 0.5"},
+  {:kino, "~> 0.8"},
+  {:kino_vega_lite, "~> 0.1"},
+  {:req, "~> 0.3"}
+])
+```
+
+## 出典
+
+出典：「家計調査（家計収支編）　時系列データ（二人以上の世帯） 品目分類：支出金額・名目増減率・実質増減率（月・年）
+」（総務省統計局）を加工したデータを使用します
+
+<https://www.stat.go.jp/data/kakei/longtime/index.html#time>
+
+## 準備
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+require Explorer.DataFrame
+```
+
+## データ取得
+
+```elixir
+household_df =
+  "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/explorer/%E5%AE%B6%E8%A8%88%E6%94%AF%E5%87%BA%E7%B5%B1%E8%A8%88_%E5%93%81%E7%9B%AE%E5%B9%B4%E6%9C%88%E5%88%A5.csv"
+  |> Req.get!()
+  |> then(&DataFrame.load_csv!(&1.body))
+
+Kino.DataTable.new(household_df)
+```
+
+## チョコレートの支出推移
+
+```elixir
+choco_df = DataFrame.filter(household_df, 符号 == "352")
+
+Kino.DataTable.new(choco_df)
+```
+
+```elixir
+month = Series.to_list(choco_df["年月"])
+expenses = Series.to_list(choco_df["支出金額"])
+
+VegaLite.new(width: 700, title: "チョコレート支出金額推移")
+|> VegaLite.data_from_values(x: month, y: expenses)
+|> VegaLite.mark(:line, tooltip: true)
+|> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
+```
+
+```elixir
+2015..2022
+|> Enum.map(fn year ->
+  df = DataFrame.filter(choco_df, 年 == ^year)
+
+  month = Series.to_list(df["年月"])
+  expenses = Series.to_list(df["支出金額"])
+
+  graph =
+    VegaLite.new(width: 700, title: "チョコレート支出金額推移")
+    |> VegaLite.data_from_values(x: month, y: expenses)
+    |> VegaLite.mark(:line, tooltip: true)
+    |> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
+    |> VegaLite.encode_field(:y, "y",
+      type: :quantitative,
+      title: "支出金額",
+      scale: [domain: [0, 1500]]
+    )
+
+  {year, graph}
+end)
+|> Kino.Layout.tabs()
+```
+
+## 年推移
+
+```elixir
+year_choco_df =
+  choco_df
+  |> DataFrame.group_by("年")
+  |> DataFrame.summarise(
+    最小: min(支出金額),
+    最大: max(支出金額),
+    平均: mean(支出金額),
+    合計: sum(支出金額)
+  )
+
+Kino.DataTable.new(year_choco_df)
+```
+
+```elixir
+year = Series.to_list(year_choco_df["年"])
+expenses = Series.to_list(year_choco_df["合計"])
+
+VegaLite.new(width: 700, title: "チョコレート年間支出金額推移")
+|> VegaLite.data_from_values(x: year, y: expenses)
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "x", type: :ordinal, title: "年")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "合計支出金額")
+```
+
+```elixir
+pivot_table =
+  DataFrame.pivot_longer(
+    year_choco_df,
+    ["最小", "最大", "平均"],
+    names_to: "統計項目",
+    values_to: "統計値"
+  )
+```
+
+```elixir
+year = Series.to_list(pivot_table["年"])
+items = Series.to_list(pivot_table["統計項目"])
+values = Series.to_list(pivot_table["統計値"])
+
+VegaLite.new(width: 700, title: "チョコレート年間支出金額推移")
+|> VegaLite.data_from_values(x: year, items: items, values: values)
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "x", type: :ordinal, title: "年")
+|> VegaLite.encode_field(:y, "values", type: :quantitative, title: "支出金額")
+|> VegaLite.encode_field(:color, "items")
+```
+
+## 菓子類内訳
+
+```elixir
+snack_df =
+  DataFrame.filter(
+    household_df,
+    大分類 == "1" and
+      中分類 == "8" and
+      符号 != "-"
+  )
+
+Kino.DataTable.new(snack_df)
+```
+
+```elixir
+latest_snack_df = DataFrame.filter(snack_df, 年 == 2022 and 月 == 12)
+
+items = Series.to_list(latest_snack_df["品目分類"])
+expenses = Series.to_list(latest_snack_df["支出金額"])
+
+VegaLite.new(width: 700, title: "菓子類支出金額")
+|> VegaLite.data_from_values(x: items, y: expenses)
+|> VegaLite.mark(:bar, tooltip: true)
+|> VegaLite.encode_field(:x, "x", type: :nominal, title: "品目分類", sort: "-y")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
+```
+
+```elixir
+VegaLite.new(title: "菓子類支出金額")
+|> VegaLite.data_from_values(x: items, y: expenses)
+|> VegaLite.mark(:arc, inner_radius: 50, tooltip: true)
+|> VegaLite.encode_field(:color, "x", type: :nominal, title: "品目分類")
+|> VegaLite.encode_field(:theta, "y", type: :quantitative, title: "支出金額")
+```
+
+```elixir
+total_snack_df =
+  DataFrame.filter(
+    household_df,
+    大分類 == "1" and
+      中分類 == "8" and
+      符号 == "-"
+  )
+
+Kino.DataTable.new(total_snack_df)
+```
+
+```elixir
+month = Series.to_list(total_snack_df["年月"])
+expenses = Series.to_list(total_snack_df["支出金額"])
+
+VegaLite.new(width: 700, title: "菓子類支出金額推移")
+|> VegaLite.data_from_values(x: month, y: expenses)
+|> VegaLite.mark(:line)
+|> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
+```
+
+```elixir
+ratio_df =
+  DataFrame.join(
+    total_snack_df[["年月", "支出金額"]],
+    choco_df[["年月", "支出金額"]],
+    on: ["年月"]
+  )
+  |> DataFrame.rename(["年月", "菓子類合計", "チョコレート"])
+  |> DataFrame.mutate(チョコレート率: cast(チョコレート / 菓子類合計 * 1000, :integer) / 10)
+
+Kino.DataTable.new(ratio_df)
+```
+
+```elixir
+month = Series.to_list(ratio_df["年月"])
+expenses = Series.to_list(ratio_df["チョコレート率"])
+
+VegaLite.new(width: 700, title: "チョコレート率推移")
+|> VegaLite.data_from_values(x: month, y: expenses)
+|> VegaLite.mark(:line, tooltip: true)
+|> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "チョコレート率")
+```
+
+```elixir
+year_total_snack_df =
+  total_snack_df
+  |> DataFrame.group_by("年")
+  |> DataFrame.summarise(合計: sum(支出金額))
+
+Kino.DataTable.new(year_total_snack_df)
+```
+
+```elixir
+year = Series.to_list(year_total_snack_df["年"])
+expenses = Series.to_list(year_total_snack_df["合計"])
+
+VegaLite.new(width: 700, title: "菓子類年間支出金額推移")
+|> VegaLite.data_from_values(x: year, y: expenses)
+|> VegaLite.mark(:line, tooltip: true)
+|> VegaLite.encode_field(:x, "x", type: :ordinal, title: "年")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "合計支出金額")
+```
+
+```elixir
+year_ratio_df =
+  DataFrame.join(
+    year_total_snack_df[["年", "合計"]],
+    year_choco_df[["年", "合計"]],
+    on: ["年"]
+  )
+  |> DataFrame.rename(["年", "菓子類合計", "チョコレート"])
+  |> DataFrame.mutate(チョコレート率: cast(チョコレート / 菓子類合計 * 1000, :integer) / 10)
+
+Kino.DataTable.new(year_ratio_df)
+```
+
+```elixir
+year = Series.to_list(year_ratio_df["年"])
+ratio = Series.to_list(year_ratio_df["チョコレート率"])
+
+VegaLite.new(width: 700, title: "チョコレート率推移")
+|> VegaLite.data_from_values(x: year, y: ratio)
+|> VegaLite.mark(:line, tooltip: true)
+|> VegaLite.encode_field(:x, "x", type: :ordinal, title: "年")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "チョコレート率")
+```

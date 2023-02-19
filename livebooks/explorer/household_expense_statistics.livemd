@@ -19,9 +19,10 @@ Mix.install(
 
 ## 出典
 
-出典：「家計調査（家計収支編）　調査結果」（総務省統計局）
+出典：「家計調査（家計収支編）　時系列データ（二人以上の世帯） 品目分類：支出金額・名目増減率・実質増減率（月・年）
+」（総務省統計局）
 
-<https://www.stat.go.jp/data/kakei/2.html>
+<https://www.stat.go.jp/data/kakei/longtime/index.html#time>
 
 ## 準備
 
