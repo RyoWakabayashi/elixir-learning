@@ -25,8 +25,8 @@ Mix.install(
 
 <https://www.stat.go.jp/data/kakei/longtime/index.html#time>
 
-- 月 全品目（2015年改定）
-- 月 全品目（2020年改定）
+* 月 全品目（2015年改定）
+* 月 全品目（2020年改定）
 
 （2023年2月20日に利用）
 
@@ -80,6 +80,7 @@ month_cols =
   |> Enum.flat_map(fn {month_list, year} ->
     Enum.map(month_list, fn month -> "#{year}-#{month}-01" end)
   end)
+  |> dbg()
 ```
 
 ```elixir
@@ -117,7 +118,7 @@ df_2015 =
         |> then(&String.slice("0" <> &1, -2..-1))
       end)
       |> Enum.chunk_every(12)
-      |> Enum.zip([2015, 2016, 2017, 2018, 2019])
+      |> Enum.zip(2015..2019)
       |> Enum.flat_map(fn {month_list, year} ->
         Enum.map(month_list, fn month -> "#{year}-#{month}-01" end)
       end)
@@ -131,10 +132,6 @@ df_2015 =
   |> DataFrame.load_csv!()
 
 Kino.DataTable.new(df_2015)
-```
-
-```elixir
-DataFrame.select(df_2015, &(&1 != "表側連番"))
 ```
 
 ```elixir
@@ -163,11 +160,6 @@ Kino.DataTable.new(pivot_df)
 ```elixir
 date_list = Series.to_list(pivot_df["年月"])
 
-date_series =
-  date_list
-  |> Enum.map(&Date.from_iso8601!(&1))
-  |> Series.from_list()
-
 month_series =
   date_list
   |> Enum.map(&(&1 |> String.split("-") |> Enum.at(1) |> String.to_integer()))
@@ -180,7 +172,6 @@ year_series =
 
 household_df =
   pivot_df
-  |> DataFrame.put("年月", date_series)
   |> DataFrame.put("月", month_series)
   |> DataFrame.put("年", year_series)
 
@@ -231,7 +222,7 @@ household_df
     中間計 == "-" and
     符号 == "-"
 )
-|> DataFrame.distinct(["中分類", "品目分類"])
+|> DataFrame.distinct(["大分類", "中分類", "品目分類"])
 |> Kino.DataTable.new()
 ```
 
@@ -246,7 +237,7 @@ household_df
     中間計 == "-" and
     符号 == "-"
 )
-|> DataFrame.distinct(["小分類", "品目分類"])
+|> DataFrame.distinct(["大分類", "中分類", "小分類", "品目分類"])
 |> Kino.DataTable.new()
 ```
 
@@ -274,41 +265,47 @@ household_df
 |> Kino.DataTable.new()
 ```
 
-## チョコレートの支出推移
+## ケーキの支出推移
 
 ```elixir
-choco_df = DataFrame.filter(household_df, 符号 == "352")
+cake_df = DataFrame.filter(household_df, 符号 == "344")
 
-Kino.DataTable.new(choco_df)
+Kino.DataTable.new(cake_df)
 ```
 
 ```elixir
-month = Series.to_list(choco_df["年月"])
-expenses = Series.to_list(choco_df["支出金額"])
+month = Series.to_list(cake_df["年月"])
+expenses = Series.to_list(cake_df["支出金額"])
 
-VegaLite.new(width: 700, title: "チョコレート支出金額推移")
+VegaLite.new(width: 700, title: "ケーキ支出金額推移")
 |> VegaLite.data_from_values(x: month, y: expenses)
-|> VegaLite.mark(:line)
+|> VegaLite.mark(:line, tooltip: true)
 |> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
 |> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
 ```
 
 ```elixir
-2015..2022
-|> Enum.map(fn year ->
-  df = DataFrame.filter(choco_df, 年 == ^year)
+latest_cake_df = DataFrame.filter(cake_df, 年 == 2022)
 
-  month = Series.to_list(df["年月"])
-  expenses = Series.to_list(df["支出金額"])
+month = Series.to_list(latest_cake_df["月"])
+expenses = Series.to_list(latest_cake_df["支出金額"])
 
-  graph =
-    VegaLite.new(width: 700, title: "チョコレート支出金額推移")
-    |> VegaLite.data_from_values(x: month, y: expenses)
-    |> VegaLite.mark(:line)
-    |> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
-    |> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
+VegaLite.new(width: 700, title: "ケーキ支出金額推移")
+|> VegaLite.data_from_values(x: month, y: expenses)
+|> VegaLite.mark(:line, tooltip: true)
+|> VegaLite.encode_field(:x, "x", type: :ordinal, title: "年月")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
+```
 
-  {year, graph}
-end)
-|> Kino.Layout.tabs()
+```elixir
+latest_cake_df
+|> DataFrame.group_by("品目分類")
+|> DataFrame.mutate(
+  最小: min(支出金額),
+  最大: max(支出金額),
+  最小最大比: max(支出金額) / min(支出金額)
+)
+|> DataFrame.select(["最小", "最大", "最小最大比"])
+|> DataFrame.to_rows()
+|> List.first()
 ```
