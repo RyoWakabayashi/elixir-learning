@@ -385,6 +385,172 @@ end)
 ```
 
 ```elixir
+change_df =
+  expenses_df
+  |> DataFrame.select(["世帯区分", "cat01_code", "品目分類（2020年改定）", "時間軸（年次）", "value", "unit"])
+  |> DataFrame.rename(["世帯区分", "品目分類", "品目分類名", "年", "金額", "単位"])
+  |> DataFrame.filter(
+    世帯区分 == "総世帯" and
+      単位 == "円"
+  )
+  |> DataFrame.pivot_wider("年", "金額")
+  |> DataFrame.filter(
+    not contains(品目分類名, "までは") and
+      "2007年" |> col() |> is_not_nil()
+  )
+  |> DataFrame.mutate(経年変化率: (col("2022年") - col("2007年")) / col("2007年"))
+
+Kino.DataTable.new(change_df)
+```
+
+```elixir
+single_change_df =
+  2008..2022
+  |> Enum.reduce(change_df, fn year, acc_df ->
+    this_year = "#{year}年"
+    before_year = "#{year - 1}年"
+    col_name = "単年変化率_#{this_year}" |> String.to_atom()
+
+    acc_df
+    |> DataFrame.mutate([
+      {
+        ^col_name,
+        (col(^this_year) - col(^before_year)) / col(^before_year)
+      }
+    ])
+  end)
+  |> DataFrame.pivot_longer(&String.starts_with?(&1, "単年変化率_"),
+    names_to: "変化年",
+    values_to: "単年変化率"
+  )
+  |> DataFrame.group_by("品目分類")
+  |> DataFrame.summarise(最大単年変化率: max(単年変化率 |> pow(2) |> pow(0.5)))
+
+change_df =
+  change_df
+  |> DataFrame.join(single_change_df)
+  |> DataFrame.mutate(経年変化影響度: (経年変化率 |> pow(2) |> pow(0.5)) - 最大単年変化率)
+
+Kino.DataTable.new(change_df)
+```
+
+```elixir
+change_df
+|> DataFrame.arrange(asc: 経年変化率)
+|> DataFrame.slice(0..9)
+|> DataFrame.to_rows()
+|> Enum.map(fn row ->
+  title =
+    row["品目分類名"]
+    |> String.split(" ")
+    |> Enum.at(1)
+
+  {
+    title,
+    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+  }
+end)
+|> Kino.Layout.tabs()
+```
+
+```elixir
+change_df
+|> DataFrame.arrange(desc: 経年変化率)
+|> DataFrame.slice(0..9)
+|> DataFrame.to_rows()
+|> Enum.map(fn row ->
+  title =
+    row["品目分類名"]
+    |> String.split(" ")
+    |> Enum.at(1)
+
+  {
+    title,
+    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+  }
+end)
+|> Kino.Layout.tabs()
+```
+
+```elixir
+change_df
+|> DataFrame.arrange(asc: 最大単年変化率)
+|> DataFrame.slice(0..9)
+|> DataFrame.to_rows()
+|> Enum.map(fn row ->
+  title =
+    row["品目分類名"]
+    |> String.split(" ")
+    |> Enum.at(1)
+
+  {
+    title,
+    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+  }
+end)
+|> Kino.Layout.tabs()
+```
+
+```elixir
+change_df
+|> DataFrame.arrange(desc: 最大単年変化率)
+|> DataFrame.slice(0..9)
+|> DataFrame.to_rows()
+|> Enum.map(fn row ->
+  title =
+    row["品目分類名"]
+    |> String.split(" ")
+    |> Enum.at(1)
+
+  {
+    title,
+    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+  }
+end)
+|> Kino.Layout.tabs()
+```
+
+```elixir
+change_df
+|> DataFrame.arrange(asc: 経年変化影響度)
+|> DataFrame.slice(0..9)
+|> DataFrame.to_rows()
+|> Enum.map(fn row ->
+  title =
+    row["品目分類名"]
+    |> String.split(" ")
+    |> Enum.at(1)
+
+  {
+    title,
+    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+  }
+end)
+|> Kino.Layout.tabs()
+```
+
+```elixir
+change_df
+|> DataFrame.arrange(desc: 経年変化影響度)
+|> DataFrame.slice(0..9)
+|> DataFrame.to_rows()
+|> Enum.map(fn row ->
+  title =
+    row["品目分類名"]
+    |> String.split(" ")
+    |> Enum.at(1)
+
+  {
+    title,
+    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+  }
+end)
+|> Kino.Layout.tabs()
+```
+
+## コロナによる影響
+
+```elixir
 covid_df =
   expenses_df
   |> DataFrame.select(["世帯区分", "cat01_code", "品目分類（2020年改定）", "時間軸（年次）", "value", "unit"])
@@ -392,6 +558,7 @@ covid_df =
   |> DataFrame.filter(
     世帯区分 == "総世帯" and
       単位 == "円" and
+      not contains(品目分類名, "までは") and
       年 in ["2019年", "2020年", "2021年", "2022年"]
   )
   |> DataFrame.pivot_wider("年", "金額")
@@ -401,6 +568,25 @@ covid_df =
   )
 
 Kino.DataTable.new(covid_df)
+```
+
+```elixir
+covid_df
+|> DataFrame.arrange(desc: コロナ発生)
+|> DataFrame.slice(0..4)
+|> DataFrame.to_rows()
+|> Enum.map(fn row ->
+  title =
+    row["品目分類名"]
+    |> String.split(" ")
+    |> Enum.at(1)
+
+  {
+    title,
+    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+  }
+end)
+|> Kino.Layout.tabs()
 ```
 
 ### コロナによって悪影響を受けたもの
@@ -428,7 +614,6 @@ end)
 
 ```elixir
 covid_df
-|> DataFrame.filter(not contains(品目分類名, "までは"))
 |> DataFrame.arrange(desc: コロナ発生)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()

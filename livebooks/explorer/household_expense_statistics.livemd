@@ -1,4 +1,4 @@
-# 家計支出統計
+# 家計調査データ取得
 
 ```elixir
 Mix.install(
