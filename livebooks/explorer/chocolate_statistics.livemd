@@ -228,13 +228,13 @@ Kino.DataTable.new(ratio_df)
 ```elixir
 month = Series.to_list(ratio_df["年月"])
 items = Series.to_list(ratio_df["品目"])
-expenses = Series.to_list(ratio_df["占有率"])
+ratio = Series.to_list(ratio_df["占有率"])
 
 VegaLite.new(width: 600, title: "占有率推移")
-|> VegaLite.data_from_values(x: month, y: expenses, color: items)
+|> VegaLite.data_from_values(x: month, y: ratio, color: items)
 |> VegaLite.mark(:line, tooltip: true)
 |> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
-|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "チョコレート率")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "占有率")
 |> VegaLite.encode_field(:color, "color")
 ```
 
