@@ -21,6 +21,8 @@ require Explorer.DataFrame
 
 出典：政府統計の総合窓口(e-Stat) <https://www.e-stat.go.jp/>
 
+「家計調査 / 家計収支編 総世帯 品目分類（2020年改定）（金額）」（統計局統計調査部消費統計課）を加工して利用
+
 API仕様: <https://www.e-stat.go.jp/api/api-info/e-stat-manual3-0#api_3_4>
 
 ```elixir
@@ -52,11 +54,53 @@ value_index = Enum.find_index(rows, &(&1 == "\"VALUE\""))
 
 ```elixir
 expenses_df =
-  Enum.slice(rows, (value_index + 1)..-1)
+  rows
+  |> Enum.slice((value_index + 1)..-1)
   |> Enum.join("\n")
   |> DataFrame.load_csv!()
 
 Kino.DataTable.new(expenses_df)
+```
+
+```elixir
+expenses_df["時間軸（年次）"]
+|> Series.frequencies()
+|> DataFrame.arrange(asc: values)
+|> Kino.DataTable.new()
+```
+
+```elixir
+expenses_df[["cat01_code", "品目分類（2020年改定）"]]
+|> DataFrame.distinct()
+|> Kino.DataTable.new()
+```
+
+```elixir
+expenses_df[["cat01_code", "品目分類（2020年改定）"]]
+|> DataFrame.filter(
+  remainder(cat01_code, 10_000_000) == 0 and
+    cat01_code <= 100_000_000
+)
+|> DataFrame.distinct()
+|> Kino.DataTable.new()
+```
+
+```elixir
+expenses_df[["cat02_code", "世帯区分"]]
+|> DataFrame.distinct()
+|> Kino.DataTable.new()
+```
+
+```elixir
+total_df =
+  expenses_df
+  |> DataFrame.filter(
+    time_code == 2_022_000_000 and
+      cat01_code == 1_100_000
+  )
+  |> DataFrame.select(["世帯区分", "value"])
+
+Kino.DataTable.new(total_df)
 ```
 
 ## 大分類毎の割合
@@ -85,6 +129,7 @@ latest_df =
   )
   |> DataFrame.select(["品目分類（2020年改定）", "value"])
   |> DataFrame.rename(["品目分類", "支出金額"])
+  # 小数点以下1桁の％に変換
   |> DataFrame.mutate(割合: cast(支出金額 / ^total * 1000, :integer) / 10)
 
 Kino.DataTable.new(latest_df)
@@ -112,221 +157,74 @@ VegaLite.new(title: "支出金額内訳")
 ## 各値の推移
 
 ```elixir
-plot_line = fn code, title, value_title ->
-  target_df = DataFrame.filter(expenses_df, cat01_code == ^code)
+plot_line = fn code_list, title, value_title ->
+  target_df =
+    expenses_df
+    |> DataFrame.filter(cat01_code in ^code_list and cat02_code == 11)
+    |> DataFrame.select(["時間軸（年次）", "value", "品目分類（2020年改定）"])
+    |> DataFrame.rename(["年", value_title, "品目分類"])
 
-  year = Series.to_list(target_df["時間軸（年次）"])
-  expenses = Series.to_list(target_df["value"])
-  category = Series.to_list(target_df["世帯区分"])
+  year = Series.to_list(target_df["年"])
+  expenses = Series.to_list(target_df[value_title])
+  category = Series.to_list(target_df["品目分類"])
 
   VegaLite.new(width: 600, title: title)
   |> VegaLite.data_from_values(x: year, y: expenses, color: category)
   |> VegaLite.mark(:line, tooltip: true)
   |> VegaLite.encode_field(:x, "x", type: :ordinal, title: "年")
   |> VegaLite.encode_field(:y, "y", type: :quantitative, title: value_title)
-  |> VegaLite.encode_field(:color, "color")
+  |> VegaLite.encode_field(:color, "color", title: "品目分類")
 end
 ```
 
 ```elixir
-plot_line.(1_100_000, "総支出額推移", "金額")
+plot_line.([1_100_000], "総支出額推移", "金額")
+```
+
+```elixir
+plot_line.([300_000, 400_000, 500_000, 700_000], "世帯人員推移", "人数")
 ```
 
 ```elixir
 [
-  {200_000, "集計世帯数", "世帯数"},
-  {300_000, "世帯人員", "人数"},
-  {400_000, "18歳未満人員", "人数"},
-  {500_000, "65歳以上人員", "人数"},
-  {700_000, "有業人員", "人数"},
-  {800_000, "世帯主の年齢", "年齢"},
-  {900_000, "持家率", "持家率"}
+  {"食料〜被服", Enum.to_list(10_000_000..50_000_000//10_000_000)},
+  {"保健医療〜その他", Enum.to_list(60_000_000..100_000_000//10_000_000)}
 ]
-|> Enum.map(fn {code, title, value_title} ->
+|> Enum.map(fn {title, list} ->
   {
     title,
-    plot_line.(code, "#{title}推移", value_title)
+    plot_line.(list, "大分類毎支出金額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
 ```
 
 ```elixir
-[
-  {10_000_000, "食料"},
-  {10_110_001, "米"},
-  {10_120_000, "パン"},
-  {10_130_050, "カップ麺"},
-  {10_211_000, "鮮魚"},
-  {10_310_000, "生鮮肉"},
-  {10_510_000, "生鮮野菜"},
-  {10_800_000, "菓子類"},
-  {11_030_050, "ミネラルウォーター"},
-  {11_200_000, "外食"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
+plot_line.([10_110_001, 10_120_000, 10_130_000], "支出額推移", "金額")
 ```
 
 ```elixir
-[
-  {20_000_000, "住居"},
-  {20_100_000, "家賃地代"},
-  {20_100_010, "民営家賃"},
-  {20_100_040, "地代"},
-  {20_220_010, "畳替え"},
-  {20_220_040, "植木・庭手入れ代"},
-  {30_000_000, "光熱・水道"},
-  {40_000_000, "家具・家事用品"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
+plot_line.([10_211_000, 10_310_000, 10_510_000, 10_800_000], "支出額推移", "金額")
 ```
 
 ```elixir
-[
-  {50_000_000, "被服及び履物"},
-  {50_100_000, "和服"},
-  {50_200_000, "洋服"},
-  {50_210_010, "背広服"},
-  {50_220_010, "婦人服"},
-  {50_230_010, "子供服"},
-  {50_600_020, "ネクタイ"},
-  {50_700_000, "履物類"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
+plot_line.([50_100_000, 50_200_000, 50_700_000], "支出額推移", "金額")
 ```
 
 ```elixir
-[
-  {60_000_000, "保健医療"},
-  {60_100_000, "医薬品"},
-  {60_300_030, "眼鏡"},
-  {60_300_040, "コンタクトレンズ"},
-  {60_400_000, "保健医療サービス"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
+plot_line.([50_210_010, 50_220_010, 50_230_010, 50_600_020], "支出額推移", "金額")
 ```
 
 ```elixir
-[
-  {70_000_000, "交通・通信"},
-  {70_100_000, "交通"},
-  {70_230_010, "ガソリン"},
-  {70_300_000, "通信"},
-  {70_300_010, "郵便料"},
-  {70_300_020, "固定電話通信料"},
-  {70_300_030, "携帯電話通信料"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
+plot_line.([70_300_010, 70_300_020, 70_300_030], "支出額推移", "金額")
 ```
 
 ```elixir
-[
-  {80_000_000, "教育"},
-  {90_000_000, "教養・娯楽"},
-  {90_100_010, "テレビ"},
-  {90_100_050, "パソコン"},
-  {90_100_080, "楽器"},
-  {90_202_010, "ゴルフ用具"},
-  {90_203_000, "玩具"},
-  {90_203_010, "ゲーム機"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
+plot_line.([90_100_010, 90_100_050], "支出額推移", "金額")
 ```
 
 ```elixir
-[
-  {90_300_010, "新聞"},
-  {90_300_020, "雑誌"},
-  {90_300_030, "書籍"},
-  {90_420_000, "パック旅行費"},
-  {90_420_010, "国内パック旅行費"},
-  {90_420_020, "外国パック旅行費"},
-  {90_442_010, "映画・演劇等入場料"},
-  {90_442_020, "スポーツ観覧料"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
-```
-
-```elixir
-[
-  {100_000_000, "その他"},
-  {100_110_000, "理美容サービス料"},
-  {100_110_010, "温泉・銭湯入浴料"},
-  {100_121_040, "石けん類・化粧品"},
-  {100_140_001, "たばこ"},
-  {100_150_010, "信仰・祭祀費"},
-  {100_150_100, "介護サービス"},
-  {100_300_000, "交際費"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
-```
-
-```elixir
-[
-  {100_000_000, "その他"},
-  {100_110_000, "理美容サービス料"},
-  {100_110_010, "温泉・銭湯入浴料"},
-  {100_121_040, "石けん類・化粧品"},
-  {100_140_001, "たばこ"},
-  {100_150_010, "信仰・祭祀費"},
-  {100_150_100, "介護サービス"},
-  {100_300_000, "交際費"}
-]
-|> Enum.map(fn {code, title} ->
-  {
-    title,
-    plot_line.(code, "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
+plot_line.([90_300_010, 90_300_020, 90_300_030], "支出額推移", "金額")
 ```
 
 ## 特徴の強い項目の抽出
@@ -334,7 +232,11 @@ end)
 ```elixir
 summary_df =
   expenses_df
-  |> DataFrame.filter(世帯区分 == "総世帯" and unit == "円")
+  |> DataFrame.filter(
+    cat02_code == 11 and
+      cat01_code <= 100_000_000 and
+      unit == "円"
+  )
   |> DataFrame.group_by(["cat01_code", "品目分類（2020年改定）"])
   |> DataFrame.summarise(変動係数: standard_deviation(value) / mean(value))
   |> DataFrame.rename(["品目分類", "品目分類名", "変動係数"])
@@ -357,7 +259,7 @@ summary_df
 
   {
     title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+    plot_line.([row["品目分類"]], "#{title}支出額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
@@ -378,27 +280,33 @@ summary_df
 
   {
     title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+    plot_line.([row["品目分類"]], "#{title}支出額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
 ```
 
+## 単調増加、単調減少
+
 ```elixir
 change_df =
   expenses_df
+  |> DataFrame.filter(
+    cat02_code == 11 and
+      cat01_code <= 100_000_000 and
+      unit == "円"
+  )
   |> DataFrame.select(["世帯区分", "cat01_code", "品目分類（2020年改定）", "時間軸（年次）", "value", "unit"])
   |> DataFrame.rename(["世帯区分", "品目分類", "品目分類名", "年", "金額", "単位"])
-  |> DataFrame.filter(
-    世帯区分 == "総世帯" and
-      単位 == "円"
-  )
+  # 年毎の金額を列に展開する
   |> DataFrame.pivot_wider("年", "金額")
+  # 16年間存在した品目分類だけを対象にする
   |> DataFrame.filter(
     not contains(品目分類名, "までは") and
       "2007年" |> col() |> is_not_nil()
   )
   |> DataFrame.mutate(経年変化率: (col("2022年") - col("2007年")) / col("2007年"))
+  |> DataFrame.arrange(desc: 経年変化率)
 
 Kino.DataTable.new(change_df)
 ```
@@ -424,20 +332,20 @@ single_change_df =
     values_to: "単年変化率"
   )
   |> DataFrame.group_by("品目分類")
-  |> DataFrame.summarise(最大単年変化率: max(単年変化率 |> pow(2) |> pow(0.5)))
+  |> DataFrame.summarise(最大単年変化率: max(単年変化率))
 
 change_df =
   change_df
   |> DataFrame.join(single_change_df)
-  |> DataFrame.mutate(経年変化影響度: (経年変化率 |> pow(2) |> pow(0.5)) - 最大単年変化率)
+  |> DataFrame.mutate(単調変化係数: 経年変化率 / (最大単年変化率 |> pow(2) |> pow(0.5)))
 
 Kino.DataTable.new(change_df)
 ```
 
 ```elixir
 change_df
-|> DataFrame.arrange(asc: 経年変化率)
-|> DataFrame.slice(0..9)
+|> DataFrame.arrange(asc: 単調変化係数)
+|> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
   title =
@@ -447,7 +355,7 @@ change_df
 
   {
     title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+    plot_line.([row["品目分類"]], "#{title}支出額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
@@ -455,8 +363,8 @@ end)
 
 ```elixir
 change_df
-|> DataFrame.arrange(desc: 経年変化率)
-|> DataFrame.slice(0..9)
+|> DataFrame.arrange(desc: 単調変化係数)
+|> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
   title =
@@ -466,83 +374,7 @@ change_df
 
   {
     title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
-```
-
-```elixir
-change_df
-|> DataFrame.arrange(asc: 最大単年変化率)
-|> DataFrame.slice(0..9)
-|> DataFrame.to_rows()
-|> Enum.map(fn row ->
-  title =
-    row["品目分類名"]
-    |> String.split(" ")
-    |> Enum.at(1)
-
-  {
-    title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
-```
-
-```elixir
-change_df
-|> DataFrame.arrange(desc: 最大単年変化率)
-|> DataFrame.slice(0..9)
-|> DataFrame.to_rows()
-|> Enum.map(fn row ->
-  title =
-    row["品目分類名"]
-    |> String.split(" ")
-    |> Enum.at(1)
-
-  {
-    title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
-```
-
-```elixir
-change_df
-|> DataFrame.arrange(asc: 経年変化影響度)
-|> DataFrame.slice(0..9)
-|> DataFrame.to_rows()
-|> Enum.map(fn row ->
-  title =
-    row["品目分類名"]
-    |> String.split(" ")
-    |> Enum.at(1)
-
-  {
-    title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
-```
-
-```elixir
-change_df
-|> DataFrame.arrange(desc: 経年変化影響度)
-|> DataFrame.slice(0..9)
-|> DataFrame.to_rows()
-|> Enum.map(fn row ->
-  title =
-    row["品目分類名"]
-    |> String.split(" ")
-    |> Enum.at(1)
-
-  {
-    title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+    plot_line.([row["品目分類"]], "#{title}支出額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
@@ -553,47 +385,29 @@ end)
 ```elixir
 covid_df =
   expenses_df
-  |> DataFrame.select(["世帯区分", "cat01_code", "品目分類（2020年改定）", "時間軸（年次）", "value", "unit"])
-  |> DataFrame.rename(["世帯区分", "品目分類", "品目分類名", "年", "金額", "単位"])
   |> DataFrame.filter(
-    世帯区分 == "総世帯" and
-      単位 == "円" and
-      not contains(品目分類名, "までは") and
-      年 in ["2019年", "2020年", "2021年", "2022年"]
+    cat02_code == 11 and
+      cat01_code <= 100_000_000 and
+      unit == "円" and
+      time_code >= 2_019_000_000
   )
+  |> DataFrame.select(["cat01_code", "品目分類（2020年改定）", "時間軸（年次）", "value"])
+  |> DataFrame.rename(["品目分類", "品目分類名", "年", "金額"])
+  |> DataFrame.filter(not contains(品目分類名, "までは"))
   |> DataFrame.pivot_wider("年", "金額")
   |> DataFrame.mutate(
-    コロナ発生: (col("2020年") - col("2019年")) / col("2019年"),
-    コロナ収束: (col("2022年") - col("2020年")) / col("2019年")
+    コロナ発生時変化率: (col("2020年") - col("2019年")) / col("2019年"),
+    コロナ発生後変化率: (col("2022年") - col("2020年")) / col("2019年")
   )
 
 Kino.DataTable.new(covid_df)
-```
-
-```elixir
-covid_df
-|> DataFrame.arrange(desc: コロナ発生)
-|> DataFrame.slice(0..4)
-|> DataFrame.to_rows()
-|> Enum.map(fn row ->
-  title =
-    row["品目分類名"]
-    |> String.split(" ")
-    |> Enum.at(1)
-
-  {
-    title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
-  }
-end)
-|> Kino.Layout.tabs()
 ```
 
 ### コロナによって悪影響を受けたもの
 
 ```elixir
 covid_df
-|> DataFrame.arrange(asc: コロナ発生)
+|> DataFrame.arrange(asc: コロナ発生時変化率)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -604,7 +418,7 @@ covid_df
 
   {
     title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+    plot_line.([row["品目分類"]], "#{title}支出額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
@@ -614,7 +428,7 @@ end)
 
 ```elixir
 covid_df
-|> DataFrame.arrange(desc: コロナ発生)
+|> DataFrame.arrange(desc: コロナ発生時変化率)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -625,7 +439,7 @@ covid_df
 
   {
     title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+    plot_line.([row["品目分類"]], "#{title}支出額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
@@ -635,9 +449,9 @@ end)
 
 ```elixir
 covid_df
-|> DataFrame.filter(コロナ発生 < -0.5 and コロナ収束 > 0.3)
-|> DataFrame.arrange(desc: コロナ収束 - コロナ発生)
-|> DataFrame.slice(0..9)
+|> DataFrame.filter(コロナ発生時変化率 < -0.5 and コロナ発生後変化率 > 0.3)
+|> DataFrame.arrange(desc: コロナ発生後変化率)
+|> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
   title =
@@ -647,7 +461,7 @@ covid_df
 
   {
     title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+    plot_line.([row["品目分類"]], "#{title}支出額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
@@ -657,9 +471,9 @@ end)
 
 ```elixir
 covid_df
-|> DataFrame.filter(コロナ発生 < -0.5 and コロナ収束 < 0.3)
-|> DataFrame.arrange(asc: コロナ収束 - コロナ発生)
-|> DataFrame.slice(0..9)
+|> DataFrame.filter(コロナ発生時変化率 < -0.5 and コロナ発生後変化率 < 0.2)
+|> DataFrame.arrange(asc: コロナ発生後変化率)
+|> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
   title =
@@ -669,7 +483,7 @@ covid_df
 
   {
     title,
-    plot_line.(row["品目分類"], "#{title}支出額推移", "金額")
+    plot_line.([row["品目分類"]], "#{title}支出額推移", "金額")
   }
 end)
 |> Kino.Layout.tabs()
