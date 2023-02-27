@@ -1,0 +1,76 @@
+# col
+
+```elixir
+Mix.install([
+  {:explorer, "~> 0.5"},
+  {:kino, "~> 0.8"}
+])
+```
+
+## 準備
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+import Explorer.DataFrame
+```
+
+## 通常の場合
+
+```elixir
+df =
+  DataFrame.new(%{
+    "x1" => 1..5,
+    "x2" => 2..10//2,
+    "x3" => 3..15//3
+  })
+
+Kino.DataTable.new(df)
+```
+
+```elixir
+df
+|> DataFrame.filter(x1 > 3)
+|> Kino.DataTable.new()
+```
+
+```elixir
+df
+|> DataFrame.mutate(x4: x2 * 2)
+|> Kino.DataTable.new()
+```
+
+## 列名をそのまま使えない場合
+
+```elixir
+df =
+  DataFrame.new(%{
+    "1x" => 1..5,
+    "2x" => 2..10//2,
+    "3x" => 3..15//3
+  })
+
+Kino.DataTable.new(df)
+```
+
+```elixir
+df
+|> DataFrame.filter(col("1x") > 3)
+|> Kino.DataTable.new()
+```
+
+```elixir
+df
+|> DataFrame.mutate([{"4x", col("2x") * 2}])
+|> Kino.DataTable.new()
+```
+
+## 列名に変数を使う場合
+
+```elixir
+1..3
+|> Enum.reduce(df, fn index, acc_df ->
+  DataFrame.mutate(acc_df, [{^"-#{index}x", col(^"#{index}x") * -1}])
+end)
+|> Kino.DataTable.new()
+```
