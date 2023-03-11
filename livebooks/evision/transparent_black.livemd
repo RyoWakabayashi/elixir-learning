@@ -1,0 +1,43 @@
+# 背景透過
+
+```elixir
+Mix.install([
+  {:evision, "~> 0.1"},
+  {:kino, "~> 0.8"},
+  {:nx, "~> 0.5"}
+])
+```
+
+## 画像の準備
+
+```elixir
+img_input = Kino.Input.image("IMAGE", format: :png)
+```
+
+```elixir
+bgr_img =
+  img_input
+  |> Kino.Input.read()
+  |> then(& &1.data)
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
+  |> Evision.Mat.to_nx(Nx.BinaryBackend)
+
+Kino.Image.new(bgr_img)
+```
+
+## 背景透過
+
+```elixir
+alpha =
+  bgr_img
+  |> Nx.reduce_max(axes: [2])
+  |> Nx.greater(0)
+  |> Nx.multiply(255)
+  |> Nx.new_axis(2)
+
+bgra_img =
+  [bgr_img, alpha]
+  |> Nx.concatenate(axis: 2)
+
+Kino.Image.new(bgra_img)
+```
