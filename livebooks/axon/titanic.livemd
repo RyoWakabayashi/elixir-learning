@@ -1,0 +1,414 @@
+# Titanic
+
+```elixir
+Mix.install([
+  {:csv, "~> 3.0"},
+  {:exla, "~> 0.5"},
+  {:axon, "~> 0.4"},
+  {:kino, "~> 0.9"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## データの準備
+
+Kaggle のタイタニックデータをダウンロードする
+
+https://www.kaggle.com/competitions/titanic/data
+
+```elixir
+train_data_input = Kino.Input.file("train data")
+```
+
+```elixir
+test_data_input = Kino.Input.file("test data")
+```
+
+## 前処理
+
+```elixir
+[header_org | rows_org] =
+  train_data_input
+  |> Kino.Input.read()
+  |> Map.get(:path)
+  |> File.stream!()
+  |> CSV.decode!()
+  |> Enum.to_list()
+```
+
+```elixir
+header =
+  header_org
+  |> Enum.map(fn column_name ->
+    column_name
+    |> String.downcase()
+    |> String.to_atom()
+  end)
+```
+
+```elixir
+train_data =
+  header
+  |> Enum.with_index()
+  |> Enum.into(%{}, fn {key, index} ->
+    {
+      key,
+      Enum.map(rows_org, &Enum.at(&1, index))
+    }
+  end)
+```
+
+```elixir
+Kino.DataTable.new(train_data)
+```
+
+```elixir
+id_list = train_data.passengerid
+```
+
+```elixir
+label_tensor =
+  train_data.survived
+  |> Enum.map(fn datum ->
+    datum
+    |> String.to_integer()
+    |> Nx.tensor(type: :f32)
+    |> Nx.new_axis(-1)
+    |> Nx.new_axis(-1)
+  end)
+```
+
+```elixir
+inputs = Map.drop(train_data, [:passengerid, :survived])
+```
+
+```elixir
+dropped_inputs = Map.drop(inputs, [:cabin, :name, :ticket])
+```
+
+```elixir
+train_data.age
+|> Enum.filter(&(&1 == ""))
+|> Enum.count()
+```
+
+```elixir
+count_missings = fn data ->
+  data
+  |> Enum.into(%{}, fn {key, list} ->
+    {
+      key,
+      list
+      |> Enum.filter(&(&1 == ""))
+      |> Enum.count()
+    }
+  end)
+  |> Enum.filter(fn {_, count} -> count > 0 end)
+end
+```
+
+```elixir
+count_missings.(train_data)
+```
+
+```elixir
+filled_inputs =
+  dropped_inputs
+  |> Map.put(
+    :age,
+    dropped_inputs.age
+    |> Enum.map(fn
+      "" -> "0"
+      others -> others
+    end)
+  )
+  |> Map.put(
+    :embarked,
+    dropped_inputs.embarked
+    |> Enum.map(fn
+      "" -> "S"
+      others -> others
+    end)
+  )
+
+Kino.DataTable.new(filled_inputs)
+```
+
+```elixir
+sex_map =
+  filled_inputs.sex
+  |> Enum.uniq()
+  |> Enum.sort()
+  |> Enum.with_index()
+  |> Enum.into(%{})
+```
+
+```elixir
+embarked_map =
+  filled_inputs.embarked
+  |> Enum.uniq()
+  |> Enum.sort()
+  |> Enum.with_index()
+  |> Enum.into(%{})
+```
+
+```elixir
+categorised_inputs =
+  filled_inputs
+  |> Map.put(
+    :sex,
+    filled_inputs.sex
+    |> Enum.map(&sex_map[&1])
+  )
+  |> Map.put(
+    :embarked,
+    filled_inputs.embarked
+    |> Enum.map(&embarked_map[&1])
+  )
+```
+
+```elixir
+parsed_inputs =
+  [:age, :fare, :parch, :pclass, :sibsp]
+  |> Enum.reduce(categorised_inputs, fn column_name, acc ->
+    acc
+    |> Map.put(
+      column_name,
+      acc
+      |> Map.get(column_name)
+      |> Enum.map(fn value ->
+        value
+        |> Float.parse()
+        |> elem(0)
+      end)
+    )
+  end)
+
+Kino.DataTable.new(parsed_inputs)
+```
+
+```elixir
+input_tensor_list =
+  parsed_inputs
+  |> Map.values()
+  |> Nx.tensor()
+  |> Nx.transpose()
+  |> Nx.to_batched(1)
+  |> Enum.to_list()
+```
+
+```elixir
+defmodule PreProcess do
+  def load_csv(kino_input) do
+    [header_org | rows_org] =
+      kino_input
+      |> Kino.Input.read()
+      |> Map.get(:path)
+      |> File.stream!()
+      |> CSV.decode!()
+      |> Enum.to_list()
+
+    header =
+      header_org
+      |> Enum.map(fn column_name ->
+        column_name
+        |> String.downcase()
+        |> String.to_atom()
+      end)
+
+    header
+    |> Enum.with_index()
+    |> Enum.into(%{}, fn {key, index} ->
+      {
+        key,
+        Enum.map(rows_org, &Enum.at(&1, index))
+      }
+    end)
+  end
+
+  def fill_empty(data, fill_map) do
+    fill_map
+    |> Enum.reduce(data, fn {column_name, fill_value}, acc ->
+      acc
+      |> Map.put(
+        column_name,
+        data
+        |> Map.get(column_name)
+        |> Enum.map(fn
+          "" -> fill_value
+          others -> others
+        end)
+      )
+    end)
+  end
+
+  def to_number(data, columns_names) do
+    columns_names
+    |> Enum.reduce(data, fn column_name, acc ->
+      conversion_map =
+        data
+        |> Map.get(column_name)
+        |> Enum.uniq()
+        |> Enum.sort()
+        |> Enum.with_index()
+        |> Enum.into(%{})
+
+      acc
+      |> Map.put(
+        column_name,
+        data
+        |> Map.get(column_name)
+        |> Enum.map(&conversion_map[&1])
+      )
+    end)
+  end
+
+  def to_tensor(data, columns_names) do
+    columns_names
+    |> Enum.reduce(data, fn column_name, acc ->
+      acc
+      |> Map.put(
+        column_name,
+        acc
+        |> Map.get(column_name)
+        |> Enum.map(fn value ->
+          value
+          |> Float.parse()
+          |> elem(0)
+        end)
+      )
+    end)
+    |> Map.values()
+    |> Nx.tensor()
+    |> Nx.transpose()
+    |> Nx.to_batched(1)
+    |> Enum.to_list()
+  end
+
+  def process(kino_input, id_key, label_key) do
+    data_org = load_csv(kino_input)
+
+    id_list = Map.get(data_org, id_key)
+
+    label_list =
+      if Map.has_key?(data_org, label_key) do
+        data_org
+        |> Map.get(label_key)
+        |> Enum.map(fn datum ->
+          datum
+          |> String.to_integer()
+          |> Nx.tensor(type: :f32)
+          |> Nx.new_axis(-1)
+          |> Nx.new_axis(-1)
+        end)
+      else
+        nil
+      end
+
+    inputs =
+      data_org
+      |> Map.drop([id_key, label_key, :cabin, :name, :ticket])
+      |> fill_empty(%{age: "0", embarked: "S", fare: "0"})
+      |> to_number([:sex, :embarked])
+      |> to_tensor([:age, :fare, :parch, :pclass, :sibsp])
+
+    {id_list, label_list, inputs}
+  end
+end
+```
+
+```elixir
+{
+  train_id_list,
+  train_label_list,
+  train_inputs
+} = PreProcess.process(train_data_input, :passengerid, :survived)
+```
+
+```elixir
+{
+  test_id_list,
+  test_label_list,
+  test_inputs
+} = PreProcess.process(test_data_input, :passengerid, :survived)
+```
+
+## モデルの定義
+
+```elixir
+model =
+  Axon.input("input", shape: {nil, 7})
+  |> Axon.dense(48, activation: :tanh)
+  |> Axon.dropout(rate: 0.2)
+  |> Axon.dense(48, activation: :tanh)
+  |> Axon.dense(1, activation: :sigmoid)
+```
+
+## 学習
+
+```elixir
+train_data = Enum.zip(train_inputs, train_label_list)
+```
+
+```elixir
+loss_plot =
+  VegaLite.new(width: 300)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "step", type: :quantitative)
+  |> VegaLite.encode_field(:y, "loss", type: :quantitative)
+  |> Kino.VegaLite.new()
+
+acc_plot =
+  VegaLite.new(width: 300)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "step", type: :quantitative)
+  |> VegaLite.encode_field(:y, "accuracy", type: :quantitative)
+  |> Kino.VegaLite.new()
+
+Kino.Layout.grid([loss_plot, acc_plot], columns: 2)
+```
+
+```elixir
+trained_state =
+  model
+  |> Axon.Loop.trainer(:mean_squared_error, Axon.Optimizers.adam(0.0005))
+  |> Axon.Loop.metric(:accuracy, "accuracy")
+  |> Axon.Loop.kino_vega_lite_plot(loss_plot, "loss", event: :epoch_completed)
+  |> Axon.Loop.kino_vega_lite_plot(acc_plot, "accuracy", event: :epoch_completed)
+  |> Axon.Loop.run(train_data, %{}, epochs: 50, compiler: EXLA)
+```
+
+## テストデータに対する推論
+
+```elixir
+test_inputs
+|> List.first()
+|> then(&Axon.predict(model, trained_state, &1))
+```
+
+```elixir
+results =
+  test_inputs
+  |> Nx.concatenate()
+  |> then(&Axon.predict(model, trained_state, &1))
+  |> Nx.to_flat_list()
+  |> Enum.map(&round(&1))
+```
+
+```elixir
+results_csv =
+  results
+  |> then(&[test_id_list, &1])
+  |> Enum.zip()
+  |> Enum.map(fn {id, label} ->
+    [id, "#{label}"]
+  end)
+  |> then(&[["PassengerId", "Survived"] | &1])
+  |> CSV.encode()
+  |> Enum.to_list()
+  |> Enum.join()
+```
+
+```elixir
+Kino.Download.new(fn -> results_csv end, filename: "result.csv")
+```

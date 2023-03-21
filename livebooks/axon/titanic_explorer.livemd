@@ -1,0 +1,261 @@
+# Titanic with Explorer
+
+```elixir
+Mix.install([
+  {:exla, "~> 0.5"},
+  {:axon, "~> 0.4"},
+  {:kino, "~> 0.9"},
+  {:kino_vega_lite, "~> 0.1"},
+  {:explorer, "~> 0.5"}
+])
+```
+
+## エイリアス
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+require Explorer.DataFrame
+```
+
+## データの準備
+
+Kaggle のタイタニックデータをダウンロードする
+
+https://www.kaggle.com/competitions/titanic/data
+
+```elixir
+train_data_input = Kino.Input.file("train data")
+```
+
+```elixir
+test_data_input = Kino.Input.file("test data")
+```
+
+## 前処理
+
+```elixir
+train_data =
+  train_data_input
+  |> Kino.Input.read()
+  |> Map.get(:path)
+  |> DataFrame.from_csv!()
+
+Kino.DataTable.new(train_data)
+```
+
+```elixir
+id_list = Series.to_list(train_data["PassengerId"])
+```
+
+```elixir
+label_tensor =
+  train_data["Survived"]
+  |> Series.to_tensor(backend: EXLA.Backend)
+  |> Nx.as_type(:f32)
+  |> Nx.new_axis(1)
+  |> Nx.to_batched(1)
+  |> Enum.to_list()
+```
+
+```elixir
+inputs = DataFrame.discard(train_data, ["PassengerId", "Survived"])
+
+Kino.DataTable.new(inputs)
+```
+
+```elixir
+dropped_inputs = DataFrame.discard(inputs, ["Cabin", "Name", "Ticket"])
+
+Kino.DataTable.new(dropped_inputs)
+```
+
+```elixir
+filled_inputs =
+  dropped_inputs
+  |> DataFrame.put("Age", Series.fill_missing(train_data["Age"], :mean))
+  |> DataFrame.put("Embarked", Series.fill_missing(train_data["Embarked"], "S"))
+
+Kino.DataTable.new(filled_inputs)
+```
+
+```elixir
+dummied_inputs =
+  filled_inputs
+  |> DataFrame.dummies(["Sex", "Embarked"])
+  |> DataFrame.concat_columns(DataFrame.discard(filled_inputs, ["Sex", "Embarked"]))
+
+Kino.DataTable.new(dummied_inputs)
+```
+
+```elixir
+input_tensor_list =
+  dummied_inputs
+  |> DataFrame.to_columns()
+  |> Map.values()
+  |> Nx.tensor(backend: EXLA.Backend)
+  |> Nx.transpose()
+  |> Nx.to_batched(1)
+  |> Enum.to_list()
+```
+
+```elixir
+defmodule PreProcess do
+  def load_csv(kino_input) do
+    kino_input
+    |> Kino.Input.read()
+    |> Map.get(:path)
+    |> DataFrame.from_csv!()
+  end
+
+  def fill_empty(data, fill_map) do
+    fill_map
+    |> Enum.reduce(data, fn {column_name, fill_value}, acc ->
+      DataFrame.put(
+        acc,
+        column_name,
+        Series.fill_missing(data[column_name], fill_value)
+      )
+    end)
+  end
+
+  def replace_dummy(data, columns_names) do
+    data
+    |> DataFrame.dummies(columns_names)
+    |> DataFrame.concat_columns(DataFrame.discard(data, columns_names))
+  end
+
+  def to_tensor(data) do
+    data
+    |> DataFrame.to_columns()
+    |> Map.values()
+    |> Nx.tensor(backend: EXLA.Backend)
+    |> Nx.transpose()
+    |> Nx.to_batched(1)
+    |> Enum.to_list()
+  end
+
+  def process(kino_input, id_key, label_key) do
+    data_org = load_csv(kino_input)
+
+    id_list = Series.to_list(data_org[id_key])
+
+    has_label_key =
+      data_org
+      |> DataFrame.names()
+      |> Enum.member?(label_key)
+
+    label_list =
+      if has_label_key do
+        data_org[label_key]
+        |> Series.to_tensor(backend: EXLA.Backend)
+        |> Nx.as_type(:f32)
+        |> Nx.new_axis(1)
+        |> Nx.to_batched(1)
+        |> Enum.to_list()
+      else
+        nil
+      end
+
+    inputs =
+      if has_label_key do
+        DataFrame.discard(data_org, [id_key, label_key])
+      else
+        DataFrame.discard(data_org, [id_key])
+      end
+      |> DataFrame.discard(["Cabin", "Name", "Ticket"])
+      |> fill_empty(%{"Age" => :mean, "Embarked" => "S", "Fare" => :mean})
+      |> replace_dummy(["Sex", "Embarked"])
+      |> to_tensor()
+
+    {id_list, label_list, inputs}
+  end
+end
+```
+
+```elixir
+{
+  train_id_list,
+  train_label_list,
+  train_inputs
+} = PreProcess.process(train_data_input, "PassengerId", "Survived")
+```
+
+```elixir
+{
+  test_id_list,
+  test_label_list,
+  test_inputs
+} = PreProcess.process(test_data_input, "PassengerId", "Survived")
+```
+
+## モデルの定義
+
+```elixir
+model =
+  Axon.input("input", shape: {nil, 10})
+  |> Axon.dense(48, activation: :tanh)
+  |> Axon.dropout(rate: 0.2)
+  |> Axon.dense(48, activation: :tanh)
+  |> Axon.dense(1, activation: :sigmoid)
+```
+
+## 学習
+
+```elixir
+train_data = Enum.zip(train_inputs, train_label_list)
+```
+
+```elixir
+loss_plot =
+  VegaLite.new(width: 300)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "step", type: :quantitative)
+  |> VegaLite.encode_field(:y, "loss", type: :quantitative)
+  |> Kino.VegaLite.new()
+
+acc_plot =
+  VegaLite.new(width: 300)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "step", type: :quantitative)
+  |> VegaLite.encode_field(:y, "accuracy", type: :quantitative)
+  |> Kino.VegaLite.new()
+
+Kino.Layout.grid([loss_plot, acc_plot], columns: 2)
+```
+
+```elixir
+trained_state =
+  model
+  |> Axon.Loop.trainer(:mean_squared_error, Axon.Optimizers.adam(0.0005))
+  |> Axon.Loop.metric(:accuracy, "accuracy")
+  |> Axon.Loop.kino_vega_lite_plot(loss_plot, "loss", event: :epoch_completed)
+  |> Axon.Loop.kino_vega_lite_plot(acc_plot, "accuracy", event: :epoch_completed)
+  |> Axon.Loop.run(train_data, %{}, epochs: 50, compiler: EXLA)
+```
+
+## 未知データに対する推論
+
+```elixir
+results =
+  test_inputs
+  |> Nx.concatenate()
+  |> then(&Axon.predict(model, trained_state, &1))
+  |> Nx.to_flat_list()
+  |> Enum.map(&round(&1))
+  |> then(
+    &%{
+      "PassengerId" => test_id_list,
+      "Survived" => &1
+    }
+  )
+  |> DataFrame.new()
+
+Kino.DataTable.new(results)
+```
+
+```elixir
+results
+|> DataFrame.dump_csv!()
+|> then(&Kino.Download.new(fn -> &1 end, filename: "result.csv"))
+```
