@@ -1,0 +1,67 @@
+<!-- livebook:{"app_settings":{"slug":"classifier"}} -->
+
+# Image Classification
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.2"},
+    {:nx, "~> 0.5"},
+    {:exla, "~> 0.5"},
+    {:kino, "~> 0.9"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## Form
+
+```elixir
+cache_dir = "/tmp/bumblebee_cache"
+
+{:ok, resnet} =
+  Bumblebee.load_model({
+    :hf,
+    "microsoft/resnet-50",
+    cache_dir: cache_dir
+  })
+
+{:ok, featurizer} =
+  Bumblebee.load_featurizer({
+    :hf,
+    "microsoft/resnet-50",
+    cache_dir: cache_dir
+  })
+
+serving = Bumblebee.Vision.image_classification(resnet, featurizer)
+```
+
+```elixir
+inputs = [
+  image: Kino.Input.image("IMAGE", size: {224, 224})
+]
+
+form = Kino.Control.form(inputs, submit: "Classify")
+```
+
+```elixir
+frame = Kino.Frame.new()
+```
+
+```elixir
+Kino.listen(form, fn %{data: %{image: image}, origin: origin} ->
+  image =
+    image
+    |> then(fn input ->
+      input.data
+      |> Nx.from_binary(:u8)
+      |> Nx.reshape({input.height, input.width, 3})
+    end)
+
+  serving
+  |> Nx.Serving.run(image)
+  |> Map.get(:predictions)
+  |> Kino.DataTable.new()
+  |> then(&Kino.Frame.render(frame, &1, to: origin))
+end)
+```
