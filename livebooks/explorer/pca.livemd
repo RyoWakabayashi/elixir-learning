@@ -3,8 +3,8 @@
 ```elixir
 Mix.install([
   {:explorer, "~> 0.5"},
-  {:nx, "~> 0.4"},
-  {:kino, "~> 0.8"},
+  {:nx, "~> 0.5"},
+  {:kino, "~> 0.9"},
   {:kino_vega_lite, "~> 0.1"}
 ])
 ```
@@ -69,8 +69,7 @@ wine_df = Explorer.Datasets.wine()
 データフレームをテーブル表示する
 
 ```elixir
-wine_df
-|> Kino.DataTable.new()
+Kino.DataTable.new(wine_df)
 ```
 
 クラスが3種類であることを確認する
@@ -86,8 +85,8 @@ wine_df
 ```elixir
 cols =
   wine_df
+  |> DataFrame.discard("class")
   |> DataFrame.names()
-  |> Enum.filter(fn name -> name != "class" end)
 ```
 
 ## Describe
@@ -130,10 +129,9 @@ end
 ```elixir
 histgram = fn df, col ->
   x = get_values.(df, col)
-  y = List.duplicate(1, DataFrame.n_rows(df))
 
   VegaLite.new(width: 200, height: 200, title: col)
-  |> VegaLite.data_from_values(x: x, y: y)
+  |> VegaLite.data_from_values(x: x)
   |> VegaLite.mark(:bar)
   |> VegaLite.encode_field(
     :x,
@@ -144,7 +142,7 @@ histgram = fn df, col ->
   )
   |> VegaLite.encode_field(
     :y,
-    "y",
+    "x",
     type: :quantitative,
     aggregate: :count
   )
@@ -166,45 +164,31 @@ end)
 クラス（ワインの品種）毎の分布を見る
 
 ```elixir
-get_class_values = fn df, col, class ->
-  df
-  |> DataFrame.filter_with(fn in_df ->
-    Series.equal(in_df["class"], class)
-  end)
-  |> get_values.(col)
-end
+all_class_histgram = fn df, col ->
+  x = get_values.(df, col)
+  color = get_values.(df, "class")
 
-class_histgram = fn class, color ->
   VegaLite.new(width: 200, height: 200)
-  |> VegaLite.mark(:bar, color: color, opacity: 0.5)
+  |> VegaLite.data_from_values(x: x, color: color)
+  |> VegaLite.mark(:bar, opacity: 0.5)
   |> VegaLite.encode_field(
     :x,
-    "x#{class}",
+    "x",
     type: :quantitative,
     bin: %{maxbins: 20},
-    title: "class#{class}"
+    title: co
   )
   |> VegaLite.encode_field(
     :y,
-    "y",
+    "x",
     type: :quantitative,
     aggregate: :count
   )
-end
-
-all_class_histgram = fn df, col ->
-  x1 = get_class_values.(df, col, 1)
-  x2 = get_class_values.(df, col, 2)
-  x3 = get_class_values.(df, col, 3)
-  y = List.duplicate(0, DataFrame.n_rows(df))
-
-  VegaLite.new(width: 200, height: 200, title: col)
-  |> VegaLite.data_from_values(x1: x1, x2: x2, x3: x3, y: y)
-  |> VegaLite.layers([
-    class_histgram.(1, :blue),
-    class_histgram.(2, :yellow),
-    class_histgram.(3, :red)
-  ])
+  |> VegaLite.encode_field(
+    :color,
+    "color",
+    type: :nominal
+  )
 end
 
 all_class_histgram.(wine_df, "alcohol")

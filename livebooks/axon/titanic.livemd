@@ -4,7 +4,7 @@
 Mix.install([
   {:csv, "~> 3.0"},
   {:exla, "~> 0.5"},
-  {:axon, "~> 0.4"},
+  {:axon, "~> 0.5"},
   {:kino, "~> 0.9"},
   {:kino_vega_lite, "~> 0.1"}
 ])
@@ -30,7 +30,8 @@ test_data_input = Kino.Input.file("test data")
 [header_org | rows_org] =
   train_data_input
   |> Kino.Input.read()
-  |> Map.get(:path)
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
   |> File.stream!()
   |> CSV.decode!()
   |> Enum.to_list()
@@ -203,7 +204,8 @@ defmodule PreProcess do
     [header_org | rows_org] =
       kino_input
       |> Kino.Input.read()
-      |> Map.get(:path)
+      |> Map.get(:file_ref)
+      |> Kino.Input.file_path()
       |> File.stream!()
       |> CSV.decode!()
       |> Enum.to_list()

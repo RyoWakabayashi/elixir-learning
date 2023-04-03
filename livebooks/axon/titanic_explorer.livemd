@@ -3,7 +3,7 @@
 ```elixir
 Mix.install([
   {:exla, "~> 0.5"},
-  {:axon, "~> 0.4"},
+  {:axon, "~> 0.5"},
   {:kino, "~> 0.9"},
   {:kino_vega_lite, "~> 0.1"},
   {:explorer, "~> 0.5"}
@@ -38,7 +38,8 @@ test_data_input = Kino.Input.file("test data")
 train_data =
   train_data_input
   |> Kino.Input.read()
-  |> Map.get(:path)
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
   |> DataFrame.from_csv!()
 
 Kino.DataTable.new(train_data)
@@ -104,7 +105,8 @@ defmodule PreProcess do
   def load_csv(kino_input) do
     kino_input
     |> Kino.Input.read()
-    |> Map.get(:path)
+    |> Map.get(:file_ref)
+    |> Kino.Input.file_path()
     |> DataFrame.from_csv!()
   end
 
