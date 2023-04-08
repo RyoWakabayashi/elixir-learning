@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.4"},
-  {:evision, "~> 0.1"},
+  {:nx, "~> 0.5"},
+  {:evision, "~> 0.1.30"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.8"}
+  {:kino, "~> 0.9"}
 ])
 ```
 
@@ -21,13 +21,13 @@ It's good to see the dependencies made explicit.
 
 ## Get the image
 
-Download the image of Lenna, which is very commonly used in image processing.
+Download the image of me, Ryo Wakabayashi.
 
 ```elixir
-img_path = "lenna.png"
+img_path = "rwakabay.png"
 
 Req.get!(
-  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png",
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png",
   output: img_path
 )
 
@@ -70,7 +70,7 @@ First, let's divide the image horizontally
 
 ```elixir
 # chunk_size is number of pixels in width and height of the divided image
-chunk_size = 64
+chunk_size = 60
 ```
 
 ```elixir
@@ -87,13 +87,13 @@ img_mat
 |> dbg()
 ```
 
-Lenna is divided horizontally.
+I'm divided horizontally.
 
-`Kino.Layout.grid` makes it easy to display images side by side.
+`Kino.Layout.grid` makes it easy display images side by side.
 
-`dbg` shows the output of each pipeline.
+`dbg` shows the output of each pipele.
+I'* Original image
 
-* Original image
 * Converted to a tensor
 * Batched to a list of tensors
 * Inverted
@@ -161,7 +161,7 @@ img_mat
 # BGR to RGB
 |> Enum.map(&Nx.reverse(&1, axes: [2]))
 |> Enum.map(&Kino.Image.new(&1))
-|> Kino.Layout.grid(columns: 8)
+|> Kino.Layout.grid(columns: 10)
 # If not transposed, the image can only be divided horizontally
 |> dbg()
 ```
@@ -230,7 +230,7 @@ img_mat
 # BGR to RGB
 |> Enum.map(&Nx.reverse(&1, axes: [2]))
 |> Enum.map(&Kino.Image.new(&1))
-|> Kino.Layout.grid(columns: 8)
+|> Kino.Layout.grid(columns: 10)
 |> dbg()
 ```
 

@@ -3,11 +3,11 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.4"},
-    {:evision, "~> 0.1"},
+    {:nx, "~> 0.5"},
+    {:evision, "~> 0.1.30"},
     {:flow, "~> 1.2"},
     {:req, "~> 0.3"},
-    {:kino, "~> 0.8"},
+    {:kino, "~> 0.9"},
     {:benchee, "~> 1.1"}
   ],
   system_env: [
@@ -27,10 +27,10 @@ Mix.install(
 
 ```elixir
 # 指定したパスにダウンロードする
-img_path = "lenna.png"
+img_path = "rwakabay.png"
 
 Req.get!(
-  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png",
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png",
   output: img_path
 )
 
@@ -53,8 +53,8 @@ binary = Nx.to_binary(img_tensor)
 
 二つの画像処理を実行する
 
-- 閾値処理
-- ノード名の描画
+* 閾値処理
+* ノード名の描画
 
 ```elixir
 dst_binary =

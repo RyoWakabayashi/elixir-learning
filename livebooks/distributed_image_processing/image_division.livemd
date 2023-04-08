@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.4"},
-  {:evision, "~> 0.1"},
+  {:nx, "~> 0.5"},
+  {:evision, "~> 0.1.30"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.8"}
+  {:kino, "~> 0.9"}
 ])
 ```
 
@@ -13,10 +13,10 @@ Mix.install([
 
 ```elixir
 # 指定したパスにダウンロードする
-img_path = "lenna.png"
+img_path = "rwakabay.png"
 
 Req.get!(
-  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png",
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png",
   output: img_path
 )
 
@@ -53,7 +53,7 @@ end
 
 ```elixir
 # 分割サイズ（分割した画像一つの幅、高さのピクセル数）
-chunk_size = 64
+chunk_size = 60
 ```
 
 ```elixir
@@ -118,7 +118,7 @@ img_mat
 # BGR to RGB
 |> Enum.map(&Nx.reverse(&1, axes: [2]))
 |> Enum.map(&Kino.Image.new(&1))
-|> Kino.Layout.grid(columns: 8)
+|> Kino.Layout.grid(columns: 10)
 |> dbg()
 ```
 
@@ -176,7 +176,7 @@ img_mat
 # BGR to RGB
 |> Enum.map(&Nx.reverse(&1, axes: [2]))
 |> Enum.map(&Kino.Image.new(&1))
-|> Kino.Layout.grid(columns: 8)
+|> Kino.Layout.grid(columns: 10)
 |> dbg()
 ```
 
