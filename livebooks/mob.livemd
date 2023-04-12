@@ -1,0 +1,430 @@
+# モブプログラミング
+
+```elixir
+Mix.install([
+  {:req, "~> 0.3"},
+  {:evision, "~> 0.1.30"},
+  {:kino, "~> 0.9"},
+  {:nx, "~> 0.5"}
+])
+```
+
+## 画像のダウンロード、表示
+
+```elixir
+img =
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
+  |> Req.get!()
+  |> Map.get(:body)
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
+```
+
+```elixir
+# 1
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 10},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 2
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 3
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 4
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 5
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 6
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 7
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 8
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 9
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```
+
+```elixir
+# 10
+
+img
+# リサイズ
+|> Evision.resize({600, 400})
+# グレースケール
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2GRAY())
+# ぼかし
+|> Evision.blur({15, 15})
+# 四角形
+|> Evision.rectangle(
+  # 左上{x, y}
+  {150, 120},
+  # 右下{x, y}
+  {225, 320},
+  # 色{R, G, B}
+  {0, 0, 255},
+  # 線の太さ
+  thickness: 12,
+  # 線の引き方（角がギザギザになる）
+  lineType: Evision.Constant.cv_LINE_4()
+)
+# 文字
+|> Evision.putText(
+  # 文字列
+  "Ryo",
+  # 左下{x, y}
+  {250, 200},
+  # フォント種類
+  Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+  # フォントサイズ
+  2.5,
+  # 文字色
+  {0, 0, 255},
+  # 文字太さ
+  thickness: 5
+)
+|> dbg()
+```

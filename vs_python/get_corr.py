@@ -1,6 +1,6 @@
 import pandas as pd
 
-joined_df = pd.read_csv("tmp/joined.csv")
+joined_df = pd.read_csv("../tmp/joined.csv")
 
 print("平均")
 print(joined_df.mean())
