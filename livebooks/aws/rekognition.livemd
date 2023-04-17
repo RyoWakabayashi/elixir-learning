@@ -8,9 +8,9 @@ Mix.install([
   {:hackney, "~> 1.18"},
   {:sweet_xml, "~> 0.7"},
   {:explorer, "~> 0.5"},
-  {:evision, "~> 0.1"},
+  {:evision, "~> 0.1.30"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.8"}
+  {:kino, "~> 0.9"}
 ])
 ```
 
@@ -53,7 +53,7 @@ auth_config = [
 lenna_mat =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
   |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
@@ -131,7 +131,7 @@ show_objects = fn input_mat ->
   Evision.imencode(".jpg", input_mat)
   |> Rekognition.detect_labels()
   |> ExAws.request!(auth_config)
-  |> then(& &1["Labels"])
+  |> Map.get("Labels")
   |> Enum.filter(&(Enum.count(&1["Instances"]) > 0))
   |> Enum.flat_map(fn detection ->
     detection["Instances"]
@@ -181,7 +181,7 @@ end
 dog_mat =
   "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
   |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 

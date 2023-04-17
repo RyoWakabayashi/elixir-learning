@@ -164,9 +164,9 @@ token =
   client
   |> AWS.ECR.get_authorization_token(%{})
   |> elem(1)
-  |> then(& &1["authorizationData"])
+  |> Map.get("authorizationData")
   |> Enum.at(0)
-  |> then(& &1["authorizationToken"])
+  |> Map.get("authorizationToken")
 ```
 
 ```elixir
@@ -229,7 +229,7 @@ client
   "repositoryName" => image
 })
 |> elem(1)
-|> then(& &1["imageIds"])
+|> Map.get("imageIds")
 |> Kino.DataTable.new()
 ```
 
@@ -264,7 +264,7 @@ AWS.Lambda.get_function(client, "resnet")
 binary =
   "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir
@@ -290,7 +290,7 @@ image_input = Kino.Input.image("INPUT_IMAGE", format: :jpeg)
 binary =
   image_input
   |> Kino.Input.read()
-  |> then(& &1.data)
+  |> Map.get(:data)
 
 "resnet"
 |> ExAws.Lambda.invoke(%{"Payload" => Base.encode64(binary)}, %{})
@@ -308,9 +308,9 @@ log_stream_name =
     "logGroupName" => "/aws/lambda/resnet"
   })
   |> elem(1)
-  |> then(& &1["logStreams"])
+  |> Map.get("logStreams")
   |> Enum.at(-1)
-  |> then(& &1["logStreamName"])
+  |> Map.get("logStreamName")
 ```
 
 ```elixir
@@ -320,7 +320,7 @@ client
   "logStreamName" => log_stream_name
 })
 |> elem(1)
-|> then(& &1["events"])
+|> Map.get("events")
 |> Enum.map(& &1["message"])
 ```
 
@@ -365,7 +365,7 @@ image_ids =
     "repositoryName" => image
   })
   |> elem(1)
-  |> then(& &1["imageIds"])
+  |> Map.get("imageIds")
 ```
 
 ```elixir

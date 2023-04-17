@@ -3,10 +3,10 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.4"},
-    {:evision, "~> 0.1"},
+    {:nx, "~> 0.5"},
+    {:evision, "~> 0.1.30"},
     {:req, "~> 0.3"},
-    {:kino, "~> 0.8"}
+    {:kino, "~> 0.9"}
   ],
   system_env: [
     {"EVISION_PREFER_PRECOMPILED", "false"}
@@ -58,7 +58,7 @@ label_list =
 img =
   "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
   |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 

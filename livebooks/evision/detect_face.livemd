@@ -3,8 +3,8 @@
 ```elixir
 Mix.install([
   {:req, "~> 0.3"},
-  {:evision, "~> 0.1"},
-  {:kino, "~> 0.8"}
+  {:evision, "~> 0.1.30"},
+  {:kino, "~> 0.9"}
 ])
 ```
 
@@ -45,7 +45,7 @@ profile_face_model = Evision.CascadeClassifier.cascadeClassifier(profile_face_mo
 img =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
   |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 

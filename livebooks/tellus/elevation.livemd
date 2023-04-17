@@ -3,11 +3,11 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.4"},
-    {:evision, "~> 0.1"},
-    {:exla, "~> 0.4"},
+    {:nx, "~> 0.5"},
+    {:evision, "~> 0.1.30"},
+    {:exla, "~> 0.5"},
     {:req, "~> 0.3"},
-    {:kino, "~> 0.8"},
+    {:kino, "~> 0.9"},
     {:kino_maplibre, "~> 0.1"},
     {:kino_vega_lite, "~> 0.1"}
   ],
@@ -67,7 +67,7 @@ defmodule TellusTraveler do
 
     url
     |> Req.get!(headers: headers)
-    |> then(& &1.body)
+    |> Map.get(:body)
   end
 
   def search(token, dataset_id, coordinates) do
@@ -199,7 +199,7 @@ scenes_list =
 mt_fuji_scene_id =
   scenes_list
   |> Enum.at(0)
-  |> then(& &1["id"])
+  |> Map.get("id")
 ```
 
 ## データのダウンロード
@@ -373,7 +373,7 @@ get_scene_id = fn location ->
 
   scenes_list
   |> Enum.at(0)
-  |> then(& &1["id"])
+  |> Map.get("id")
 end
 ```
 

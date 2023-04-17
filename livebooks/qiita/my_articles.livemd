@@ -37,7 +37,7 @@ auth_header = {"Authorization", "Bearer #{Kino.Input.read(token_input)}"}
 articles =
   "#{base_url}/authenticated_user/items"
   |> Req.get!(headers: [auth_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir
@@ -67,7 +67,7 @@ defmodule Qiita do
   def get_articles(page, auth_header) do
     "#{@base_url}/authenticated_user/items?page=#{page}"
     |> Req.get!(headers: [auth_header])
-    |> then(& &1.body)
+    |> Map.get(:body)
   end
 
   @doc """

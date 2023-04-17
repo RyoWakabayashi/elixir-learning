@@ -230,7 +230,7 @@ Image.Kino.show(text_image)
 lenna_img =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
   |> Image.from_binary()
   |> elem(1)
 

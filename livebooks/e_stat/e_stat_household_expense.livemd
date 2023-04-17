@@ -41,7 +41,7 @@ data_id = "0003348234"
 response_body =
   "#{api_path}?appId=#{Kino.Input.read(app_id_input)}&statsDataId=#{data_id}"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir

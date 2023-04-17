@@ -3,9 +3,9 @@
 ```elixir
 Mix.install([
   {:req, "~> 0.3"},
-  {:evision, "~> 0.1"},
-  {:kino, "~> 0.8"},
-  {:nx, "~> 0.4"}
+  {:evision, "~> 0.1.30"},
+  {:kino, "~> 0.9"},
+  {:nx, "~> 0.5"}
 ])
 ```
 
@@ -40,9 +40,9 @@ Mix.install([
 
 ```elixir
 img_binary =
-  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir
@@ -52,17 +52,15 @@ img = Evision.imdecode(img_binary, Evision.Constant.cv_IMREAD_COLOR())
 ## 画像の書込
 
 ```elixir
-lenna_path = "Lenna.png"
-```
+img_path = "rwakabay.png"
 
-```elixir
-Evision.imwrite(lenna_path, img)
+Evision.imwrite(img_path, img)
 ```
 
 ## 画像の読込
 
 ```elixir
-img = Evision.imread(lenna_path)
+img = Evision.imread(img_path)
 ```
 
 ```elixir
@@ -82,7 +80,7 @@ Evision.resize(img, {256, 128})
 ## グレースケール
 
 ```elixir
-Evision.imread(lenna_path, flags: Evision.Constant.cv_IMREAD_GRAYSCALE())
+Evision.imread(img_path, flags: Evision.Constant.cv_IMREAD_GRAYSCALE())
 ```
 
 ```elixir
@@ -93,7 +91,7 @@ Evision.cvtColor(img, Evision.Constant.cv_COLOR_BGR2GRAY())
 
 ```elixir
 {threshold, mono_img} =
-  lenna_path
+  img_path
   |> Evision.imread(flags: Evision.Constant.cv_IMREAD_GRAYSCALE())
   |> Evision.threshold(127, 255, Evision.Constant.cv_THRESH_BINARY())
 
@@ -261,9 +259,9 @@ img
 img
 |> Evision.putText(
   # 文字列
-  "Lenna",
+  "Ryo",
   # 左下{x, y}
-  {150, 200},
+  {250, 200},
   # フォント種類
   Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
   # フォントサイズ
@@ -291,7 +289,7 @@ img
 img
 |> Evision.Mat.to_nx(Nx.BinaryBackend)
 |> Nx.mean(axes: [2])
-|> Nx.broadcast({512, 512, 3}, axes: [0, 1])
+|> Nx.broadcast({600, 600, 3}, axes: [0, 1])
 |> Evision.Mat.from_nx_2d()
 |> dbg
 ```

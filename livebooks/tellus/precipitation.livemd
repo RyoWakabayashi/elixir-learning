@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.4"},
-  {:evision, "~> 0.1"},
+  {:nx, "~> 0.5"},
+  {:evision, "~> 0.1.30"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.8"},
+  {:kino, "~> 0.9"},
   {:kino_maplibre, "~> 0.1"}
 ])
 ```
@@ -90,7 +90,7 @@ precipitation =
   Enum.map(lon_list, fn lon ->
     Enum.map(lat_list, fn lat ->
       get_precipitation.(lon, lat, 20_190_909)
-      |> then(& &1["prec"])
+      |> Map.get("prec")
     end)
   end)
 ```

@@ -178,7 +178,7 @@ prefectures_industry_power_df =
       industry["sicCode"],
       industry["simcCode"]
     )
-    |> then(& &1["prefectures"])
+    |> Map.get("prefectures")
     # 該当データがないものは除去する
     |> Enum.filter(&(&1 != nil))
     # データを整形する

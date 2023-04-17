@@ -76,7 +76,7 @@ get_mode = fn series ->
   series
   |> Series.frequencies()
   |> DataFrame.filter(is_not_nil(values))
-  |> then(& &1["values"])
+  |> Map.get("values")
   |> Series.first()
 end
 ```

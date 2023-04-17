@@ -3,12 +3,12 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.4"},
-    {:evision, "~> 0.1"},
-    {:exla, "~> 0.4"},
+    {:nx, "~> 0.5"},
+    {:evision, "~> 0.1.30"},
+    {:exla, "~> 0.5"},
     {:req, "~> 0.3"},
     {:geo, "~> 3.4"},
-    {:kino, "~> 0.8"},
+    {:kino, "~> 0.9"},
     {:kino_maplibre, "~> 0.1"}
   ],
   config: [
@@ -59,7 +59,7 @@ defmodule TellusTraveler do
 
     url
     |> Req.get!(headers: headers)
-    |> then(& &1.body)
+    |> Map.get(:body)
   end
 
   def search(token, dataset_id, coordinates) do
@@ -239,7 +239,7 @@ city_map =
 city_polygons =
   city_geojson.geometries
   |> Enum.at(0)
-  |> then(& &1.coordinates)
+  |> Map.get(:coordinates)
 ```
 
 ```elixir

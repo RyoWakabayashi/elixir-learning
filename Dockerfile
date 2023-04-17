@@ -1,4 +1,4 @@
-FROM ghcr.io/livebook-dev/livebook:0.9.0
+FROM ghcr.io/livebook-dev/livebook:0.9.1
 
 RUN mix local.hex --force \
   && mix archive.install hex phx_new --force \
@@ -82,6 +82,8 @@ RUN apt-get upgrade -y \
     libvips-dev \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
+
+ENV LIVEBOOK_HOME=/home/livebook
 
 COPY ./livebooks /home/livebook
 

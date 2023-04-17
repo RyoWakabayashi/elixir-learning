@@ -109,7 +109,7 @@ exec_id =
     }
   })
   |> elem(1)
-  |> then(& &1["QueryExecutionId"])
+  |> Map.get("QueryExecutionId")
 ```
 
 ```elixir
@@ -132,7 +132,7 @@ exec_query = fn query ->
     }
   })
   |> elem(1)
-  |> then(& &1["QueryExecutionId"])
+  |> Map.get("QueryExecutionId")
 end
 ```
 

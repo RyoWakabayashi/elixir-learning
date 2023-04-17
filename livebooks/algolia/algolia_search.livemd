@@ -98,12 +98,12 @@ response["hits"]
 ```elixir
 response["hits"]
 |> List.first()
-|> then(& &1["_highlightResult"])
+|> Map.get("_highlightResult")
 ```
 
 ```elixir
 response["hits"]
 |> Enum.filter(&(&1["_snippetResult"]["description"]["value"] != ""))
 |> List.first()
-|> then(& &1["_snippetResult"])
+|> Map.get("_snippetResult")
 ```

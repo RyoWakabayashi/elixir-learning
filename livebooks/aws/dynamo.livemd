@@ -195,7 +195,7 @@ decoded_df =
     filter_expression: "#name > :value"
   )
   |> ExAws.request!(auth_config)
-  |> then(& &1["Items"])
+  |> Map.get("Items")
   |> Enum.map(&decode.(&1))
   |> DataFrame.new()
 
@@ -214,7 +214,7 @@ decoded_df =
     key_condition_expression: "#name = :value"
   )
   |> ExAws.request!(auth_config)
-  |> then(& &1["Items"])
+  |> Map.get("Items")
   |> Enum.map(&decode.(&1))
   |> DataFrame.new()
 
@@ -228,7 +228,7 @@ decoded_df =
   table_name
   |> Dynamo.get_item(%{year: 2012, country: "AFGHANISTAN"})
   |> ExAws.request!(auth_config)
-  |> then(& &1["Item"])
+  |> Map.get("Item")
   |> decode.()
   |> List.wrap()
   |> DataFrame.new()
@@ -256,7 +256,7 @@ decoded_df =
   table_name
   |> Dynamo.get_item(%{year: 2012, country: "AFGHANISTAN"})
   |> ExAws.request!(auth_config)
-  |> then(& &1["Item"])
+  |> Map.get("Item")
   |> decode.()
   |> List.wrap()
   |> DataFrame.new()
@@ -279,7 +279,7 @@ decoded_df =
   table_name
   |> Dynamo.scan()
   |> ExAws.request!(auth_config)
-  |> then(& &1["Items"])
+  |> Map.get("Items")
   |> Enum.map(&decode.(&1))
   |> DataFrame.new()
 

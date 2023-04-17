@@ -64,7 +64,7 @@ text = Kino.Input.read(text_input)
 ```elixir
 serving
 |> Nx.Serving.run(text)
-|> then(& &1.results)
+|> Map.get(:results)
 ```
 
 ## 時間計測
@@ -104,12 +104,12 @@ end
 "gpt2-medium"
 |> serve_model.()
 |> Nx.Serving.run(text)
-|> then(& &1.results)
+|> Map.get(:results)
 ```
 
 ```elixir
 "gpt2-large"
 |> serve_model.()
 |> Nx.Serving.run(text)
-|> then(& &1.results)
+|> Map.get(:results)
 ```

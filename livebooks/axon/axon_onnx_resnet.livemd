@@ -19,7 +19,7 @@ Mix.install(
 classes =
   "https://s3.amazonaws.com/deep-learning-models/image-models/imagenet_class_index.json"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir

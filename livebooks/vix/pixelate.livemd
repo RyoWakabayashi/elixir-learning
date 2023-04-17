@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:image, "~> 0.24"},
-  {:evision, "~> 0.1"},
+  {:image, "~> 0.28"},
+  {:evision, "~> 0.1.30"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.8"}
+  {:kino, "~> 0.9"}
 ])
 ```
 
@@ -15,7 +15,7 @@ Mix.install([
 lenna_img =
   "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
   |> Image.from_binary()
   |> elem(1)
 ```

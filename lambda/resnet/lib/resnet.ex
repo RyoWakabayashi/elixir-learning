@@ -29,6 +29,6 @@ defmodule Resnet do
 
     resnet
     |> Nx.Serving.run(tensor)
-    |> then(& &1.predictions)
+    |> Map.get(:predictions)
   end
 end

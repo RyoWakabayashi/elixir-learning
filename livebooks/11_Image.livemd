@@ -3,111 +3,106 @@
 # Nx による画像処理
 
 ```elixir
-Mix.install(
-  [
-    {:nx, "~> 0.4"},
-    {:kino, "~> 0.7"},
-    {:download, "~> 0.0.4"},
-    {:pixels, "~> 0.2.1"},
-    {:pngex, "~> 0.1.1"}
-  ],
-  system_env: [{"CROSSCOMPILE", "1"}]
-)
+Mix.install([
+  {:nx, "~> 0.5"},
+  {:kino, "~> 0.9"},
+  {:req, "~> 0.3"},
+  {:pixels, "~> 0.2.1"}
+])
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
 Resolving Hex dependencies...
-Dependency resolution completed:
+Resolution completed in 0.527s
 New:
-  certifi 2.9.0
-  complex 0.4.2
-  download 0.0.4
+  castore 1.0.1
+  complex 0.5.0
   elixir_make 0.6.3
-  hackney 1.18.1
-  httpoison 1.8.2
-  idna 6.1.1
-  kino 0.7.0
-  metrics 1.0.1
-  mimerl 1.2.0
-  nx 0.4.0
-  parse_trans 3.3.1
+  finch 0.15.0
+  hpax 0.1.2
+  jason 1.4.0
+  kino 0.9.1
+  mime 2.0.3
+  mint 1.5.1
+  nimble_options 1.0.1
+  nimble_pool 0.2.6
+  nx 0.5.2
   pixels 0.2.1
-  pngex 0.1.1
-  ssl_verify_fun 1.1.6
+  req 0.3.6
   table 0.1.2
-  unicode_util_compat 0.7.0
+  telemetry 1.2.1
 * Getting nx (Hex package)
 * Getting kino (Hex package)
-* Getting download (Hex package)
+* Getting req (Hex package)
 * Getting pixels (Hex package)
-* Getting pngex (Hex package)
 * Getting elixir_make (Hex package)
-* Getting httpoison (Hex package)
-* Getting hackney (Hex package)
-* Getting certifi (Hex package)
-* Getting idna (Hex package)
-* Getting metrics (Hex package)
-* Getting mimerl (Hex package)
-* Getting parse_trans (Hex package)
-* Getting ssl_verify_fun (Hex package)
-* Getting unicode_util_compat (Hex package)
+* Getting finch (Hex package)
+* Getting jason (Hex package)
+* Getting mime (Hex package)
+* Getting castore (Hex package)
+* Getting mint (Hex package)
+* Getting nimble_options (Hex package)
+* Getting nimble_pool (Hex package)
+* Getting telemetry (Hex package)
+* Getting hpax (Hex package)
 * Getting table (Hex package)
 * Getting complex (Hex package)
-===> Analyzing applications...
-===> Compiling parse_trans
-==> pngex
+==> nimble_options
+Compiling 3 files (.ex)
+Generated nimble_options app
+==> hpax
 Compiling 4 files (.ex)
-Generated pngex app
+Generated hpax app
+==> nimble_pool
+Compiling 2 files (.ex)
+Generated nimble_pool app
 ===> Analyzing applications...
-===> Compiling mimerl
-===> Analyzing applications...
-===> Compiling metrics
-===> Analyzing applications...
-===> Compiling unicode_util_compat
-===> Analyzing applications...
-===> Compiling idna
-==> ssl_verify_fun
-Compiling 7 files (.erl)
-Generated ssl_verify_fun app
+===> Compiling telemetry
+==> jason
+Compiling 10 files (.ex)
+Generated jason app
 ==> table
 Compiling 5 files (.ex)
 Generated table app
-==> kino
-Compiling 36 files (.ex)
-Generated kino app
 ==> elixir_make
 Compiling 1 file (.ex)
 Generated elixir_make app
+==> castore
+Compiling 1 file (.ex)
+Generated castore app
+==> mint
+Compiling 1 file (.erl)
+Compiling 19 files (.ex)
+Generated mint app
 ==> complex
 Compiling 2 files (.ex)
 Generated complex app
 ==> nx
-Compiling 27 files (.ex)
+Compiling 31 files (.ex)
 Generated nx app
-===> Analyzing applications...
-===> Compiling certifi
-===> Analyzing applications...
-===> Compiling hackney
-==> httpoison
-Compiling 3 files (.ex)
-Generated httpoison app
-==> download
-Compiling 1 file (.ex)
-warning: System.cwd/0 is deprecated. Use File.cwd/0 instead
-  lib/download.ex:46: Download.get_default_download_path/1
-
-Generated download app
+==> kino
+Compiling 39 files (.ex)
+Generated kino app
 ==> pixels
 cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_jpeg.o c_src/pixels_jpeg.c
 cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_nif.o c_src/pixels_nif.c
 cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_png.o c_src/pixels_png.c
 cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/ext/lodepng.o c_src/ext/lodepng.c
 cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/ext/ujpeg.o c_src/ext/ujpeg.c
-cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -Wl,--no-whole-archive -shared -o /home/livebook/.cache/mix/installs/elixir-1.14.0-erts-12.3.2.2/20141305a5cbc6c60f6d48320d820f08/_build/dev/lib/pixels/priv/pixels_nif.so
+cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -Wl,--no-whole-archive -shared -o /home/livebook/.cache/mix/installs/elixir-1.14.2-erts-12.3.2.2/c74cb1a578c92ada3c1e673f9114bec3/_build/dev/lib/pixels/priv/pixels_nif.so
 Compiling 3 files (.ex)
 Generated pixels app
+==> mime
+Compiling 1 file (.ex)
+Generated mime app
+==> finch
+Compiling 13 files (.ex)
+Generated finch app
+==> req
+Compiling 5 files (.ex)
+Generated req app
 ```
 
 <!-- livebook:{"output":true} -->
@@ -207,24 +202,49 @@ Nx.tensor(inputs)
 画像をダウンロードする
 
 ```elixir
-# 再実行時、Download.from()でeexistエラーになるのを防止
-File.rm("Lenna_%28test_image%29.png")
+img_path = "rwakabay.png"
 
-lenna =
-  Download.from("https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png")
-  |> elem(1)
+"https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
+|> Req.get!(output: img_path)
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
-"/data/Lenna_%28test_image%29.png"
+%Req.Response{
+  status: 200,
+  headers: [
+    {"connection", "keep-alive"},
+    {"content-length", "519082"},
+    {"server", "GitHub.com"},
+    {"content-type", "image/png"},
+    {"last-modified", "Wed, 05 Apr 2023 13:43:40 GMT"},
+    {"access-control-allow-origin", "*"},
+    {"etag", "\"642d7b0c-7ebaa\""},
+    {"expires", "Wed, 12 Apr 2023 05:13:00 GMT"},
+    {"cache-control", "max-age=600"},
+    {"x-proxy-cache", "MISS"},
+    {"x-github-request-id", "786C:572E:C7B16D:D22ACC:64363B84"},
+    {"accept-ranges", "bytes"},
+    {"date", "Wed, 12 Apr 2023 06:44:53 GMT"},
+    {"via", "1.1 varnish"},
+    {"age", "0"},
+    {"x-served-by", "cache-itm18827-ITM"},
+    {"x-cache", "HIT"},
+    {"x-cache-hits", "1"},
+    {"x-timer", "S1681281893.274448,VS0,VE161"},
+    {"vary", "Accept-Encoding"},
+    {"x-fastly-request-id", "36483fe0b661cf79bac26d241ed97099e42b7442"}
+  ],
+  body: "",
+  private: %{}
+}
 ```
 
 画像を表示する
 
 ```elixir
-lenna
+img_path
 |> File.read!()
 |> Kino.Image.new(:jpeg)
 ```
@@ -232,8 +252,7 @@ lenna
 画像のピクセル情報
 
 ```elixir
-lenna
-|> Pixels.read_file()
+Pixels.read_file(img_path)
 ```
 
 <!-- livebook:{"output":true} -->
@@ -241,156 +260,92 @@ lenna
 ```
 {:ok,
  %Pixels{
-   width: 512,
-   height: 512,
-   data: <<226, 137, 125, 255, 226, 137, 125, 255, 223, 137, 133, 255, 223, 136, 128, 255, 226, 138,
-     120, 255, 226, 129, 116, 255, 228, 138, 123, 255, 227, 134, 124, 255, 227, 140, 127, 255, 225,
-     136, 119, 255, 228, 135, 126, 255, 225, ...>>
+   width: 600,
+   height: 600,
+   data: <<202, 201, 196, 255, 205, 204, 199, 255, 203, 202, 197, 255, 202, 201, 196, 255, 204, 203,
+     198, 255, 202, 201, 196, 255, 202, 201, 196, 255, 204, 203, 198, 255, 204, 203, 198, 255, 205,
+     204, 199, 255, 205, 204, 199, 255, 205, ...>>
  }}
 ```
 
+画像をテンソル化する
+
 ```elixir
 rgba =
-  lenna
+  img_path
   |> Pixels.read_file()
   |> elem(1)
   |> Map.get(:data)
-  |> Nx.from_binary({:u, 8})
-  |> Nx.reshape({262_144, 4})
+  |> Nx.from_binary(:u8)
+  |> Nx.reshape({600, 600, 4})
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
 #Nx.Tensor<
-  u8[262144][4]
+  u8[600][600][4]
   [
-    [226, 137, 125, 255],
-    [226, 137, 125, 255],
-    [223, 137, 133, 255],
-    [223, 136, 128, 255],
-    [226, 138, 120, 255],
-    [226, 129, 116, 255],
-    [228, 138, 123, 255],
-    [227, 134, 124, 255],
-    [227, 140, 127, 255],
-    [225, 136, 119, 255],
-    [228, 135, 126, 255],
-    [225, 134, 121, 255],
-    [223, 130, ...],
+    [
+      [202, 201, 196, 255],
+      [205, 204, 199, 255],
+      [203, 202, 197, 255],
+      [202, 201, 196, 255],
+      [204, 203, 198, 255],
+      [202, 201, 196, 255],
+      [202, 201, 196, 255],
+      [204, 203, 198, 255],
+      [204, 203, 198, 255],
+      [205, 204, 199, 255],
+      [205, 204, 199, 255],
+      [205, 204, 199, 255],
+      [204, 203, ...],
+      ...
+    ],
     ...
   ]
 >
 ```
 
 ```elixir
-# ここから画像加工処理
+# 画像をネガポジ反転する
 rgb =
   rgba
   |> Nx.slice_along_axis(0, 3, axis: -1)
-  |> Nx.map(&Nx.subtract(255, &1))
+  |> then(&Nx.subtract(255, &1))
 
-a =
-  rgba
-  |> Nx.slice_along_axis(4, 1, axis: -1)
+a = Nx.slice_along_axis(rgba, 4, 1, axis: -1)
 
 new_rgba = Nx.concatenate([rgb, a], axis: -1)
-# ここまで画像加工処理
-
-changed =
-  new_rgba
-  |> Nx.to_flat_list()
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
-[29, 118, 130, 255, 29, 118, 130, 255, 32, 118, 122, 255, 32, 119, 127, 255, 29, 117, 135, 255, 29,
- 126, 139, 255, 27, 117, 132, 255, 28, 121, 131, 255, 28, 115, 128, 255, 30, 119, 136, 255, 27, 120,
- 129, 255, 30, 121, 134, 255, 32, 125, ...]
+#Nx.Tensor<
+  u8[600][600][4]
+  [
+    [
+      [53, 54, 59, 255],
+      [50, 51, 56, 255],
+      [52, 53, 58, 255],
+      [53, 54, 59, 255],
+      [51, 52, 57, 255],
+      [53, 54, 59, 255],
+      [53, 54, 59, 255],
+      [51, 52, 57, 255],
+      [51, 52, 57, 255],
+      [50, 51, 56, 255],
+      [50, 51, 56, 255],
+      [50, 51, 56, 255],
+      [51, 52, ...],
+      ...
+    ],
+    ...
+  ]
+>
 ```
 
 ```elixir
-rgba_tuple_list =
-  changed
-  |> Enum.chunk_every(4)
-  |> Enum.map(fn [r, g, b, a] -> {r, g, b, a} end)
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-[
-  {29, 118, 130, 255},
-  {29, 118, 130, 255},
-  {32, 118, 122, 255},
-  {32, 119, 127, 255},
-  {29, 117, 135, 255},
-  {29, 126, 139, 255},
-  {27, 117, 132, 255},
-  {28, 121, 131, 255},
-  {28, 115, 128, 255},
-  {30, 119, 136, 255},
-  {27, 120, 129, 255},
-  {30, 121, 134, 255},
-  {32, 125, 147, 255},
-  {29, 116, 136, 255},
-  {32, 120, 135, 255},
-  {34, 126, 141, 255},
-  {34, 121, 147, 255},
-  {34, 124, 142, 255},
-  {33, 117, 134, 255},
-  {33, 116, 141, 255},
-  {32, 128, 146, 255},
-  {32, 123, 150, 255},
-  {31, 126, 153, 255},
-  {34, 121, 146, 255},
-  {37, 124, 145, 255},
-  {34, 122, 142, 255},
-  {32, 125, 147, 255},
-  {30, 130, 157, 255},
-  {34, 125, 134, 255},
-  {34, 126, 144, 255},
-  {35, 128, 134, 255},
-  {32, 124, 146, 255},
-  {30, 128, 152, 255},
-  {32, 121, 146, 255},
-  {29, 127, 149, 255},
-  {32, 120, 133, 255},
-  {30, 122, 143, 255},
-  {28, 111, 131, 255},
-  {26, 120, 151, 255},
-  {24, 113, 132, 255},
-  {24, 112, 139, 255},
-  {23, 113, 143, 255},
-  {25, 112, 138, 255},
-  {22, 105, 134, 255},
-  {21, 107, 134, 255},
-  {18, 101, 132, 255},
-  {22, 102, 134, ...},
-  {24, 106, ...},
-  {18, ...},
-  {...},
-  ...
-]
-```
-
-```elixir
-image =
-  Pngex.new(type: :rgba, depth: :depth8, width: 512, height: 512)
-  |> Pngex.generate(rgba_tuple_list)
-
-File.write("new.png", image)
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-:ok
-```
-
-```elixir
-"new.png"
-|> File.read!()
-|> Kino.Image.new(:png)
+Kino.Image.new(new_rgba)
 ```

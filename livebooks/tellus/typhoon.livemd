@@ -36,7 +36,7 @@ get_product_info = fn product_id ->
 
   auth_url
   |> Req.post!(json: request_body, headers: [auth_header, json_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 end
 ```
 
@@ -57,7 +57,7 @@ typhoon_events_url = "#{typhoon_product_info["base_url"]}/archive/typhoon/events
 typhoon_events =
   typhoon_events_url
   |> Req.get!(headers: [auth_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ## 台風情報の取得
@@ -68,7 +68,7 @@ get_typhoon_points = fn event_id ->
 
   url
   |> Req.get!(headers: [auth_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 end
 ```
 

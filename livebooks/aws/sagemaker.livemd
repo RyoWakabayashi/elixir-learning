@@ -110,9 +110,9 @@ token =
   client
   |> AWS.ECR.get_authorization_token(%{})
   |> elem(1)
-  |> then(& &1["authorizationData"])
+  |> Map.get("authorizationData")
   |> Enum.at(0)
-  |> then(& &1["authorizationToken"])
+  |> Map.get("authorizationToken")
 ```
 
 ```elixir
@@ -175,7 +175,7 @@ client
   "repositoryName" => image
 })
 |> elem(1)
-|> then(& &1["imageIds"])
+|> Map.get("imageIds")
 |> Kino.DataTable.new()
 ```
 
@@ -373,7 +373,7 @@ client
   "EndpointName" => "sagemaker-phoenix-endpoint"
 })
 |> elem(1)
-|> then(& &1["EndpointStatus"])
+|> Map.get("EndpointStatus")
 ```
 
 ## SageMaker エンドポイント呼出
@@ -382,7 +382,7 @@ client
 binary =
   "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir
@@ -402,9 +402,9 @@ client
   }
 )
 |> elem(1)
-|> then(& &1["Body"])
+|> Map.get("Body")
 |> Jason.decode!()
-|> then(& &1["predictions"])
+|> Map.get("predictions")
 |> Kino.DataTable.new()
 ```
 
@@ -416,7 +416,7 @@ image_input = Kino.Input.image("INPUT_IMAGE", format: :jpeg)
 binary =
   image_input
   |> Kino.Input.read()
-  |> then(& &1.data)
+  |> Map.get(:data)
 
 client
 |> AWS.SageMakerRuntime.invoke_endpoint(
@@ -427,9 +427,9 @@ client
   }
 )
 |> elem(1)
-|> then(& &1["Body"])
+|> Map.get("Body")
 |> Jason.decode!()
-|> then(& &1["predictions"])
+|> Map.get("predictions")
 |> Kino.DataTable.new()
 ```
 
@@ -498,7 +498,7 @@ client
   "repositoryName" => image
 })
 |> elem(1)
-|> then(& &1["imageIds"])
+|> Map.get("imageIds")
 |> Kino.DataTable.new()
 ```
 

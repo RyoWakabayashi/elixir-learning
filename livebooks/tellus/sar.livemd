@@ -2,9 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:evision, "~> 0.1"},
+  {:evision, "~> 0.1.30"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.8"},
+  {:kino, "~> 0.9"},
   {:kino_maplibre, "~> 0.1"}
 ])
 ```
@@ -59,7 +59,7 @@ scenes_url = "#{base_url}/api/v2/#{satellite_id}/search"
 scenes =
   scenes_url
   |> Req.get!(headers: [auth_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir
@@ -80,7 +80,7 @@ scenes_info_url = "#{base_url}/api/v2/#{satellite_id}/search/#{scene_id}"
 scenes_info =
   scenes_info_url
   |> Req.get!(headers: [auth_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir
@@ -91,7 +91,7 @@ scenes_after_url = "#{base_url}/api/v2/#{satellite_id}/search/#{scene_id}/afters
 scenes_after =
   scenes_after_url
   |> Req.get!(headers: [auth_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ## 差分干渉データ作成依頼
@@ -119,7 +119,7 @@ work_body = %{
 work =
   work_url
   |> Req.post!(json: work_body, headers: [auth_header, json_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir
@@ -134,7 +134,7 @@ work_status_url = "#{base_url}/api/v2/works/#{work_id}"
 work_status =
   work_status_url
   |> Req.get!(headers: [auth_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ## PNGの取得

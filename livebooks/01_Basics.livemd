@@ -48,7 +48,7 @@ Character List は文字コードの配列
 
 ```elixir
 'Hello'
-|> Enum.map(&IO.puts(&1))
+|> Enum.map(&IO.inspect(&1))
 ```
 
 String と Character List は異なる
@@ -110,6 +110,8 @@ a
 ```elixir
 1 = a
 ```
+
+マッチしない場合、 MatchError が発生する
 
 ```elixir
 2 = a

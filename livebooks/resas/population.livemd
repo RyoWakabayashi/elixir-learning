@@ -43,7 +43,7 @@ prefectures_url = "#{base_url}/api/v1/prefectures"
 prefectures =
   prefectures_url
   |> Req.get!(headers: [auth_header])
-  |> then(& &1.body)
+  |> Map.get(:body)
 ```
 
 ```elixir

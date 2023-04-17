@@ -61,7 +61,7 @@ languages =
     before_request: nil
   }
   |> ExAws.request!(auth_config)
-  |> then(& &1["Languages"])
+  |> Map.get("Languages")
   |> Enum.map(&{&1["LanguageCode"], &1["LanguageName"]})
 ```
 
@@ -108,7 +108,7 @@ text_input
 |> Kino.Input.read()
 |> Translate.translate_text(src_lang, dst_lang)
 |> ExAws.request!(auth_config)
-|> then(& &1["TranslatedText"])
+|> Map.get("TranslatedText")
 ```
 
 ```elixir
@@ -117,7 +117,7 @@ text_input
 |> Kino.Input.read()
 |> Translate.translate_text("auto", dst_lang)
 |> ExAws.request!(auth_config)
-|> then(& &1["TranslatedText"])
+|> Map.get("TranslatedText")
 ```
 
 ## 用語登録
@@ -131,7 +131,7 @@ text =
 text
 |> Translate.translate_text("auto", dst_lang)
 |> ExAws.request!(auth_config)
-|> then(& &1["TranslatedText"])
+|> Map.get("TranslatedText")
 ```
 
 ```elixir
@@ -157,5 +157,5 @@ Translate.import_terminology(
 text
 |> Translate.translate_text("auto", dst_lang, terminology_names: ["sushi_terminology"])
 |> ExAws.request!(auth_config)
-|> then(& &1["TranslatedText"])
+|> Map.get("TranslatedText")
 ```

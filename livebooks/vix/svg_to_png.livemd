@@ -14,7 +14,7 @@ Mix.install([
 svg_img =
   "https://www.elixirconf.eu/assets/images/drops.svg"
   |> Req.get!()
-  |> then(& &1.body)
+  |> Map.get(:body)
   |> Image.from_binary()
   |> elem(1)
 ```
