@@ -19,6 +19,10 @@ It's good to see the dependencies made explicit.
 * Req: Download the image in this notebook
 * Kino: Powerful UI/UX in notebooks
 
+## What to do in this notebook
+
+Divide an image vertically or horizontally and then merge them together.
+
 ## Get the image
 
 Download the image of me, Ryo Wakabayashi.
@@ -166,7 +170,7 @@ img_mat
 |> dbg()
 ```
 
-Lenna is divided vertically.
+I'm divided vertically.
 
 When `Nx.transpose` is turned off, Lena falls on its side and divided horizontally.
 
@@ -234,7 +238,7 @@ img_mat
 |> dbg()
 ```
 
-Lenna is divided into tiles.
+I'm is divided into tiles.
 
 ```elixir
 # Save divided images
@@ -289,4 +293,4 @@ end)
 |> Kino.Image.new()
 ```
 
-Lenna is in a check pattern.
+I'm is in a check pattern.

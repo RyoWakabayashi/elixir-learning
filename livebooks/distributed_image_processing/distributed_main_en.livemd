@@ -16,6 +16,10 @@ Mix.install(
 )
 ```
 
+## What to do in this notebook
+
+Distributed processing of 32 images and comparison of speeds on 1, 2, and 4 nodes.
+
 ## Other nodes
 
 * [Worker 1](distributed_worker_1_en.livemd)
@@ -408,3 +412,5 @@ Benchee.run(%{
 ```
 
 In reality, the distributed processing was not effective because it was running on a single machine.
+
+In the future, I would like to actually run distributed processing on multiple machines.

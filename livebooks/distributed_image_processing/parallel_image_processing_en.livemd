@@ -13,8 +13,14 @@ Mix.install([
 
 ## Modules
 
+The following two modules have been added.
+
 * Flow: Parallel Processing in Elixir
 * Benchee: Benchmark in Elixir
+
+## What to do in this notebook
+
+Process 128 images in parallel and compare the speeds of sequential, one-parallel, two-parallel, four-parallel, and eight-parallel processing.
 
 ## Get the image
 
@@ -207,5 +213,7 @@ Benchee.run(%{
 ```
 
 Benchee displays the fastest process and how slow the others.
+
+`Enum.map` is the slowest and four-parallel with `Flow.map` is the fastest.
 
 My machine's CPU has 4 cores, so it doesn't make much sense if the number of parallelism exceeds this.
