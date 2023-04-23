@@ -13,6 +13,9 @@ Mix.install([
 
 Install dependent modules in the setup cell.
 It's good to see the dependencies made explicit.
+Jupyter does not make dependencies explicit.
+
+This notebook installs the following modules.
 
 * Nx: Perform matrix operations in Elixir
 * evision: An OpenCV wrapper, Process images in Elixir
@@ -39,6 +42,7 @@ img_mat = Evision.imread(img_path)
 ```
 
 When you load an image with evision, the image will appear in the notebook.
+The automatic display of results is much more convenient than with Jupyter
 
 Then prepare for image processing.
 
@@ -52,7 +56,7 @@ img_shape = img_mat.shape
 ```
 
 ```elixir
-# Prepare a function to save a list of images
+# Prepare a function to save a list of divided images
 save_img_tensor_list = fn img_tensor_list, kind ->
   img_tensor_list
   |> Enum.with_index()
@@ -172,7 +176,7 @@ img_mat
 
 I'm divided vertically.
 
-When `Nx.transpose` is turned off, Lena falls on its side and divided horizontally.
+When `Nx.transpose` is turned off, I fall on its side and divided horizontally.
 
 This is why Livebook and `dbg` work so well together for image processing.
 
@@ -238,7 +242,7 @@ img_mat
 |> dbg()
 ```
 
-I'm is divided into tiles.
+I'm divided into tiles.
 
 ```elixir
 # Save divided images
@@ -293,4 +297,4 @@ end)
 |> Kino.Image.new()
 ```
 
-I'm is in a check pattern.
+I'm in a check pattern.
