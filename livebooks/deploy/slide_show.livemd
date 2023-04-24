@@ -1,0 +1,156 @@
+<!-- livebook:{"app_settings":{"slug":"slide"}} -->
+
+# Slide show
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.9.2"}
+])
+```
+
+## スライドモジュールの定義
+
+```elixir
+defmodule SlideShow do
+  use GenServer
+
+  @slides [
+    """
+    # 大分県
+
+    ## Oita, Japan
+
+    ![大分県](https://1.bp.blogspot.com/-uEqcqdspoIE/WMJLJPr0C5I/AAAAAAABCd8/mXaaXFIAv8MD9qWwsQ1oR196-DIbWL2QwCLcB/s400/japan_character8_kyuusyuu5_ooita.png)
+    """,
+    """
+    ## 日本一のおんせん県おおいた
+
+    Oita, the best hot-spring resort in Japan
+
+    - 源泉総数 Total number of springs: **5,093**
+    - 湧出量 Hot spring output: **298,264** l / minutes 
+
+
+    """,
+    """
+    <div style="transform: scale(1.3)">
+
+    ## 絶品グルメ
+
+    Excellent Gourmet
+
+    </div>
+
+    <div style="transform: scale(1.2)">
+
+    ### とり天
+
+    Chicken tempura
+
+    ### 中津唐揚げ
+
+    Nakatsu flied chiken
+
+    ### 関あじ・関さば
+
+    Seki horse mackerel and Seki mackerel
+
+    </div>
+    """,
+    """
+    ## 宇宙
+
+    ## Space
+
+    > 大分空港は、宇宙港（スペースポート)として活用することとなりました。
+    >
+    > 大分空港からは、航空機が人工衛星を搭載したロケットを翼に吊り下げて、空港から飛び立ち、空中でロケットを打ち上げます。
+
+    > Oita Airport is to be utilized as a spaceport.
+    > 
+    > From Oita Airport, an aircraft will take off from the airport with a rocket carrying a satellite suspended from its wings and launch the rocket in mid-air.
+    """,
+    """
+    # ぜひ来てください
+
+    # Come and visit us!
+    """
+  ]
+
+  @page_count Enum.count(@slides)
+
+  def init(default_page) do
+    {:ok, default_page}
+  end
+
+  def show_slide(page) do
+    @slides
+    |> Enum.at(page)
+    |> then(fn content ->
+      """
+      <div class='flex flex-col justify-center items-center p-8' style='height: 600px'>
+
+      """ <>
+        content <>
+        """
+        </div>
+        """
+    end)
+    |> Kino.Markdown.new()
+  end
+
+  def handle_call(:current, _from, current_page) do
+    {:reply, show_slide(current_page), current_page}
+  end
+
+  def handle_call(:next, _from, current_page) when current_page >= @page_count - 1 do
+    {:reply, show_slide(0), 0}
+  end
+
+  def handle_call(:next, _from, current_page) do
+    {:reply, show_slide(current_page + 1), current_page + 1}
+  end
+
+  def handle_call(:prev, _from, current_page) when current_page == 0 do
+    {:reply, show_slide(@page_count - 1), @page_count - 1}
+  end
+
+  def handle_call(:prev, _from, current_page) do
+    {:reply, show_slide(current_page - 1), current_page - 1}
+  end
+end
+```
+
+```elixir
+{:ok, slide} = GenServer.start_link(SlideShow, 0)
+```
+
+## 画面の定義
+
+```elixir
+frame = Kino.Frame.new()
+```
+
+```elixir
+Kino.Frame.render(frame, GenServer.call(slide, :current))
+
+prev_button = Kino.Control.button("<")
+next_button = Kino.Control.button(">")
+
+[prev_button, next_button]
+|> Kino.Layout.grid(columns: 8)
+```
+
+## 動作の定義
+
+```elixir
+[prev: prev_button, next: next_button]
+|> Kino.Control.tagged_stream()
+|> Kino.listen(fn
+  {:prev, _} ->
+    Kino.Frame.render(frame, GenServer.call(slide, :prev))
+
+  {:next, _} ->
+    Kino.Frame.render(frame, GenServer.call(slide, :next))
+end)
+```
