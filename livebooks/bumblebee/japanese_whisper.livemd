@@ -1,0 +1,60 @@
+# Japanese Whisper
+
+```elixir
+Mix.install(
+  [
+    {:kino_bumblebee, "~> 0.3.0"},
+    {:exla, "~> 0.5.1"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## Section
+
+```elixir
+{:ok, model_info} = Bumblebee.load_model({:hf, "openai/whisper-tiny"})
+{:ok, featurizer} = Bumblebee.load_featurizer({:hf, "openai/whisper-tiny"})
+{:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, "openai/whisper-tiny"})
+{:ok, generation_config} = Bumblebee.load_generation_config({:hf, "openai/whisper-tiny"})
+
+generation_config =
+  Bumblebee.configure(
+    generation_config,
+    max_new_tokens: 100,
+    forced_token_ids: [
+      {1, Bumblebee.Tokenizer.token_to_id(tokenizer, "<|ja|>")},
+      {2, Bumblebee.Tokenizer.token_to_id(tokenizer, "<|transcribe|>")},
+      {3, Bumblebee.Tokenizer.token_to_id(tokenizer, "<|notimestamps|>")}
+    ]
+  )
+
+serving =
+  Bumblebee.Audio.speech_to_text(model_info, featurizer, tokenizer, generation_config,
+    compile: [batch_size: 1],
+    defn_options: [compiler: EXLA]
+  )
+```
+
+```elixir
+audio_input = Kino.Input.audio("Audio", sampling_rate: featurizer.sampling_rate)
+form = Kino.Control.form([audio: audio_input], submit: "Run")
+frame = Kino.Frame.new()
+
+Kino.listen(form, fn %{data: %{audio: audio}} ->
+  if audio do
+    Kino.Frame.render(frame, Kino.Text.new("Running..."))
+
+    audio =
+      audio.data
+      |> Nx.from_binary(:f32)
+      |> Nx.reshape({:auto, audio.num_channels})
+      |> Nx.mean(axes: [1])
+
+    %{results: [%{text: generated_text}]} = Nx.Serving.run(serving, audio)
+    Kino.Frame.render(frame, Kino.Text.new(generated_text))
+  end
+end)
+
+Kino.Layout.grid([form, frame], boxed: true, gap: 16)
+```
