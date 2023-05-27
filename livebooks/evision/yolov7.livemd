@@ -15,6 +15,10 @@ Mix.install(
 
 ## モデル読込
 
+事前に以下のコンテナを使って ONNX 形式に変換した YOLOv7x モデルを /tmp/ に配置しているものとする
+
+https://github.com/RyoWakabayashi/elixir-learning/tree/main/ml_model_conversion/yolov7
+
 ```elixir
 net = Evision.DNN.readNet("/tmp/yolov7x.onnx")
 ```
