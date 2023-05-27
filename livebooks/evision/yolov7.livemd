@@ -1,0 +1,393 @@
+# YOLOv7
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.5"},
+    {:exla, "~> 0.5"},
+    {:evision, "~> 0.1"},
+    {:req, "~> 0.3"},
+    {:kino, "~> 0.9"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## モデル読込
+
+```elixir
+net = Evision.DNN.readNet("/tmp/yolov7x.onnx")
+```
+
+```elixir
+out_names = Evision.DNN.Net.getUnconnectedOutLayersNames(net)
+```
+
+### ラベル一覧の取得
+
+```elixir
+labels =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
+  |> Req.get!()
+  |> Map.get(:body)
+  |> then(&Enum.join(for <<c::utf8 <- &1>>, do: <<c::utf8>>))
+  |> String.split("\n")
+  |> Enum.filter(&(&1 != ""))
+```
+
+```elixir
+Enum.count(labels)
+```
+
+## 推論の実行
+
+### 画像ダウンロード
+
+```elixir
+img =
+  "https://raw.githubusercontent.com/pjreddie/darknet/master/data/dog.jpg"
+  |> Req.get!()
+  |> Map.get(:body)
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
+```
+
+```elixir
+{img_height, img_width, _} = Evision.Mat.shape(img)
+```
+
+### 推論用の形式へ変換
+
+```elixir
+blob = Evision.DNN.blobFromImage(img, size: {640, 640}, swapRB: true, crop: false)
+```
+
+### 推論
+
+```elixir
+predictions =
+  net
+  |> Evision.DNN.Net.setInput(
+    blob,
+    name: "",
+    scalefactor: 1 / 255,
+    mean: {0, 0, 0}
+  )
+  |> Evision.DNN.Net.forward(outBlobNames: out_names)
+```
+
+## 推論結果の整形
+
+### 閾値を超える領域の取得
+
+```elixir
+score_threshold = 0.6
+```
+
+```elixir
+predictions_tensor =
+  predictions
+  |> Enum.at(0)
+  |> Evision.Mat.to_nx(EXLA.Backend)
+```
+
+```elixir
+all_bbox_score_tensor = predictions_tensor[[0, 0..-1//1, 4]]
+```
+
+```elixir
+greater_tensor = Nx.greater(all_bbox_score_tensor, score_threshold)
+```
+
+```elixir
+greater_count =
+  greater_tensor
+  |> Nx.sum()
+  |> Nx.to_number()
+```
+
+```elixir
+greater_indices = Nx.argsort(greater_tensor, direction: :desc)[[0..(greater_count - 1)]]
+```
+
+```elixir
+greater_predictions_tensor = Nx.take(predictions_tensor[0], greater_indices, axis: 0)
+```
+
+```elixir
+bbox_score_tensor = greater_predictions_tensor[[0..-1//1, 4]]
+```
+
+### クラスの判定
+
+```elixir
+class_score_tensor = greater_predictions_tensor[[0..-1//1, 5..-1//1]]
+```
+
+```elixir
+class_index_tensor = Nx.argmax(class_score_tensor, axis: 1)
+```
+
+```elixir
+top_class_score_tensor = Nx.reduce_max(class_score_tensor, axes: [1])
+```
+
+```elixir
+score_tensor = Nx.multiply(bbox_score_tensor, top_class_score_tensor)
+```
+
+### 座標情報の変換
+
+```elixir
+coordinate_tensor = greater_predictions_tensor[[0..-1//1, 0..3]]
+```
+
+```elixir
+bbox_half_width = Nx.divide(coordinate_tensor[[0..-1//1, 2]], 2)
+bbox_half_height = Nx.divide(coordinate_tensor[[0..-1//1, 3]], 2)
+```
+
+```elixir
+min_x_tensor =
+  coordinate_tensor[[0..-1//1, 0]]
+  |> Nx.subtract(bbox_half_width)
+  |> Nx.multiply(img_width / 640)
+
+min_y_tensor =
+  coordinate_tensor[[0..-1//1, 1]]
+  |> Nx.subtract(bbox_half_height)
+  |> Nx.multiply(img_height / 640)
+
+max_x_tensor =
+  coordinate_tensor[[0..-1//1, 0]]
+  |> Nx.add(bbox_half_width)
+  |> Nx.multiply(img_width / 640)
+
+max_y_tensor =
+  coordinate_tensor[[0..-1//1, 1]]
+  |> Nx.add(bbox_half_height)
+  |> Nx.multiply(img_height / 640)
+
+formed_coordinate_tensor =
+  [min_x_tensor, min_y_tensor, max_x_tensor, max_y_tensor]
+  |> Nx.stack()
+  |> Nx.transpose()
+```
+
+### Non-Maximun Suppression
+
+```elixir
+score_list = Nx.to_list(score_tensor)
+
+nms_threshold = 0.7
+
+selected_index_tensor =
+  formed_coordinate_tensor
+  |> Evision.DNN.nmsBoxes(score_list, score_threshold, nms_threshold)
+  |> Nx.tensor()
+```
+
+```elixir
+selected_bboxes = Nx.take(formed_coordinate_tensor, selected_index_tensor)
+```
+
+```elixir
+selected_classes = Nx.take(class_index_tensor, selected_index_tensor) |> Nx.new_axis(1)
+```
+
+```elixir
+selected_scores = Nx.take(score_tensor, selected_index_tensor) |> Nx.new_axis(1)
+```
+
+```elixir
+formed_tensor = Nx.concatenate([selected_bboxes, selected_classes, selected_scores], axis: 1)
+```
+
+## 推論結果の描画
+
+```elixir
+formed_tensor
+|> Nx.to_list()
+|> Enum.reduce(img, fn prediction, drawed_mat ->
+  # 座標情報、クラス番号は整数に変換する
+  [left, top, right, bottom, class_index] =
+    prediction
+    |> Enum.slice(0..4)
+    |> Enum.map(&trunc(&1))
+
+  # スコアは小数点以下3桁の文字列に変換する
+  score =
+    prediction
+    |> Enum.at(5)
+    |> Float.round(3)
+    |> Float.to_string()
+
+  # class の値に対応するラベルを取得する
+  label = Enum.at(labels, class_index)
+
+  drawed_mat
+  # 四角形を描画する
+  |> Evision.rectangle(
+    {left, top},
+    {right, bottom},
+    {255, 0, 0},
+    thickness: 10
+  )
+  # ラベル文字を書く
+  |> Evision.putText(
+    label <> ":" <> score,
+    {left + 6, top + 26},
+    Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+    1,
+    {0, 0, 255},
+    thickness: 2
+  )
+end)
+```
+
+## YOLOv7 のモジュール化
+
+```elixir
+import Nx.Defn
+```
+
+```elixir
+defmodule YOLOv7 do
+  def detect(img, net, out_names, score_threshold, nms_threshold) do
+    blob = Evision.DNN.blobFromImage(img, size: {640, 640}, swapRB: true, crop: false)
+
+    predictions =
+      net
+      |> Evision.DNN.Net.setInput(
+        blob,
+        name: "",
+        scalefactor: 1 / 255,
+        mean: {0, 0, 0}
+      )
+      |> Evision.DNN.Net.forward(outBlobNames: out_names)
+      |> Enum.at(0)
+      |> Evision.Mat.to_nx(EXLA.Backend)
+
+    selected_tensor = filter_predictions(predictions, score_threshold)
+
+    {img_height, img_width, _} = Evision.Mat.shape(img)
+    coordinate_tensor = selected_tensor[[0..-1//1, 0..3]]
+    formed_coordinate_tensor = format_coordinates(coordinate_tensor, img_width, img_height)
+
+    {class_index_tensor, score_tensor} = get_class_and_score(selected_tensor)
+
+    nms(
+      formed_coordinate_tensor,
+      class_index_tensor,
+      score_tensor,
+      score_threshold,
+      nms_threshold
+    )
+  end
+
+  def filter_predictions(predictions, score_threshold) do
+    greater_tensor = Nx.greater(predictions[[0, 0..-1//1, 4]], score_threshold)
+
+    greater_count =
+      greater_tensor
+      |> Nx.sum()
+      |> Nx.to_number()
+
+    greater_indices = Nx.argsort(greater_tensor, direction: :desc)[[0..(greater_count - 1)]]
+
+    Nx.take(predictions[0], greater_indices, axis: 0)
+  end
+
+  defn format_coordinates(coordinate_tensor, width, height) do
+    bbox_half_width = coordinate_tensor[[0..-1//1, 2]] / 2
+    bbox_half_height = coordinate_tensor[[0..-1//1, 3]] / 2
+    width_ratio = width / 640
+    height_ratio = height / 640
+
+    min_x_tensor = (coordinate_tensor[[0..-1//1, 0]] - bbox_half_width) * width_ratio
+    min_y_tensor = (coordinate_tensor[[0..-1//1, 1]] - bbox_half_height) * height_ratio
+    max_x_tensor = (coordinate_tensor[[0..-1//1, 0]] + bbox_half_width) * width_ratio
+    max_y_tensor = (coordinate_tensor[[0..-1//1, 1]] + bbox_half_height) * height_ratio
+
+    [min_x_tensor, min_y_tensor, max_x_tensor, max_y_tensor]
+    |> Nx.stack()
+    |> Nx.transpose()
+  end
+
+  defn get_class_and_score(selected_tensor) do
+    bbox_score_tensor = selected_tensor[[0..-1//1, 4]]
+    class_score_tensor = selected_tensor[[0..-1//1, 5..-1//1]]
+    class_index_tensor = Nx.argmax(class_score_tensor, axis: 1)
+    top_class_score_tensor = Nx.reduce_max(class_score_tensor, axes: [1])
+    score_tensor = bbox_score_tensor * top_class_score_tensor
+
+    {class_index_tensor, score_tensor}
+  end
+
+  def nms(
+        formed_coordinate_tensor,
+        class_index_tensor,
+        score_tensor,
+        score_threshold,
+        nms_threshold
+      ) do
+    score_list = score_tensor |> Nx.to_list()
+
+    selected_index_tensor =
+      formed_coordinate_tensor
+      |> Evision.DNN.nmsBoxes(score_list, score_threshold, nms_threshold)
+      |> Nx.tensor()
+
+    selected_bboxes = Nx.take(formed_coordinate_tensor, selected_index_tensor)
+    selected_classes = Nx.take(class_index_tensor, selected_index_tensor) |> Nx.new_axis(1)
+    selected_scores = Nx.take(score_tensor, selected_index_tensor) |> Nx.new_axis(1)
+
+    Nx.concatenate([selected_bboxes, selected_classes, selected_scores], axis: 1)
+  end
+
+  def draw_bbox(img, bbox_tensor, labels) do
+    bbox_tensor
+    |> Nx.to_list()
+    |> Enum.reduce(img, fn prediction, drawed_mat ->
+      [left, top, right, bottom, class_index] =
+        prediction
+        |> Enum.slice(0..4)
+        |> Enum.map(&trunc(&1))
+
+      score =
+        prediction
+        |> Enum.at(5)
+        |> Float.round(3)
+        |> Float.to_string()
+
+      # class の値に対応するラベルを取得する
+      label = Enum.at(labels, class_index)
+
+      drawed_mat
+      # 四角形を描画する
+      |> Evision.rectangle(
+        {left, top},
+        {right, bottom},
+        {255, 0, 0},
+        thickness: 10
+      )
+      # ラベル文字を書く
+      |> Evision.putText(
+        label <> ":" <> score,
+        {left + 6, top + 26},
+        Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
+        1,
+        {0, 0, 255},
+        thickness: 2
+      )
+    end)
+  end
+end
+```
+
+```elixir
+bbox_tensor = YOLOv7.detect(img, net, out_names, 0.6, 0.7)
+```
+
+```elixir
+YOLOv7.draw_bbox(img, bbox_tensor, labels)
+```

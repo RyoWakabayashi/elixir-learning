@@ -2,3 +2,7 @@ tmp
 
 # Jupyter
 .ipynb_checkpoints
+
+# ML models
+
+*.onnx
