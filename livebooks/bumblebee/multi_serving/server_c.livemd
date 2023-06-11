@@ -1,0 +1,33 @@
+# Distributed AI server C
+
+```elixir
+Mix.install(
+  [
+    {:kino_bumblebee, "~> 0.3.0"},
+    {:exla, "~> 0.5.1"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## Start serving
+
+```elixir
+{:ok, model_info} = Bumblebee.load_model({:hf, "google/vit-base-patch16-224"})
+{:ok, featurizer} = Bumblebee.load_featurizer({:hf, "google/vit-base-patch16-224"})
+
+serving =
+  Bumblebee.Vision.image_classification(model_info, featurizer,
+    compile: [batch_size: 1],
+    defn_options: [compiler: EXLA],
+    top_k: 3
+  )
+
+Kino.start_child({Nx.Serving, name: ViT, serving: serving})
+```
+
+## Get connection info
+
+```elixir
+{node(), Node.get_cookie()}
+```
