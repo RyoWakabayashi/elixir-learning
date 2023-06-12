@@ -1,0 +1,65 @@
+# Nx.Serving Batch Size
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.5"},
+  {:kino, "~> 0.9"}
+])
+```
+
+## batch_size = 1
+
+### Serving batch_size = 1
+
+```elixir
+serving_1 =
+  fn opts -> Nx.Defn.jit(&Nx.multiply(&1, 2), opts) end
+  |> Nx.Serving.new()
+
+Kino.start_child({Nx.Serving, name: BatchSize1, serving: serving_1})
+```
+
+### Run batch_size = 1
+
+```elixir
+batch = Nx.Batch.stack([Nx.tensor([1])])
+```
+
+```elixir
+Nx.Serving.run(serving_1, batch)
+```
+
+```elixir
+Nx.Serving.batched_run(BatchSize1, batch)
+```
+
+## batch_size = 2
+
+### Serving batch_size = 2
+
+```elixir
+serving_2 =
+  fn opts -> Nx.Defn.jit(&Nx.multiply(&1, 2), opts) end
+  |> Nx.Serving.new()
+  |> Nx.Serving.process_options(batch_size: 2)
+
+Kino.start_child({Nx.Serving, name: BatchSize2, serving: serving_2})
+```
+
+### Run batch_size = 2
+
+```elixir
+batch =
+  Nx.Batch.stack([
+    Nx.tensor([1]),
+    Nx.tensor([2])
+  ])
+```
+
+```elixir
+Nx.Serving.run(serving_2, batch)
+```
+
+```elixir
+Nx.Serving.batched_run(BatchSize2, batch)
+```
