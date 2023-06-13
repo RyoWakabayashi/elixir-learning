@@ -1,0 +1,70 @@
+# Nx.Serving Preprocess Postprocess remote
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.5"},
+    {:exla, "~> 0.5"},
+    {:kino, "~> 0.9"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## Connect to server
+
+```elixir
+node_name_input = Kino.Input.text("SERVER_NODE_NAME")
+cookie_input = Kino.Input.text("SERVER_COOKIE")
+
+[node_name_input, cookie_input]
+|> Kino.Layout.grid(columns: 2)
+```
+
+```elixir
+node_name =
+  node_name_input
+  |> Kino.Input.read()
+  |> String.to_atom()
+
+cookie =
+  cookie_input
+  |> Kino.Input.read()
+  |> String.to_atom()
+
+Node.set_cookie(node_name, cookie)
+
+Node.connect(node_name)
+```
+
+## Call serving
+
+```elixir
+batch = Nx.Batch.stack([Nx.tensor([1])])
+
+Nx.Serving.batched_run(DefaultServing, batch)
+```
+
+```elixir
+Node.self()
+```
+
+```elixir
+distributed_preprocessing = fn input ->
+  # 分散している場合の前処理
+  IO.inspect("distributed_preprocessing")
+  IO.inspect(Node.self())
+  # バイナリバックエンドに変換する
+  Nx.backend_transfer(input, Nx.BinaryBackend)
+end
+
+Nx.Serving.batched_run(PrePostServing, Nx.tensor([1]), distributed_preprocessing)
+```
+
+```elixir
+
+```
