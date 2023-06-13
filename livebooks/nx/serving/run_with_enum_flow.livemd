@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.5"},
+  {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
   {:flow, "~> 1.2"},
   {:kino, "~> 0.9"}
 ])
@@ -63,8 +63,7 @@ end)
 
 ```elixir
 [Nx.tensor([1]), Nx.tensor([2]), Nx.tensor([3])]
-# stages を 3 にするとエラー
-|> Flow.from_enumerable(stages: 1, max_demand: 1)
+|> Flow.from_enumerable(stages: 3, max_demand: 1)
 |> Flow.map(fn input ->
   Nx.Serving.batched_run({:distributed, Echo}, input)
 end)
