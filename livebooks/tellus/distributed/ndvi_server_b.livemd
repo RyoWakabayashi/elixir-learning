@@ -1,0 +1,76 @@
+# NDVI Server B
+
+```elixir
+Mix.install(
+  [
+    {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
+    {:evision, "~> 0.1.30"},
+    {:exla, "~> 0.5"},
+    {:kino, "~> 0.9"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## NDVI Service
+
+```elixir
+defmodule NDVIService do
+  import Nx.Defn
+
+  defn calc(input) do
+    red_tensor = input[0][[0..-1//1, 0..-1//1, 0]]
+    nir_tensor = input[0][[0..-1//1, 0..-1//1, 1]]
+
+    Nx.select(
+      # 0 除算をしないため、 NIR と Red の両方が 0 でないところだけ演算する
+      (red_tensor != 0) * (nir_tensor != 0),
+      # NDVI の演算
+      (nir_tensor - red_tensor) / (nir_tensor + red_tensor),
+      0
+    )
+    |> then(fn tensor -> tensor * 128 + 128 end)
+    |> Nx.as_type(:u8)
+    |> Nx.new_axis(0)
+  end
+end
+```
+
+```elixir
+frame = Kino.Frame.new()
+```
+
+```elixir
+serving =
+  Nx.Serving.new(fn opts -> Nx.Defn.jit(&NDVIService.calc/1, opts) end, compiler: EXLA)
+  |> Nx.Serving.client_preprocessing(fn input ->
+    batch = Nx.Batch.stack([input])
+    {batch, :client_info}
+  end)
+  |> Nx.Serving.client_postprocessing(fn output, _metadata, _multi? ->
+    res = output[0]
+
+    res
+    |> Evision.Mat.from_nx_2d()
+    |> Evision.resize({320, 320})
+    |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+    |> then(&Kino.Frame.render(frame, &1))
+
+    res
+  end)
+  |> Nx.Serving.distributed_postprocessing(fn output ->
+    Nx.backend_copy(output, Nx.BinaryBackend)
+  end)
+```
+
+```elixir
+Kino.start_child({Nx.Serving, name: NDVIServer, serving: serving})
+```
+
+```elixir
+{node(), Node.get_cookie()}
+```

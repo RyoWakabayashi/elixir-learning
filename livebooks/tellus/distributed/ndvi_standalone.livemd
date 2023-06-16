@@ -1,0 +1,174 @@
+# NDVI Standalone
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.5"},
+    {:evision, "~> 0.1.30"},
+    {:exla, "~> 0.5"},
+    {:kino, "~> 0.9"},
+    {:flow, "~> 1.2"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend
+    ]
+  ]
+)
+```
+
+## Define modules
+
+```elixir
+defmodule BandInfo do
+  defstruct gain: 0.0, offset: 0.0
+end
+
+defmodule HeaderInfo do
+  defstruct red: %BandInfo{},
+            nir: %BandInfo{},
+            date: nil
+
+  def get_string(info, start, value) do
+    info
+    |> String.slice(start, value)
+    |> String.trim()
+  end
+
+  def get_value(info, start, value) do
+    info
+    |> get_string(start, value)
+    |> String.to_float()
+  end
+
+  def read(hdr_file_path) do
+    info = File.read!(hdr_file_path)
+
+    %HeaderInfo{
+      # 赤色光バンド
+      red: %BandInfo{
+        gain: get_value(info, 1752, 8),
+        offset: get_value(info, 1760, 8)
+      },
+      # 近赤外線バンド
+      nir: %BandInfo{
+        gain: get_value(info, 1768, 8),
+        offset: get_value(info, 1776, 8)
+      },
+      date: get_string(info, 192, 8)
+    }
+  end
+end
+```
+
+```elixir
+frame = Kino.Frame.new()
+```
+
+```elixir
+defmodule NDVIClient do
+  import Nx.Defn
+
+  def read_header(file_path_list) do
+    file_path_list
+    |> Enum.find(fn file -> Path.extname(file) == ".txt" end)
+    |> HeaderInfo.read()
+  end
+
+  def get_band_tensor(file_path_list, prefix) do
+    file_path_list
+    |> Enum.find(fn file ->
+      file
+      |> Path.basename()
+      |> String.starts_with?(prefix)
+    end)
+    |> Evision.imread(flags: Evision.Constant.cv_IMREAD_GRAYSCALE())
+    |> Evision.resize({640, 640})
+    |> Evision.Mat.to_nx(EXLA.Backend)
+  end
+
+  defn get_luminance(tensor, gain, offset) do
+    tensor * gain + offset
+  end
+
+  defn calc_ndvi(red_tensor, nir_tensor) do
+    ndvi_tensor =
+      Nx.select(
+        # 0 除算をしないため、 NIR と Red の両方が 0 でないところだけ演算する
+        (red_tensor != 0) * (nir_tensor != 0),
+        # NDVI の演算
+        (nir_tensor - red_tensor) / (nir_tensor + red_tensor),
+        0
+      )
+      |> then(fn tensor -> tensor * 128 + 128 end)
+      |> Nx.as_type(:u8)
+
+    ndvi_tensor
+  end
+
+  def calc(file_path_list, frame) do
+    header_info = read_header(file_path_list)
+
+    red_tensor =
+      file_path_list
+      |> get_band_tensor("IMG-03")
+      |> get_luminance(header_info.red.gain, header_info.red.offset)
+
+    nir_tensor =
+      file_path_list
+      |> get_band_tensor("IMG-04")
+      |> get_luminance(header_info.nir.gain, header_info.nir.offset)
+
+    ndvi_img =
+      calc_ndvi(red_tensor, nir_tensor)
+      |> Evision.Mat.from_nx_2d()
+
+    ndvi_img
+    |> Evision.resize({320, 320})
+    |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+    |> then(&Kino.Frame.render(frame, &1))
+
+    {header_info.date, ndvi_img}
+  end
+end
+```
+
+## Get NDVI
+
+```elixir
+scene_id_list = [
+  "202ce08d-ba4b-4ffe-8165-109fd3a8b917",
+  "34d8dc6f-fdd1-4542-a038-c1235a5a97fa",
+  "12ad308b-6ce1-40ec-9ebf-f0215c30500e",
+  "e2e85b2e-a208-4a65-87fd-b92721b037a8",
+  "208a3618-7700-421b-bf05-fd59551cc1aa",
+  "d5ce7320-5b25-4ced-bda5-0e25a9d75940",
+  "9d14706f-cee7-4eb4-9151-2558609c3de0",
+  "3f4555ac-eaf3-4066-a1ba-20bb1ec1c0b3"
+]
+```
+
+```elixir
+ndvi_list =
+  scene_id_list
+  |> Flow.from_enumerable(stages: 4, max_demand: 1)
+  |> Flow.map(fn scene_id ->
+    "/tmp/#{scene_id}"
+    |> File.ls!()
+    |> Enum.map(fn filename -> Path.join(["/tmp", scene_id, filename]) end)
+    |> NDVIClient.calc(frame)
+  end)
+  |> Enum.to_list()
+```
+
+```elixir
+ndvi_list
+|> Enum.map(fn {date, ndvi_tensor} ->
+  img =
+    ndvi_tensor
+    |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+
+  {date, img}
+end)
+|> Kino.Layout.tabs()
+```
