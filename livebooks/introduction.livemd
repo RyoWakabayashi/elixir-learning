@@ -1,0 +1,286 @@
+# Livebook へようこそ
+
+```elixir
+Mix.install(
+  [
+    {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
+    {:evision, "~> 0.1"},
+    {:exla, "~> 0.5"},
+    {:explorer, "~> 0.5"},
+    {:flow, "~> 1.2"},
+    {:image, "~> 0.33"},
+    {:kino, "~> 0.9"},
+    {:kino_bumblebee, "~> 0.3"},
+    {:kino_maplibre, "~> 0.1"},
+    {:kino_vega_lite, "~> 0.1"},
+    {:req, "~> 0.3"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## はじめて
+
+Elixir のコードを実行し、結果を表示する
+
+```elixir
+"Hello, Livebook!"
+```
+
+```elixir
+1 + 1
+```
+
+## パイプライン
+
+`|>` （パイプ）で処理を繋ぐ
+
+`dbg` を使うことで途中の状態を見ることができる
+
+```elixir
+"HELLO, Elixir!"
+|> String.replace("Elixir", "Livebook")
+|> String.downcase()
+|> String.duplicate(2)
+|> String.capitalize()
+|> dbg()
+```
+
+## データ解析
+
+Explorer でデータ解析ができる
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+require Explorer.DataFrame
+```
+
+### 品目別 月間家計支出
+
+<!-- livebook:{"break_markdown":true} -->
+
+以下のデータを加工して作成
+
+総務省統計局ホームページ
+
+家計調査（家計収支編）　時系列データ（二人以上の世帯）
+
+<https://www.stat.go.jp/data/kakei/longtime/index.html#time>
+
+* 月 全品目（2015年改定）
+* 月 全品目（2020年改定）
+
+（2023年2月20日に利用）
+
+```elixir
+household_df =
+  "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/explorer/%E5%AE%B6%E8%A8%88%E6%94%AF%E5%87%BA%E7%B5%B1%E8%A8%88_%E5%93%81%E7%9B%AE%E5%B9%B4%E6%9C%88%E5%88%A5.csv"
+  |> Req.get!()
+  |> then(&DataFrame.load_csv!(&1.body))
+
+Kino.DataTable.new(household_df)
+```
+
+チョコレートの支出金額を年月順で取得する
+
+以下の処理をパイプラインで繋ぐことで実装できる
+
+* 品目分類がチョコレートのデータだけを抽出
+* 品目分類、年、年月、支出金額の項目を取得
+* 年月で並べ替え
+
+```elixir
+choco_df =
+  household_df
+  |> DataFrame.filter(品目分類 == "チョコレート")
+  |> DataFrame.select(["品目分類", "年", "年月", "支出金額"])
+  |> DataFrame.arrange(asc: 年月)
+
+Kino.DataTable.new(choco_df)
+```
+
+VegaLite でグラフを表示できる
+
+```elixir
+month = Series.to_list(choco_df["年月"])
+expenses = Series.to_list(choco_df["支出金額"])
+
+VegaLite.new(width: 700, title: "チョコレート支出金額推移")
+|> VegaLite.data_from_values(x: month, y: expenses)
+|> VegaLite.mark(:line, tooltip: true)
+|> VegaLite.encode_field(:x, "x", type: :temporal, title: "年月")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "支出金額")
+```
+
+年毎に集計する
+
+```elixir
+year_choco_df =
+  choco_df
+  |> DataFrame.group_by("年")
+  |> DataFrame.summarise(
+    最小: min(支出金額),
+    最大: max(支出金額),
+    平均: mean(支出金額),
+    合計: sum(支出金額)
+  )
+  |> DataFrame.arrange(asc: 年)
+
+Kino.DataTable.new(year_choco_df)
+```
+
+## 画像処理
+
+実行結果が画像の場合、そのまま表示できる
+
+タブで表示形式を切り替えることができる
+
+```elixir
+img =
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
+  |> Req.get!()
+  |> Map.get(:body)
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
+```
+
+```elixir
+gray_img = Evision.cvtColor(img, Evision.Constant.cv_COLOR_BGR2GRAY())
+```
+
+簡単に処理結果を縦横に並べることができる
+
+```elixir
+img
+|> Evision.Mat.to_nx(EXLA.Backend)
+# 水平分割
+|> Nx.to_batched(60)
+# 垂直分割
+|> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
+|> Enum.flat_map(&Nx.to_batched(&1, 60))
+|> Enum.map(&Nx.transpose(&1, axes: [1, 0, 2]))
+# BGR to RGB
+|> Enum.map(&Nx.reverse(&1, axes: [2]))
+|> Enum.map(&Kino.Image.new(&1))
+|> Kino.Layout.grid(columns: 10)
+```
+
+画像処理の途中経過を見たり、順序の入れ替えもできる
+
+```elixir
+move =
+  [
+    [1, 0, 100],
+    [0, 1, 50]
+  ]
+  |> Nx.tensor(type: {:f, 32}, backend: Nx.BinaryBackend)
+  |> Evision.Mat.from_nx()
+
+rotation = Evision.getRotationMatrix2D({600 / 2, 600 / 2}, 70, 1)
+
+img
+|> Evision.blur({9, 9})
+|> Evision.warpAffine(move, {512, 512})
+|> Evision.warpAffine(rotation, {512, 512})
+|> Evision.rectangle({150, 120}, {225, 320}, {0, 0, 255},
+  thickness: 5,
+  lineType: Evision.Constant.cv_LINE_4()
+)
+|> Evision.ellipse({300, 300}, {100, 200}, 30, 0, 360, {255, 255, 0}, thickness: 3)
+|> dbg()
+```
+
+アニメーションも簡単に実装できる
+
+```elixir
+vix_img =
+  img
+  |> Image.from_evision()
+  |> elem(1)
+  |> Image.resize!(0.5)
+
+Stream.interval(1)
+|> Stream.take(361)
+|> Kino.animate(fn angle ->
+  vix_img
+  |> Image.rotate!(angle)
+  |> Image.Kino.show()
+end)
+```
+
+## 地理情報
+
+国土交通省の行政区域データをダウンロードする
+
+出典：「国土数値情報（行政区域データ）」（国土交通省）（<https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v3_1.html>）を加工して作成
+
+```elixir
+gml_dir = "/tmp/GML"
+```
+
+```elixir
+geojson_file =
+  gml_dir
+  # ファイル一覧取得
+  |> File.ls!()
+  # `.geojson` で終わるもののうち先頭を取得
+  |> Enum.find(&String.ends_with?(&1, ".geojson"))
+```
+
+```elixir
+geojson_data =
+  [gml_dir, geojson_file]
+  |> Path.join()
+  |> File.read!()
+  |> Jason.decode!()
+  |> Geo.JSON.decode!()
+```
+
+<!-- livebook:{"attrs":{"center":"137.5, 36.0","layers":[{"active":true,"cluster_colors":["#51bbd6","#f1f075","#f28cb1"],"cluster_max":750,"cluster_min":100,"coordinates_format":"lng_lat","layer_color":"#000000","layer_opacity":1,"layer_radius":5,"layer_source":"geojson_data","layer_source_query":null,"layer_source_query_strict":null,"layer_type":"line","source_coordinates":null,"source_latitude":null,"source_longitude":null,"source_type":"geo"}],"ml_alias":"Elixir.MapLibre","style":"default","zoom":4},"chunks":null,"kind":"Elixir.KinoMapLibre.MapCell","livebook_object":"smart_cell"} -->
+
+```elixir
+MapLibre.new(center: {137.5, 36.0}, zoom: 4)
+|> MapLibre.add_geo_source("geojson_data", geojson_data)
+|> MapLibre.add_layer(
+  id: "geojson_data_line_1",
+  source: "geojson_data",
+  type: :line,
+  paint: [line_color: "#000000", line_opacity: 1]
+)
+```
+
+## AI
+
+<!-- livebook:{"attrs":{},"chunks":[[0,290],[292,621]],"kind":"Elixir.KinoBumblebee.TaskCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, model_info} = Bumblebee.load_model({:hf, "microsoft/resnet-50"})
+{:ok, featurizer} = Bumblebee.load_featurizer({:hf, "microsoft/resnet-50"})
+
+serving =
+  Bumblebee.Vision.image_classification(model_info, featurizer,
+    compile: [batch_size: 1],
+    defn_options: [compiler: EXLA]
+  )
+
+image_input = Kino.Input.image("Image", size: {224, 224})
+form = Kino.Control.form([image: image_input], submit: "Run")
+frame = Kino.Frame.new()
+
+Kino.listen(form, fn %{data: %{image: image}} ->
+  if image do
+    Kino.Frame.render(frame, Kino.Text.new("Running..."))
+
+    image = image.data |> Nx.from_binary(:u8) |> Nx.reshape({image.height, image.width, 3})
+
+    output = Nx.Serving.run(serving, image)
+
+    output.predictions
+    |> Enum.map(&{&1.label, &1.score})
+    |> Kino.Bumblebee.ScoredList.new()
+    |> then(&Kino.Frame.render(frame, &1))
+  end
+end)
+
+Kino.Layout.grid([form, frame], boxed: true, gap: 16)
+```
