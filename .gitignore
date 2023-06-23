@@ -6,3 +6,9 @@ tmp
 # ML models
 
 *.onnx
+*.h5
+*.pb
+*.index
+*.data-*
+*.pt
+*.pth
