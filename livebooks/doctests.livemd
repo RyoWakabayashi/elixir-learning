@@ -1,0 +1,114 @@
+# Doctests
+
+## Section
+
+```elixir
+defmodule OKTest do
+  @doc """
+  Add two numbers
+
+  ## Parameters
+
+    - a: a number
+    - b: a number
+
+  ## Examples
+
+  iex> OKTest.add(1, 1)
+  2
+
+  iex> OKTest.add(1.1, 2)
+  3.1
+
+  iex> OKTest.add("1", 2)
+  ** (ArithmeticError) bad argument in arithmetic expression
+  """
+  @spec add(number(), number()) :: number()
+  def add(a, b) do
+    a + b
+  end
+end
+```
+
+```elixir
+defmodule NGTest do
+  @doc """
+  Add two numbers
+
+  ## Parameters
+
+    - a: a number
+    - b: a number
+
+  ## Examples
+
+  iex> NGTest.add(1, 1)
+  3
+
+  iex> NGTest.add(1.1, 2)
+  3.3
+
+  iex> NGTest.add("1", 2)
+  ** (RuntimeError) error!!
+  """
+  @spec add(number(), number()) :: number()
+  def add(a, b) do
+    a + b
+  end
+end
+```
+
+```elixir
+defmodule MultiLine do
+  @doc ~S"""
+  Split text lines
+
+  ## Parameters
+
+    - str: text
+
+  ## Examples
+
+  iex> MultiLine.split("a\nb")
+  ["a", "b"]
+
+  iex> ~s(a
+  ...>b
+  ...>c)
+  ...>|> MultiLine.split()
+  ["a", "b", "c"]
+  """
+  @spec split(String.t()) :: list(String.t())
+  def split(str) do
+    str
+    |> String.trim()
+    |> String.split("\n")
+  end
+end
+```
+
+```elixir
+defmodule Words do
+  @doc ~S"""
+  Join words into multiline
+
+  ## Parameters
+
+    - words: list of words
+
+  ## Examples
+
+  iex> Words.join(["a", "b"])
+  "a\nb"
+
+  iex> Words.join(["a", "b", "c"])
+  ~s(a
+  b
+  c)
+  """
+  @spec join(list(String.t())) :: String.t()
+  def join(words) do
+    Enum.join(words, "\n")
+  end
+end
+```
