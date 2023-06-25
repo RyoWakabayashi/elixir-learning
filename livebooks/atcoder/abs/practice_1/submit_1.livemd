@@ -1,0 +1,62 @@
+# PracticeA - Welcome to AtCoder
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/practice_1>
+
+## 回答１
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [[a], [b, c], [s]] =
+      input
+      |> split_lines()
+      |> Enum.map(&split_words/1)
+
+    sum =
+      [a, b, c]
+      |> Enum.map(&String.to_integer/1)
+      |> Enum.sum()
+
+    "#{sum} #{s}"
+  end
+end
+```
+
+```elixir
+"""
+1
+2 3
+test
+"""
+|> Main.solve()
+|> then(&(&1 == "6 test"))
+```
+
+```elixir
+"""
+72
+128 256
+myonmyon
+"""
+|> Main.solve()
+|> then(&(&1 == "456 myonmyon"))
+```
