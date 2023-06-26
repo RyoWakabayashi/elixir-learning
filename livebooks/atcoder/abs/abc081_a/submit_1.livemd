@@ -1,8 +1,8 @@
-# ABC086A - Product
+# ABC081A - Placing Marbles
 
 ## 問題
 
-<https://atcoder.jp/contests/abs/tasks/abc086_a>
+<https://atcoder.jp/contests/abs/tasks/abc081_a>
 
 ## 回答1
 
@@ -15,36 +15,28 @@ defmodule Main do
     |> IO.puts()
   end
 
-  def split_words(words) do
-    String.split(words, " ")
-  end
-
   def solve(input) do
     input
     |> String.trim()
-    |> split_words()
+    |> String.codepoints()
     |> Enum.map(&String.to_integer/1)
-    |> judge()
+    |> Enum.sum()
   end
-
-  def judge([a, b]) when rem(a * b, 2) == 0, do: "Even"
-
-  def judge(_), do: "Odd"
 end
 ```
 
 ```elixir
 """
-3 4
+101
 """
 |> Main.solve()
-|> then(&(&1 == "Even"))
+|> then(&(&1 == 2))
 ```
 
 ```elixir
 """
-1 21
+000
 """
 |> Main.solve()
-|> then(&(&1 == "Odd"))
+|> then(&(&1 == 0))
 ```

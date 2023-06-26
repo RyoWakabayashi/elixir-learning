@@ -1,0 +1,49 @@
+# ABC081A - Placing Marbles
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc081_a>
+
+## 回答4
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> String.to_integer(2)
+    |> count
+  end
+
+  def count(input) when input == 0, do: 0
+
+  def count(input) when input == 7, do: 3
+
+  def count(input) when input == 1 or input == 2 or input == 4, do: 1
+
+  def count(_), do: 2
+end
+```
+
+```elixir
+"""
+101
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+000
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```

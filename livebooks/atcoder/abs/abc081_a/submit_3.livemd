@@ -1,0 +1,41 @@
+# ABC081A - Placing Marbles
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc081_a>
+
+## 回答3
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> String.replace("0", "")
+    |> String.length()
+  end
+end
+```
+
+```elixir
+"""
+101
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+000
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```

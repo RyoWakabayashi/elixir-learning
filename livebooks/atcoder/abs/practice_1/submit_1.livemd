@@ -4,7 +4,7 @@
 
 <https://atcoder.jp/contests/abs/tasks/practice_1>
 
-## 回答１
+## 回答1
 
 ```elixir
 defmodule Main do
