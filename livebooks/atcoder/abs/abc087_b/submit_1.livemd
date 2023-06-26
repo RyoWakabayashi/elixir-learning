@@ -1,0 +1,72 @@
+# ABC087B - Coins
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc087_b>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def solve(input) do
+    [num_500, num_100, num_50, total] =
+      input
+      |> split_lines()
+      |> Enum.map(&String.to_integer/1)
+
+    for p_500 <- 0..num_500,
+        p_100 <- 0..num_100,
+        p_50 <- 0..num_50,
+        500 * p_500 + 100 * p_100 + 50 * p_50 == total do
+      {p_500, p_100, p_50}
+    end
+    |> Enum.count()
+  end
+end
+```
+
+```elixir
+"""
+2
+2
+2
+100
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+5
+1
+0
+150
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
+
+```elixir
+"""
+30
+40
+50
+6000
+"""
+|> Main.solve()
+|> then(&(&1 == 213))
+```
