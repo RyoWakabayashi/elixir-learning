@@ -1,0 +1,78 @@
+# ABC083B - Some Sums
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc083_b>
+
+## 回答1
+
+```elixir
+1..10000
+|> Enum.map(fn num ->
+  div(num, 10000) +
+    (num |> div(1000) |> rem(100)) +
+    (num |> div(100) |> rem(10)) +
+    (num |> div(10) |> rem(10)) +
+    rem(num, 10)
+end)
+```
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [n, a, b] =
+      input
+      |> String.trim()
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    1..n
+    |> Enum.filter(fn num ->
+      sum =
+        div(num, 10000) +
+          (num |> div(1000) |> rem(10)) +
+          (num |> div(100) |> rem(10)) +
+          (num |> div(10) |> rem(10)) +
+          rem(num, 10)
+
+      sum >= a && sum <= b
+    end)
+    |> Enum.sum()
+  end
+end
+```
+
+```elixir
+"""
+20 2 5
+"""
+|> Main.solve()
+|> then(&(&1 == 84))
+```
+
+```elixir
+"""
+10 1 2
+"""
+|> Main.solve()
+|> then(&(&1 == 13))
+```
+
+```elixir
+"""
+100 4 16
+"""
+|> Main.solve()
+|> then(&(&1 == 4554))
+```

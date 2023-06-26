@@ -1,0 +1,71 @@
+# ABC083B - Some Sums
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc083_b>
+
+## 回答2
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [n, a, b] =
+      input
+      |> String.trim()
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    1..n
+    |> Enum.map(fn num ->
+      sum =
+        num
+        |> Integer.to_string()
+        |> String.codepoints()
+        |> Enum.map(&String.to_integer/1)
+        |> Enum.sum()
+
+      if sum >= a && sum <= b do
+        num
+      else
+        0
+      end
+    end)
+    |> Enum.sum()
+  end
+end
+```
+
+```elixir
+"""
+20 2 5
+"""
+|> Main.solve()
+|> then(&(&1 == 84))
+```
+
+```elixir
+"""
+10 1 2
+"""
+|> Main.solve()
+|> then(&(&1 == 13))
+```
+
+```elixir
+"""
+100 4 16
+"""
+|> Main.solve()
+|> then(&(&1 == 4554))
+```
