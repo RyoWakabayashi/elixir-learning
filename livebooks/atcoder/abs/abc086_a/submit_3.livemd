@@ -1,0 +1,53 @@
+# ABC086A - Product
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc086_a>
+
+## 回答3
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    input_str =
+      input
+      |> String.trim()
+      |> Kernel.<>(" ")
+
+    contains_even =
+      ["0 ", "2 ", "4 ", "6 ", "8 "]
+      |> Enum.any?(fn even_suffix ->
+        String.contains?(input_str, even_suffix)
+      end)
+
+    if contains_even do
+      "Even"
+    else
+      "Odd"
+    end
+  end
+end
+```
+
+```elixir
+"""
+3 4
+"""
+|> Main.solve()
+|> then(&(&1 == "Even"))
+```
+
+```elixir
+"""
+1 21
+"""
+|> Main.solve()
+|> then(&(&1 == "Odd"))
+```

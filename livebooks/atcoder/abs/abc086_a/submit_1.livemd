@@ -1,0 +1,50 @@
+# ABC086A - Product
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc086_a>
+
+## 回答１
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> split_words()
+    |> Enum.map(&String.to_integer/1)
+    |> judge()
+  end
+
+  def judge([a, b]) when rem(a * b, 2) == 0, do: "Even"
+
+  def judge(_), do: "Odd"
+end
+```
+
+```elixir
+"""
+3 4
+"""
+|> Main.solve()
+|> then(&(&1 == "Even"))
+```
+
+```elixir
+"""
+1 21
+"""
+|> Main.solve()
+|> then(&(&1 == "Odd"))
+```
