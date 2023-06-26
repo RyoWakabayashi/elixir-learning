@@ -1,0 +1,89 @@
+# ABC081B - Shift only
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.9"}
+])
+```
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc081_b>
+
+## 回答2
+
+```elixir
+2
+|> :math.pow(4)
+|> round()
+|> Kernel.*(5)
+|> Integer.to_string(2)
+|> String.split("1")
+|> Enum.at(-1)
+|> String.length()
+|> dbg()
+```
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    input
+    |> split_lines()
+    |> Enum.at(1)
+    |> split_words()
+    |> Enum.map(fn str ->
+      str
+      |> String.to_integer()
+      |> Integer.to_string(2)
+      |> String.split("1")
+      |> Enum.at(-1)
+      |> String.length()
+    end)
+    |> Enum.min()
+  end
+end
+```
+
+```elixir
+"""
+3
+8 12 40
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+4
+5 6 8 10
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
+
+```elixir
+"""
+6
+382253568 723152896 37802240 379425024 404894720 471526144
+"""
+|> Main.solve()
+|> then(&(&1 == 8))
+```

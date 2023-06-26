@@ -1,0 +1,92 @@
+# ABC081B - Shift only
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc081_b>
+
+## 回答1
+
+```elixir
+:math.pow(2, 29)
+```
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def num_of_power(input, powers) do
+    powers
+    |> Enum.map(fn {index, num} ->
+      case rem(input, num) do
+        0 ->
+          index
+
+        _ ->
+          0
+      end
+    end)
+    |> Enum.max()
+  end
+
+  def solve(input) do
+    nums =
+      input
+      |> split_lines()
+      |> Enum.at(1)
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    powers =
+      Enum.to_list(1..29)
+      |> Enum.map(fn power ->
+        {power, 2 |> :math.pow(power) |> round()}
+      end)
+
+    nums
+    |> Enum.map(&num_of_power(&1, powers))
+    |> Enum.min()
+  end
+end
+```
+
+```elixir
+"""
+3
+8 12 40
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+4
+5 6 8 10
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
+
+```elixir
+"""
+6
+382253568 723152896 37802240 379425024 404894720 471526144
+"""
+|> Main.solve()
+|> then(&(&1 == 8))
+```
