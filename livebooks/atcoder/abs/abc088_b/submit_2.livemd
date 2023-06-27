@@ -1,0 +1,71 @@
+# ABC088B - Card Game for Two
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc088_b>
+
+## 回答2
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    input
+    |> split_lines()
+    |> Enum.at(1)
+    |> split_words()
+    |> Enum.map(&String.to_integer/1)
+    |> Enum.sort(:desc)
+    |> Enum.with_index()
+    |> Enum.reduce(0, fn {num, index}, acc ->
+      case rem(index, 2) do
+        0 -> acc + num
+        1 -> acc - num
+      end
+    end)
+  end
+end
+```
+
+```elixir
+"""
+2
+3 1
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+3
+2 7 4
+"""
+|> Main.solve()
+|> then(&(&1 == 5))
+```
+
+```elixir
+"""
+4
+20 18 2 18
+"""
+|> Main.solve()
+|> then(&(&1 == 18))
+```
