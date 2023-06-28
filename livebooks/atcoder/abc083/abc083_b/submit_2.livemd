@@ -30,9 +30,7 @@ defmodule Main do
     |> Enum.map(fn num ->
       sum =
         num
-        |> Integer.to_string()
-        |> String.codepoints()
-        |> Enum.map(&String.to_integer/1)
+        |> Integer.digits()
         |> Enum.sum()
 
       if sum >= a && sum <= b do
