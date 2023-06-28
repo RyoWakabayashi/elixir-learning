@@ -21,13 +21,17 @@ defmodule Main do
     |> count()
   end
 
-  def count(input) when input == "000", do: 0
+  def count("000"), do: 0
 
-  def count(input) when input == "001" or input == "010" or input == "100", do: 1
+  def count("111"), do: 3
 
-  def count(input) when input == "011" or input == "101" or input == "110", do: 2
+  def count("001"), do: 1
 
-  def count(_), do: 3
+  def count("010"), do: 1
+
+  def count("100"), do: 1
+
+  def count(_), do: 2
 end
 ```
 

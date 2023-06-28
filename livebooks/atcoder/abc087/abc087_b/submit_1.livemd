@@ -15,7 +15,7 @@ defmodule Main do
     |> IO.puts()
   end
 
-  def split_lines(lines) do
+  defp split_lines(lines) do
     lines
     |> String.trim()
     |> String.split("\n")
@@ -27,10 +27,12 @@ defmodule Main do
       |> split_lines()
       |> Enum.map(&String.to_integer/1)
 
+    total_50 = total / 50
+
     for p_500 <- 0..num_500,
         p_100 <- 0..num_100,
         p_50 <- 0..num_50,
-        500 * p_500 + 100 * p_100 + 50 * p_50 == total do
+        10 * p_500 + 2 * p_100 + p_50 == total_50 do
       {p_500, p_100, p_50}
     end
     |> Enum.count()

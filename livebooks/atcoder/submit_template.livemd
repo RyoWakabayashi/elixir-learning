@@ -1,10 +1,10 @@
-# ABC088B - Card Game for Two
+# Template
 
 ## 問題
 
-<https://atcoder.jp/contests/abs/tasks/abc088_b>
+問題 URL
 
-## 回答1
+## 回答
 
 ```elixir
 defmodule Main do
@@ -28,43 +28,39 @@ defmodule Main do
   def solve(input) do
     input
     |> split_lines()
-    |> Enum.at(1)
+    |> hd()
     |> split_words()
-    |> Enum.map(&String.to_integer/1)
-    |> Enum.sort(:desc)
-    |> Enum.chunk_every(2)
-    |> Enum.map(fn
-      [a, b] -> a - b
-      [a] -> a
-    end)
-    |> Enum.sum()
+    |> Enum.reverse()
+    |> hd()
+    |> case do
+      "1" -> "OUTPUT 1"
+      "2" -> "OUTPUT 2"
+      _ -> "OUTPUT OTHERS"
+    end
   end
 end
 ```
 
 ```elixir
 """
-2
-3 1
+INPUT 1
 """
 |> Main.solve()
-|> then(&(&1 == 2))
+|> then(&(&1 == "OUTPUT 1"))
 ```
 
 ```elixir
 """
-3
-2 7 4
+INPUT 2
 """
 |> Main.solve()
-|> then(&(&1 == 5))
+|> then(&(&1 == "OUTPUT 2"))
 ```
 
 ```elixir
 """
-4
-20 18 2 18
+INPUT OTHERS
 """
 |> Main.solve()
-|> then(&(&1 == 18))
+|> then(&(&1 == "OUTPUT OTHERS"))
 ```

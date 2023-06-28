@@ -15,7 +15,7 @@ defmodule Main do
     |> IO.puts()
   end
 
-  def split_words(words) do
+  defp split_words(words) do
     String.split(words, " ")
   end
 
@@ -27,7 +27,7 @@ defmodule Main do
     |> judge()
   end
 
-  def judge([a, b]) do
+  defp judge([a, b]) do
     case rem(a * b, 2) do
       0 ->
         "Even"

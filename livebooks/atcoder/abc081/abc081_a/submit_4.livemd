@@ -22,11 +22,15 @@ defmodule Main do
     |> count
   end
 
-  def count(input) when input == 0, do: 0
+  def count(0), do: 0
 
-  def count(input) when input == 7, do: 3
+  def count(7), do: 3
 
-  def count(input) when input == 1 or input == 2 or input == 4, do: 1
+  def count(1), do: 1
+
+  def count(2), do: 1
+
+  def count(4), do: 1
 
   def count(_), do: 2
 end

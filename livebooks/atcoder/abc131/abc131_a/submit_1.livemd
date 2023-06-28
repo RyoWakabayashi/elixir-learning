@@ -20,16 +20,10 @@ defmodule Main do
 
     duplicate_codes = ["00", "11", "22", "33", "44", "55", "66", "77", "88", "99"]
 
-    is_bad =
-      Enum.any?(duplicate_codes, fn duplicate_code ->
-        String.contains?(password, duplicate_code)
-      end)
-
-    if is_bad do
-      "Bad"
-    else
-      "Good"
-    end
+    Enum.any?(duplicate_codes, fn duplicate_code ->
+      String.contains?(password, duplicate_code)
+    end)
+    |> if(do: "Bad", else: "Good")
   end
 end
 ```

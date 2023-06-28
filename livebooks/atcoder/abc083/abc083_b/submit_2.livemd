@@ -15,7 +15,7 @@ defmodule Main do
     |> IO.puts()
   end
 
-  def split_words(words) do
+  defp split_words(words) do
     String.split(words, " ")
   end
 

@@ -21,17 +21,11 @@ defmodule Main do
       |> String.trim()
       |> Kernel.<>(" ")
 
-    contains_even =
-      ["0 ", "2 ", "4 ", "6 ", "8 "]
-      |> Enum.any?(fn even_suffix ->
-        String.contains?(input_str, even_suffix)
-      end)
-
-    if contains_even do
-      "Even"
-    else
-      "Odd"
-    end
+    ["0 ", "2 ", "4 ", "6 ", "8 "]
+    |> Enum.any?(fn even_suffix ->
+      String.contains?(input_str, even_suffix)
+    end)
+    |> if(do: "Even", else: "Odd")
   end
 end
 ```

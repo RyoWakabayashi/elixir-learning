@@ -15,13 +15,13 @@ defmodule Main do
     |> IO.puts()
   end
 
-  def split_lines(lines) do
+  defp split_lines(lines) do
     lines
     |> String.trim()
     |> String.split("\n")
   end
 
-  def split_words(words) do
+  defp split_words(words) do
     String.split(words, " ")
   end
 

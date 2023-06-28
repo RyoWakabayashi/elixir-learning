@@ -22,10 +22,6 @@ defmodule Main do
     |> IO.puts()
   end
 
-  def judge(""), do: "YES"
-
-  def judge(_), do: "NO"
-
   def solve(input) do
     s = String.trim(input)
 
@@ -33,7 +29,10 @@ defmodule Main do
       String.replace(acc, word, " ")
     end)
     |> String.trim()
-    |> judge()
+    |> case do
+      "" -> "YES"
+      _ -> "NO"
+    end
   end
 end
 ```
