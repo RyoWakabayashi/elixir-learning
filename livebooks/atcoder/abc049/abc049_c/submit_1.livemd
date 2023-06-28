@@ -1,0 +1,71 @@
+# ABC049C - 白昼夢
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/arc065_a>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  @words [
+    "eraser",
+    "erase",
+    "dreamer",
+    "dream"
+  ]
+
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def judge(""), do: "YES"
+
+  def judge(_), do: "NO"
+
+  def solve(input) do
+    s = String.trim(input)
+
+    Enum.reduce(@words, s, fn word, acc ->
+      String.replace(acc, word, " ")
+    end)
+    |> String.trim()
+    |> judge()
+  end
+end
+```
+
+```elixir
+"""
+erasedream
+"""
+|> Main.solve()
+|> then(&(&1 == "YES"))
+```
+
+```elixir
+"""
+dreameraser
+"""
+|> Main.solve()
+|> then(&(&1 == "YES"))
+```
+
+```elixir
+"""
+dreamerer
+"""
+|> Main.solve()
+|> then(&(&1 == "NO"))
+```
+
+```elixir
+"""
+erdreamaser
+"""
+|> Main.solve()
+|> then(&(&1 == "NO"))
+```
