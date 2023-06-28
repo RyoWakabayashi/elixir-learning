@@ -1,0 +1,84 @@
+# ABC086C - Traveling
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/arc089_a>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def judge(true), do: "Yes"
+
+  def judge(_), do: "No"
+
+  def solve(input) do
+    points =
+      input
+      |> split_lines()
+      |> tl()
+      |> Enum.map(fn line ->
+        line
+        |> split_words()
+        |> Enum.map(&String.to_integer/1)
+      end)
+
+    [[0, 0, 0] | Enum.drop(points, -1)]
+    |> Enum.zip(points)
+    |> Enum.all?(fn {[pre_t, pre_x, pre_y], [post_t, post_x, post_y]} ->
+      inc_t = post_t - pre_t
+      inc_d = abs(post_x - pre_x) + abs(post_y - pre_y)
+      margin = inc_t - inc_d
+
+      margin >= 0 && rem(margin, 2) == 0
+    end)
+    |> judge()
+  end
+end
+```
+
+```elixir
+"""
+2
+3 1 2
+6 1 1
+"""
+|> Main.solve()
+|> then(&(&1 == "Yes"))
+```
+
+```elixir
+"""
+1
+2 100 100
+"""
+|> Main.solve()
+|> then(&(&1 == "No"))
+```
+
+```elixir
+"""
+2
+5 1 1
+100 1 1
+"""
+|> Main.solve()
+|> then(&(&1 == "No"))
+```
