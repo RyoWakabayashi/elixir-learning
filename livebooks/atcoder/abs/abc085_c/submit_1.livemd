@@ -1,0 +1,72 @@
+# ABC085C - Otoshidama
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc085_c>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [n, y] =
+      input
+      |> String.trim()
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    t = div(y, 1000)
+
+    for num_10000 <- 0..n,
+        num_5000 <- 0..(n - num_10000),
+        num_1000 = n - num_10000 - num_5000,
+        num_10000 * 10 + num_5000 * 5 + num_1000 == t do
+      "#{num_10000} #{num_5000} #{num_1000}"
+    end
+    |> Enum.at(0, "-1 -1 -1")
+  end
+end
+```
+
+```elixir
+"""
+9 45000
+"""
+|> Main.solve()
+|> then(&(&1 == "0 9 0"))
+```
+
+```elixir
+"""
+20 196000
+"""
+|> Main.solve()
+|> then(&(&1 == "-1 -1 -1"))
+```
+
+```elixir
+"""
+1000 1234000
+"""
+|> Main.solve()
+|> then(&(&1 == "2 54 944"))
+```
+
+```elixir
+"""
+2000 20000000
+"""
+|> Main.solve()
+|> then(&(&1 == "2000 0 0"))
+```
