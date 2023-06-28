@@ -1,0 +1,67 @@
+# ABC131A - Security
+
+## 問題
+
+<https://atcoder.jp/contests/abc131/tasks/abc131_a>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    password = String.trim(input)
+
+    duplicate_codes = ["00", "11", "22", "33", "44", "55", "66", "77", "88", "99"]
+
+    is_bad =
+      Enum.any?(duplicate_codes, fn duplicate_code ->
+        String.contains?(password, duplicate_code)
+      end)
+
+    if is_bad do
+      "Bad"
+    else
+      "Good"
+    end
+  end
+end
+```
+
+```elixir
+"""
+3776
+"""
+|> Main.solve()
+|> then(&(&1 == "Bad"))
+```
+
+```elixir
+"""
+8080
+"""
+|> Main.solve()
+|> then(&(&1 == "Good"))
+```
+
+```elixir
+"""
+1333
+"""
+|> Main.solve()
+|> then(&(&1 == "Bad"))
+```
+
+```elixir
+"""
+0024
+"""
+|> Main.solve()
+|> then(&(&1 == "Bad"))
+```

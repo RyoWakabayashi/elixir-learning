@@ -1,0 +1,87 @@
+# ABC133B - Good Distance
+
+## 問題
+
+<https://atcoder.jp/contests/abc133/tasks/abc133_b>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [[n, d] | x_list] =
+      input
+      |> split_lines()
+      |> Enum.map(fn str ->
+        str
+        |> split_words()
+        |> Enum.map(&String.to_integer/1)
+      end)
+
+    for i <- 0..(n - 2),
+        j <- (i + 1)..(n - 1) do
+      y = Enum.at(x_list, i)
+      z = Enum.at(x_list, j)
+
+      for k <- 0..(d - 1) do
+        :math.pow(Enum.at(y, k) - Enum.at(z, k), 2)
+      end
+      |> Enum.sum()
+      |> :math.sqrt()
+    end
+    |> Enum.count(&(&1 == ceil(&1)))
+  end
+end
+```
+
+```elixir
+"""
+3 2
+1 2
+5 5
+-2 8
+"""
+|> Main.solve()
+|> then(&(&1 == 1))
+```
+
+```elixir
+"""
+3 4
+-3 7 8 2
+-12 1 10 2
+-2 8 9 3
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+5 1
+1
+2
+3
+4
+5
+"""
+|> Main.solve()
+|> then(&(&1 == 10))
+```

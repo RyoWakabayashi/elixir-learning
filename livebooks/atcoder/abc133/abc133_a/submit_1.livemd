@@ -1,0 +1,56 @@
+# ABC133A - T or T
+
+## 問題
+
+<https://atcoder.jp/contests/abc133/tasks/abc133_a>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [n, a, b] =
+      input
+      |> String.trim()
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    Enum.min([n * a, b])
+  end
+end
+```
+
+```elixir
+"""
+4 2 9
+"""
+|> Main.solve()
+|> then(&(&1 == 8))
+```
+
+```elixir
+"""
+4 2 7
+"""
+|> Main.solve()
+|> then(&(&1 == 7))
+```
+
+```elixir
+"""
+4 2 8
+"""
+|> Main.solve()
+|> then(&(&1 == 8))
+```

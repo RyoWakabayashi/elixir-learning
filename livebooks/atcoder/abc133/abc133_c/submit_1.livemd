@@ -1,0 +1,69 @@
+# ABC133C - Remainder Minimization 2019
+
+## 問題
+
+<https://atcoder.jp/contests/abc133/tasks/abc133_c>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [l, r] =
+      input
+      |> String.trim()
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    if r - l >= 2019 do
+      0
+    else
+      [nl, nr] =
+        [l, r]
+        |> Enum.map(&rem(&1, 2019))
+        |> Enum.sort()
+
+      for i <- nl..(nr - 1),
+          j <- (i + 1)..nr do
+        rem(i * j, 2019)
+      end
+      |> Enum.min()
+    end
+  end
+end
+```
+
+```elixir
+"""
+2020 2040
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+4 5
+"""
+|> Main.solve()
+|> then(&(&1 == 20))
+```
+
+```elixir
+"""
+332701087 1753412895
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
