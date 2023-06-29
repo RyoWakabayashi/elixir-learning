@@ -1,0 +1,51 @@
+# ABC134A - Dodecagon
+
+## 問題
+
+<https://atcoder.jp/contests/abc134/tasks/abc134_a>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    r =
+      input
+      |> String.trim()
+      |> String.to_integer()
+
+    3 * r * r
+  end
+end
+```
+
+```elixir
+"""
+4
+"""
+|> Main.solve()
+|> then(&(&1 == 48))
+```
+
+```elixir
+"""
+15
+"""
+|> Main.solve()
+|> then(&(&1 == 675))
+```
+
+```elixir
+"""
+80
+"""
+|> Main.solve()
+|> then(&(&1 == 19200))
+```

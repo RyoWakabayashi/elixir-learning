@@ -1,0 +1,74 @@
+# ABC134C - Exception Handling
+
+## 問題
+
+<https://atcoder.jp/contests/abc134/tasks/abc134_c>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def solve(input) do
+    [_ | a] =
+      input
+      |> String.trim()
+      |> split_lines()
+      |> Enum.map(&String.to_integer/1)
+
+    a_max = Enum.max(a)
+
+    if Enum.count(a, &(&1 == a_max)) > 1 do
+      List.duplicate(a_max, Enum.count(a))
+    else
+      a
+      |> Enum.map(fn a_i ->
+        if a_i == a_max do
+          a
+          |> Enum.sort()
+          |> Enum.at(-2)
+        else
+          a_max
+        end
+      end)
+    end
+    |> Enum.join("\n")
+  end
+end
+```
+
+```elixir
+"""
+3
+1
+4
+3
+"""
+|> Main.solve()
+|> then(&(&1 == ~S(4
+3
+4)))
+```
+
+```elixir
+"""
+2
+5
+5
+"""
+|> Main.solve()
+|> then(&(&1 == ~S(5
+5)))
+```

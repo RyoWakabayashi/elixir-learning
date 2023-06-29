@@ -1,0 +1,58 @@
+# ABC130A - Rounding
+
+## 問題
+
+<https://atcoder.jp/contests/abc130/tasks/abc130_a>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> split_words()
+    |> Enum.map(&String.to_integer/1)
+    |> judge()
+  end
+
+  defp judge([x, a]) when x < a, do: 0
+
+  defp judge(_), do: 10
+end
+```
+
+```elixir
+"""
+3 5
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
+
+```elixir
+"""
+7 5
+"""
+|> Main.solve()
+|> then(&(&1 == 10))
+```
+
+```elixir
+"""
+6 6
+"""
+|> Main.solve()
+|> then(&(&1 == 10))
+```

@@ -1,0 +1,67 @@
+# ABC130B - Bounding
+
+## 問題
+
+<https://atcoder.jp/contests/abc130/tasks/abc130_b>
+
+## 回答2
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [[n, x], l] =
+      input
+      |> split_lines()
+      |> Enum.map(fn str ->
+        str
+        |> split_words()
+        |> Enum.map(&String.to_integer/1)
+      end)
+
+    0..(n - 1)
+    |> Stream.filter(fn d ->
+      l
+      |> Enum.slice(0..d)
+      |> Enum.sum()
+      |> Kernel.<=(x)
+    end)
+    |> Enum.count()
+    |> Kernel.+(1)
+  end
+end
+```
+
+```elixir
+"""
+3 6
+3 4 5
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+4 9
+3 3 3 3
+"""
+|> Main.solve()
+|> then(&(&1 == 4))
+```

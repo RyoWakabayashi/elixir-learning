@@ -1,0 +1,56 @@
+# ABC134B - Golden Apple
+
+## 問題
+
+<https://atcoder.jp/contests/abc134/tasks/abc134_b>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [n, d] =
+      input
+      |> String.trim()
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    ceil(n / (d * 2 + 1))
+  end
+end
+```
+
+```elixir
+"""
+6 2
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+14 3
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+20 4
+"""
+|> Main.solve()
+|> then(&(&1 == 3))
+```
