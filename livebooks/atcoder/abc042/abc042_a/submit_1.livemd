@@ -1,0 +1,49 @@
+# ABC042A - 和風いろはちゃんイージー
+
+## 問題
+
+<https://atcoder.jp/contests/abc042/tasks/abc042_a>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> split_words()
+    |> Enum.sort()
+    |> case do
+      ["5", "5", "7"] -> "YES"
+      _ -> "NO"
+    end
+  end
+end
+```
+
+```elixir
+"""
+5 5 7
+"""
+|> Main.solve()
+|> then(&(&1 == "YES"))
+```
+
+```elixir
+"""
+7 7 5
+"""
+|> Main.solve()
+|> then(&(&1 == "NO"))
+```

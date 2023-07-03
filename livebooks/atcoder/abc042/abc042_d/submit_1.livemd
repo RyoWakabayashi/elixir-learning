@@ -1,0 +1,138 @@
+# ABC042D - いろはちゃんとマス目
+
+## 問題
+
+<https://atcoder.jp/contests/abc042/tasks/arc058_b>
+
+## 回答1
+
+```elixir
+defmodule Combination do
+  @mod 1_000_000_007
+  @max_n 200_000
+
+  def init do
+    if :ets.info(:factorial) != :undefined do
+      :ets.delete(:factorial)
+    end
+
+    if :ets.info(:inverse) != :undefined do
+      :ets.delete(:inverse)
+    end
+
+    if :ets.info(:factorial_inverse) != :undefined do
+      :ets.delete(:factorial_inverse)
+    end
+
+    :ets.new(:factorial, [:set, :protected, :named_table])
+    :ets.insert(:factorial, {0, 1})
+    :ets.insert(:factorial, {1, 1})
+
+    :ets.new(:inverse, [:set, :protected, :named_table])
+    :ets.insert(:inverse, {1, 1})
+
+    :ets.new(:factorial_inverse, [:set, :protected, :named_table])
+    :ets.insert(:factorial_inverse, {0, 1})
+    :ets.insert(:factorial_inverse, {1, 1})
+
+    2..@max_n
+    |> Enum.reduce(1, fn index, acc ->
+      factorial = rem(acc * index, @mod)
+
+      [{_, mod_inverse}] = :ets.lookup(:inverse, rem(@mod, index))
+      inverse = @mod - rem(mod_inverse * div(@mod, index), @mod)
+
+      [{_, pre_factorial_inverse}] = :ets.lookup(:factorial_inverse, index - 1)
+      factorial_inverse = rem(pre_factorial_inverse * inverse, @mod)
+
+      :ets.insert(:factorial, {index, factorial})
+      :ets.insert(:inverse, {index, inverse})
+      :ets.insert(:factorial_inverse, {index, factorial_inverse})
+
+      factorial
+    end)
+  end
+
+  def combination(n, r) do
+    [{_, n_1_n}] = :ets.lookup(:factorial, n)
+    [{_, n_2_nr}] = :ets.lookup(:factorial_inverse, n - r)
+    [{_, n_2_r}] = :ets.lookup(:factorial_inverse, r)
+
+    (n_1_n * rem(n_2_nr * n_2_r, @mod))
+    |> rem(@mod)
+  end
+end
+```
+
+```elixir
+Combination.init()
+```
+
+```elixir
+Combination.combination(6, 4)
+```
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [h, w, a, b] =
+      input
+      |> String.trim()
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    Combination.init()
+
+    0..(h - a - 1)
+    |> Enum.reduce(0, fn h_i, acc ->
+      l = Combination.combination(h_i + b - 1, h_i)
+      r = Combination.combination(h + w - h_i - b - 2, h - 1 - h_i)
+      acc + l * r
+    end)
+    |> rem(1_000_000_007)
+  end
+end
+```
+
+```elixir
+"""
+2 3 1 1
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+10 7 3 4
+"""
+|> Main.solve()
+|> then(&(&1 == 3570))
+```
+
+```elixir
+"""
+100000 100000 99999 99999
+"""
+|> Main.solve()
+|> then(&(&1 == 1))
+```
+
+```elixir
+"""
+100000 100000 44444 55555
+"""
+|> Main.solve()
+|> then(&(&1 == 738_162_020))
+```

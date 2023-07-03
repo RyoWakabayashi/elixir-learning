@@ -1,0 +1,78 @@
+# ABC042C - こだわり者いろはちゃん
+
+## 問題
+
+<https://atcoder.jp/contests/abc042/tasks/arc058_a>
+
+## 回答2
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [[n, _] | [d]] =
+      input
+      |> split_lines()
+      |> Enum.map(fn line ->
+        line
+        |> split_words()
+        |> Enum.map(&String.to_integer/1)
+      end)
+
+    pay_d = Enum.filter(0..9, &(not Enum.member?(d, &1)))
+    pay_d_up = Enum.uniq([0 | pay_d])
+
+    for d_1 <- pay_d,
+        d_10 <- pay_d_up,
+        d_100 <- pay_d_up,
+        d_1000 <- pay_d_up,
+        d_10000 <- pay_d_up,
+        payment = Integer.undigits([d_10000, d_1000, d_100, d_10, d_1]),
+        payment >= n do
+      payment
+    end
+    |> Enum.filter(fn payment ->
+      if Enum.member?(d, 0) do
+        payment |> Integer.digits() |> Enum.member?(0) |> Kernel.not()
+      else
+        true
+      end
+    end)
+    |> Enum.min()
+  end
+end
+```
+
+```elixir
+"""
+1000 8
+1 3 4 5 6 7 8 9
+"""
+|> Main.solve()
+|> then(&(&1 == 2000))
+```
+
+```elixir
+"""
+9999 1
+0
+"""
+|> Main.solve()
+|> then(&(&1 == 9999))
+```

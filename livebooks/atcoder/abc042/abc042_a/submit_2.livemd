@@ -1,0 +1,45 @@
+# ABC042A - 和風いろはちゃんイージー
+
+## 問題
+
+<https://atcoder.jp/contests/abc042/tasks/abc042_a>
+
+## 回答2
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> case do
+      "5 5 7" -> "YES"
+      "5 7 5" -> "YES"
+      "7 5 5" -> "YES"
+      _ -> "NO"
+    end
+  end
+end
+```
+
+```elixir
+"""
+5 5 7
+"""
+|> Main.solve()
+|> then(&(&1 == "YES"))
+```
+
+```elixir
+"""
+7 7 5
+"""
+|> Main.solve()
+|> then(&(&1 == "NO"))
+```

@@ -1,0 +1,43 @@
+# ABC042B - 文字列大好きいろはちゃんイージー
+
+## 問題
+
+<https://atcoder.jp/contests/abc042/tasks/abc042_b>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def solve(input) do
+    input
+    |> split_lines()
+    |> tl()
+    |> Enum.sort()
+    |> Enum.join()
+  end
+end
+```
+
+```elixir
+"""
+3 3
+dxx
+axx
+cxx
+"""
+|> Main.solve()
+|> then(&(&1 == "axxcxxdxx"))
+```
