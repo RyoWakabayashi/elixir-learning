@@ -9,40 +9,35 @@
 ```elixir
 defmodule Combination do
   @mod 1_000_000_007
-  @max_n 200_000
+  @max_index 200_000
+
+  defp renew_table(table_name, initial_objects) do
+    if :ets.info(table_name) != :undefined do
+      :ets.delete(table_name)
+    end
+
+    :ets.new(table_name, [:set, :protected, :named_table])
+    :ets.insert(table_name, initial_objects)
+  end
+
+  defp lookup(table_name, key) do
+    [{_, value}] = :ets.lookup(table_name, key)
+    value
+  end
 
   def init do
-    if :ets.info(:factorial) != :undefined do
-      :ets.delete(:factorial)
-    end
+    renew_table(:factorial, [{0, 1}, {1, 1}])
+    renew_table(:inverse, [{1, 1}])
+    renew_table(:factorial_inverse, [{0, 1}, {1, 1}])
 
-    if :ets.info(:inverse) != :undefined do
-      :ets.delete(:inverse)
-    end
-
-    if :ets.info(:factorial_inverse) != :undefined do
-      :ets.delete(:factorial_inverse)
-    end
-
-    :ets.new(:factorial, [:set, :protected, :named_table])
-    :ets.insert(:factorial, {0, 1})
-    :ets.insert(:factorial, {1, 1})
-
-    :ets.new(:inverse, [:set, :protected, :named_table])
-    :ets.insert(:inverse, {1, 1})
-
-    :ets.new(:factorial_inverse, [:set, :protected, :named_table])
-    :ets.insert(:factorial_inverse, {0, 1})
-    :ets.insert(:factorial_inverse, {1, 1})
-
-    2..@max_n
+    2..@max_index
     |> Enum.reduce(1, fn index, acc ->
       factorial = rem(acc * index, @mod)
 
-      [{_, mod_inverse}] = :ets.lookup(:inverse, rem(@mod, index))
+      mod_inverse = lookup(:inverse, rem(@mod, index))
       inverse = @mod - rem(mod_inverse * div(@mod, index), @mod)
 
-      [{_, pre_factorial_inverse}] = :ets.lookup(:factorial_inverse, index - 1)
+      pre_factorial_inverse = lookup(:factorial_inverse, index - 1)
       factorial_inverse = rem(pre_factorial_inverse * inverse, @mod)
 
       :ets.insert(:factorial, {index, factorial})
@@ -54,11 +49,13 @@ defmodule Combination do
   end
 
   def combination(n, r) do
-    [{_, n_1_n}] = :ets.lookup(:factorial, n)
-    [{_, n_2_nr}] = :ets.lookup(:factorial_inverse, n - r)
-    [{_, n_2_r}] = :ets.lookup(:factorial_inverse, r)
+    factorial_n = lookup(:factorial, n)
+    factorial_inverse_nr = lookup(:factorial_inverse, n - r)
+    factorial_inverse_r = lookup(:factorial_inverse, r)
 
-    (n_1_n * rem(n_2_nr * n_2_r, @mod))
+    (factorial_inverse_nr * factorial_inverse_r)
+    |> rem(@mod)
+    |> Kernel.*(factorial_n)
     |> rem(@mod)
   end
 end
