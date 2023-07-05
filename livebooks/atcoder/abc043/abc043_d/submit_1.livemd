@@ -1,0 +1,91 @@
+# ABC043D - アンバランス
+
+## 問題
+
+<https://atcoder.jp/contests/abc043/tasks/arc059_b>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp renew_table(objects, table_name) do
+    if :ets.info(table_name) != :undefined do
+      :ets.delete(table_name)
+    end
+
+    :ets.new(table_name, [:set, :protected, :named_table])
+    :ets.insert(table_name, objects)
+  end
+
+  defp lookup(table_name, key) do
+    case :ets.lookup(table_name, key) do
+      [{_, value}] ->
+        value
+
+      _ ->
+        ""
+    end
+  end
+
+  def solve(input) do
+    list =
+      input
+      |> String.trim()
+      |> String.codepoints()
+
+    list
+    |> Enum.with_index()
+    |> Enum.map(fn {char, index} -> {index, char} end)
+    |> renew_table(:char_list)
+
+    0..(length(list) - 2)
+    |> Enum.map(fn sub_start ->
+      char_1 = lookup(:char_list, sub_start)
+      char_2 = lookup(:char_list, sub_start + 1)
+      char_3 = lookup(:char_list, sub_start + 2)
+
+      case char_1 do
+        ^char_2 ->
+          [sub_start + 1, sub_start + 2]
+
+        ^char_3 ->
+          [sub_start + 1, sub_start + 3]
+
+        _ ->
+          []
+      end
+    end)
+    |> Enum.find(
+      [-1, -1],
+      fn
+        [] -> false
+        _ -> true
+      end
+    )
+    |> Enum.join(" ")
+  end
+end
+```
+
+```elixir
+"""
+needed
+"""
+|> Main.solve()
+|> then(&(&1 == "2 3"))
+```
+
+```elixir
+"""
+atcoder
+"""
+|> Main.solve()
+|> then(&(&1 == "-1 -1"))
+```

@@ -1,0 +1,56 @@
+# ABC043B - バイナリハックイージー
+
+## 問題
+
+<https://atcoder.jp/contests/abc043/tasks/abc043_b>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> String.codepoints()
+    |> Enum.reduce([], fn key, acc ->
+      case key do
+        "B" -> if Enum.empty?(acc), do: [], else: tl(acc)
+        new -> [new | acc]
+      end
+    end)
+    |> Enum.reverse()
+    |> Enum.join()
+  end
+end
+```
+
+```elixir
+"""
+01B0
+"""
+|> Main.solve()
+|> then(&(&1 == "00"))
+```
+
+```elixir
+"""
+0BB1
+"""
+|> Main.solve()
+|> then(&(&1 == "1"))
+```
+
+```elixir
+"""
+1
+"""
+|> Main.solve()
+|> then(&(&1 == 1))
+```

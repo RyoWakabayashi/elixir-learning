@@ -1,0 +1,46 @@
+# ABC043D - アンバランス
+
+## 問題
+
+<https://atcoder.jp/contests/abc043/tasks/arc059_b>
+
+## 回答2
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    s = String.trim(input)
+
+    {start_index, end_index} =
+      case Regex.run(~r/(.).?\1/, s, return: :index) do
+        [{index, len} | _] -> {index + 1, index + len}
+        nil -> {-1, -1}
+      end
+
+    "#{start_index} #{end_index}"
+  end
+end
+```
+
+```elixir
+"""
+needed
+"""
+|> Main.solve()
+|> then(&(&1 == "2 3"))
+```
+
+```elixir
+"""
+atcoder
+"""
+|> Main.solve()
+|> then(&(&1 == "-1 -1"))
+```

@@ -1,0 +1,51 @@
+# ABC043A - キャンディーとN人の子供イージー
+
+## 問題
+
+<https://atcoder.jp/contests/abc043/tasks/abc043_a>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    n =
+      input
+      |> String.trim()
+      |> String.to_integer()
+
+    Enum.sum(0..n)
+  end
+end
+```
+
+```elixir
+"""
+3
+"""
+|> Main.solve()
+|> then(&(&1 == 6))
+```
+
+```elixir
+"""
+10
+"""
+|> Main.solve()
+|> then(&(&1 == 55))
+```
+
+```elixir
+"""
+1
+"""
+|> Main.solve()
+|> then(&(&1 == 1))
+```

@@ -1,0 +1,85 @@
+# ABC043C - いっしょ
+
+## 問題
+
+<https://atcoder.jp/contests/abc043/tasks/arc059_a>
+
+## 回答1
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    a =
+      input
+      |> String.trim()
+      |> split_lines()
+      |> Enum.at(1)
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    mean =
+      (Enum.sum(a) / length(a))
+      |> round()
+
+    a
+    |> Enum.map(fn a_i ->
+      :math.pow(a_i - mean, 2)
+    end)
+    |> Enum.sum()
+    |> floor()
+  end
+end
+```
+
+```elixir
+"""
+2
+4 8
+"""
+|> Main.solve()
+|> then(&(&1 == 8))
+```
+
+```elixir
+"""
+3
+1 1 3
+"""
+|> Main.solve()
+|> then(&(&1 == 3))
+```
+
+```elixir
+"""
+3
+4 2 5
+"""
+|> Main.solve()
+|> then(&(&1 == 5))
+```
+
+```elixir
+"""
+4
+-100 -100 -100 -100
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
