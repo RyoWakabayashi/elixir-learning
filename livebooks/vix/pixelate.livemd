@@ -2,8 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:image, "~> 0.28"},
-  {:evision, "~> 0.1.30"},
+  {:image, "~> 0.35"},
+  {:evision, "~> 0.1"},
   {:req, "~> 0.3"},
   {:kino, "~> 0.9"}
 ])
@@ -12,8 +12,8 @@ Mix.install([
 ## 画像の読込
 
 ```elixir
-lenna_img =
-  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+ryo_img =
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
   |> Req.get!()
   |> Map.get(:body)
   |> Image.from_binary()
@@ -36,7 +36,9 @@ face_model = Evision.CascadeClassifier.cascadeClassifier(face_model_path)
 ```elixir
 face_rect =
   {left, top, width, height} =
-  lenna_img
+  ryo_img
+  |> Image.split_alpha()
+  |> elem(0)
   |> Image.to_evision()
   |> elem(1)
   |> then(&Evision.CascadeClassifier.detectMultiScale(face_model, &1))
@@ -46,7 +48,7 @@ face_rect =
 ## 顔にモザイクをかける
 
 ```elixir
-face_img = Image.crop!(lenna_img, left, top, width, height)
+face_img = Image.crop!(ryo_img, left, top, width, height)
 ```
 
 ```elixir
@@ -54,14 +56,14 @@ pixelated_face_img = Image.pixelate!(face_img)
 ```
 
 ```elixir
-pixelated_lenna_img = Image.compose!(lenna_img, pixelated_face_img, x: left, y: top)
+pixelated_ryo_img = Image.compose!(ryo_img, pixelated_face_img, x: left, y: top)
 ```
 
 ### モザイク処理を繋げた場合
 
 ```elixir
-lenna_img
+ryo_img
 |> Image.crop!(left, top, width, height)
 |> Image.pixelate!()
-|> then(&Image.compose!(lenna_img, &1, x: left, y: top))
+|> then(&Image.compose!(ryo_img, &1, x: left, y: top))
 ```

@@ -2,9 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:image, "~> 0.23.2"},
+  {:image, "~> 0.35"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.8"}
+  {:kino, "~> 0.9"}
 ])
 ```
 
@@ -13,7 +13,7 @@ Mix.install([
 ### ファイルから
 
 ```elixir
-puppies_img = Image.open!("/tmp/puppies.jpg")
+puppies_img = Image.open!("/home/livebook/vix/puppies.png")
 ```
 
 ### Kino.Input から
@@ -36,14 +36,14 @@ Image.Kino.show(chroma_key_img, max_height: 400)
 ### Web から
 
 ```elixir
-lenna_img =
-  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+ryo_img =
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
   |> Req.get!()
   |> Map.get(:body)
   |> Image.from_binary()
   |> elem(1)
 
-Image.Kino.show(lenna_img, max_height: 400)
+Image.Kino.show(ryo_img, max_height: 400)
 ```
 
 ## 画像処理
@@ -144,32 +144,32 @@ puppies_img
 
 ```elixir
 puppies_img
-|> Image.compose!(lenna_img, blend_mode: :over)
+|> Image.compose!(ryo_img, blend_mode: :over)
 |> Image.Kino.show()
 ```
 
 ```elixir
 puppies_img
-|> Image.compose!(lenna_img, blend_mode: :lighten)
+|> Image.compose!(ryo_img, blend_mode: :lighten)
 |> Image.Kino.show()
 ```
 
 ```elixir
 puppies_img
-|> Image.compose!(lenna_img, blend_mode: :add)
+|> Image.compose!(ryo_img, blend_mode: :add)
 |> Image.Kino.show()
 ```
 
 ```elixir
 puppies_img
-|> Image.compose!(lenna_img, blend_mode: :difference)
+|> Image.compose!(ryo_img, blend_mode: :difference)
 |> Image.Kino.show()
 ```
 
 ### 膨張、収縮(ノイズ除去)
 
 ```elixir
-noize_img = Image.open!("/tmp/noize.png")
+noize_img = Image.open!("/home/livebook/vix/noize.png")
 
 Image.Kino.show(noize_img)
 ```

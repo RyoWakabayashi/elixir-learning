@@ -2,9 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:image, "~> 0.23.2"},
+  {:image, "~> 0.35"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.8"}
+  {:kino, "~> 0.9"}
 ])
 ```
 
@@ -227,38 +227,18 @@ Image.Kino.show(text_image)
 ## 画像との合成
 
 ```elixir
-lenna_img =
-  "https://upload.wikimedia.org/wikipedia/en/7/7d/Lenna_%28test_image%29.png"
+ryo_img =
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
   |> Req.get!()
   |> Map.get(:body)
   |> Image.from_binary()
   |> elem(1)
 
-Image.Kino.show(lenna_img, max_height: 400)
+Image.Kino.show(ryo_img, max_height: 400)
 ```
 
 ```elixir
-Image.shape(lenna_img)
-```
-
-```elixir
-alpha = Image.new!(lenna_img, bands: 1, color: Image.Color.max_opacity())
-
-Image.Kino.show(alpha)
-```
-
-```elixir
-rgba_lenna_img = Vix.Vips.Operation.bandjoin!([lenna_img, alpha])
-
-Image.Kino.show(rgba_lenna_img, max_height: 400)
-```
-
-```elixir
-Image.shape(rgba_lenna_img)
-```
-
-```elixir
-rgba_lenna_img
+ryo_img
 |> Image.compose!(star_img, x: 30, y: 100)
 |> Image.Draw.image(text_image, 10, 10)
 |> elem(1)
@@ -287,7 +267,7 @@ rect_img =
 
 text_image = Image.Text.text!("Hello, Livebook!", text_fill_color: :blue, font_size: 54)
 
-rgba_lenna_img
+ryo_img
 |> Image.compose!(star_img, x: 30, y: 100)
 |> Image.compose!(rect_img, x: 190, y: 200)
 |> Image.compose!(text_image, x: 10, y: 10)
