@@ -17,23 +17,15 @@ ryo_img =
   "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
   |> Req.get!()
   |> Map.get(:body)
-  |> Image.from_binary()
-  |> elem(1)
+  |> Image.from_binary!()
 ```
 
 ## Image -> Nx
 
 ```elixir
-{:ok, nx_ryo_img} = Image.to_nx(ryo_img)
+nx_ryo_img = Image.to_nx!(ryo_img)
 
-nx_ryo_img
-```
-
-```elixir
-ryo_img
-|> Image.to_nx()
-|> elem(1)
-|> Kino.Image.new()
+Kino.Image.new(nx_ryo_img)
 ```
 
 ## Nx -> Image
@@ -47,7 +39,11 @@ image_ryo_img
 ## Image -> evision
 
 ```elixir
-{:ok, evision_ryo_img} = Image.to_evision(ryo_img)
+{:ok, evision_ryo_img} =
+  ryo_img
+  |> Image.split_alpha()
+  |> elem(0)
+  |> Image.to_evision()
 
 evision_ryo_img
 ```
@@ -88,6 +84,8 @@ output =
 perspective_mat = Evision.getPerspectiveTransform(input, output)
 
 ryo_img
+|> Image.split_alpha()
+|> elem(0)
 |> Image.Draw.rect!(190, 200, 180, 200, fill: false, color: :red, stroke_width: 24)
 |> Image.to_evision()
 |> elem(1)

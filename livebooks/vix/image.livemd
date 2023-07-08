@@ -19,16 +19,14 @@ puppies_img = Image.open!("/home/livebook/vix/puppies.png")
 ### Kino.Input から
 
 ```elixir
-chroma_key_img_input = Kino.Input.image("CHROMA KEY IMAGE", format: :png)
+chroma_key_img_input = Kino.Input.image("CHROMA KEY IMAGE", format: :rgb)
 ```
 
 ```elixir
 chroma_key_img =
   chroma_key_img_input
   |> Kino.Input.read()
-  |> Map.get(:data)
-  |> Image.from_binary()
-  |> elem(1)
+  |> Image.from_kino!()
 
 Image.Kino.show(chroma_key_img, max_height: 400)
 ```
@@ -40,8 +38,7 @@ ryo_img =
   "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
   |> Req.get!()
   |> Map.get(:body)
-  |> Image.from_binary()
-  |> elem(1)
+  |> Image.from_binary!()
 
 Image.Kino.show(ryo_img, max_height: 400)
 ```

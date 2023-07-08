@@ -8,7 +8,7 @@ Mix.install(
     {:exla, "~> 0.5"},
     {:explorer, "~> 0.5"},
     {:flow, "~> 1.2"},
-    {:image, "~> 0.33"},
+    {:image, "~> 0.35"},
     {:kino, "~> 0.9"},
     {:kino_bumblebee, "~> 0.3"},
     {:kino_maplibre, "~> 0.1"},

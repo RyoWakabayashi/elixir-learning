@@ -231,8 +231,7 @@ ryo_img =
   "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
   |> Req.get!()
   |> Map.get(:body)
-  |> Image.from_binary()
-  |> elem(1)
+  |> Image.from_binary!()
 
 Image.Kino.show(ryo_img, max_height: 400)
 ```
