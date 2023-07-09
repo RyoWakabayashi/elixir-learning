@@ -1,0 +1,58 @@
+# ABC044A - 高橋君とホテルイージー
+
+## 問題
+
+<https://atcoder.jp/contests/abc044/tasks/abc044_a>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  def solve(input) do
+    [n, k, x, y] =
+      input
+      |> split_lines()
+      |> Enum.map(&String.to_integer/1)
+
+    cond do
+      n <= k -> n * x
+      true -> k * x + (n - k) * y
+    end
+  end
+end
+```
+
+```elixir
+"""
+5
+3
+10000
+9000
+"""
+|> Main.solve()
+|> then(&(&1 == 48000))
+```
+
+```elixir
+"""
+2
+3
+10000
+9000
+"""
+|> Main.solve()
+|> then(&(&1 == 20000))
+```

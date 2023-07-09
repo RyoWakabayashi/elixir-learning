@@ -1,0 +1,130 @@
+# ABC044C - 高橋君とカード
+
+## 問題
+
+<https://atcoder.jp/contests/abc044/tasks/arc060_a>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  defp renew_table(objects, table_name) do
+    if :ets.info(table_name) != :undefined do
+      :ets.delete(table_name)
+    end
+
+    :ets.new(table_name, [:set, :protected, :named_table])
+    :ets.insert(table_name, objects)
+  end
+
+  defp lookup(table_name, key) do
+    case :ets.lookup(table_name, key) do
+      [{_, value}] -> value
+      _ -> 0
+    end
+  end
+
+  def solve(input) do
+    [[n, a], x] =
+      input
+      |> split_lines()
+      |> Enum.map(fn line ->
+        line
+        |> split_words()
+        |> Enum.map(&String.to_integer/1)
+      end)
+
+    x
+    |> Enum.with_index()
+    |> Enum.map(fn {char, index} -> {index, char} end)
+    |> renew_table(:x)
+
+    renew_table({{0, 0, 0}, 1}, :dp)
+
+    for i <- 0..(n - 1),
+        k <- 0..n,
+        s <- 0..(n * a - 1),
+        p = lookup(:dp, {i, k, s}),
+        p > 0 do
+      x_i = lookup(:x, i)
+      p_1_key = {i + 1, k, s}
+      p_2_key = {i + 1, k + 1, s + x_i}
+      p_1 = lookup(:dp, p_1_key)
+      p_2 = lookup(:dp, p_2_key)
+
+      :ets.insert(:dp, {p_1_key, p_1 + p})
+      :ets.insert(:dp, {p_2_key, p_2 + p})
+    end
+
+    1..n
+    |> Enum.reduce(0, fn k, acc ->
+      acc + lookup(:dp, {n, k, a * k})
+    end)
+  end
+end
+```
+
+```elixir
+"""
+4 8
+7 9 8 9
+"""
+|> Main.solve()
+|> then(&(&1 == 5))
+```
+
+```elixir
+:dp
+|> :ets.tab2list()
+|> Enum.sort_by(
+  &{
+    &1 |> elem(0) |> elem(0),
+    &1 |> elem(0) |> elem(1),
+    &1 |> elem(0) |> elem(2)
+  }
+)
+```
+
+```elixir
+"""
+3 8
+6 6 9
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
+
+```elixir
+"""
+8 5
+3 6 2 8 7 6 5 9
+"""
+|> Main.solve()
+|> then(&(&1 == 19))
+```
+
+```elixir
+"""
+33 3
+3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3
+"""
+|> Main.solve()
+|> then(&(&1 == 8_589_934_591))
+```

@@ -1,0 +1,103 @@
+# ABC044D - 桁和
+
+## 問題
+
+<https://atcoder.jp/contests/abc044/tasks/arc060_b>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp digsum(b, n) when n < b, do: n
+
+  defp digsum(b, n), do: rem(n, b) + digsum(b, div(n, b))
+
+  def solve(input) do
+    [n, s] =
+      input
+      |> split_lines()
+      |> Enum.map(&String.to_integer/1)
+
+    cond do
+      n == s ->
+        n + 1
+
+      n < s ->
+        -1
+
+      true ->
+        {small, big} =
+          for i <- 1..(:math.sqrt(n - s) |> ceil() |> Kernel.+(1)),
+              rem(n - s, i) == 0 do
+            {i, div(n - s, i)}
+          end
+          |> Enum.reduce({[], []}, fn {small_i, big_i}, {small_acc, big_acc} ->
+            {[small_i | small_acc], [big_i | big_acc]}
+          end)
+
+        [Enum.reverse(small), big]
+        |> List.flatten()
+        |> Enum.find(-2, &(digsum(&1 + 1, n) == s))
+        |> Kernel.+(1)
+    end
+  end
+end
+```
+
+```elixir
+"""
+87654
+30
+"""
+|> Main.solve()
+|> then(&(&1 == 10))
+```
+
+```elixir
+"""
+87654
+138
+"""
+|> Main.solve()
+|> then(&(&1 == 100))
+```
+
+```elixir
+"""
+87654
+45678
+"""
+|> Main.solve()
+|> then(&(&1 == -1))
+```
+
+```elixir
+"""
+31415926535
+1
+"""
+|> Main.solve()
+|> then(&(&1 == 31_415_926_535))
+```
+
+```elixir
+"""
+1
+31415926535
+"""
+|> Main.solve()
+|> then(&(&1 == -1))
+```

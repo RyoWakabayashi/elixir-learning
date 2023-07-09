@@ -1,0 +1,46 @@
+# ABC044B - 美しい文字列
+
+## 問題
+
+<https://atcoder.jp/contests/abc044/tasks/abc044_b>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> String.codepoints()
+    |> Enum.group_by(& &1)
+    |> Enum.find(fn {_, value} -> value |> length() |> rem(2) == 1 end)
+    |> case do
+      nil -> "Yes"
+      _ -> "No"
+    end
+  end
+end
+```
+
+```elixir
+"""
+abaccaba
+"""
+|> Main.solve()
+|> then(&(&1 == "Yes"))
+```
+
+```elixir
+"""
+hthth
+"""
+|> Main.solve()
+|> then(&(&1 == "No"))
+```
