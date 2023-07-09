@@ -1,0 +1,50 @@
+# Warp perspective
+
+```elixir
+Mix.install([
+  {:image, "~> 0.35"},
+  {:nx, "~> 0.5"},
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.9"}
+])
+```
+
+## Prepare image
+
+```elixir
+ryo_img =
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
+  |> Req.get!()
+  |> Map.get(:body)
+  |> Image.from_binary!()
+```
+
+```elixir
+text_image =
+  Image.Text.text!(
+    "Hello, Livebook!",
+    font_weight: 600,
+    text_fill_color: :blue
+  )
+```
+
+```elixir
+composed_image =
+  ryo_img
+  |> Image.compose!(text_image, x: 100, y: 450)
+  |> Image.compose!(text_image, x: 100, y: 500)
+  |> Image.compose!(text_image, x: 100, y: 550)
+```
+
+## Execution
+
+```elixir
+source = [{-900, 0}, {0, 600}, {1500, 0}, {600, 600}]
+destination = [{0, 250}, {0, 600}, {600, 250}, {600, 600}]
+
+[
+  composed_image,
+  Image.warp_perspective!(composed_image, source, destination, background: :blue)
+]
+|> Kino.Layout.grid(columns: 2)
+```
