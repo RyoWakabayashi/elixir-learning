@@ -1,0 +1,26 @@
+# Equalize
+
+```elixir
+Mix.install([
+  {:image, "~> 0.35"},
+  {:kino, "~> 0.9"}
+])
+```
+
+## Prepare image
+
+```elixir
+dark_image = Image.open!("/home/livebook/vix/dark.jpg")
+```
+
+## Execution
+
+```elixir
+[
+  dark_image,
+  Image.equalize!(dark_image),
+  Image.equalize!(dark_image, :each),
+  Image.equalize!(dark_image, :luminance)
+]
+|> Kino.Layout.grid(columns: 2)
+```
