@@ -1,0 +1,24 @@
+# Reduce noise
+
+```elixir
+Mix.install([
+  {:image, "~> 0.35"},
+  {:kino, "~> 0.9"}
+])
+```
+
+## Prepare image
+
+```elixir
+noise_image = Image.open!("/home/livebook/vix/noise.png")
+```
+
+## Execution
+
+```elixir
+[
+  noise_image,
+  Image.reduce_noise!(noise_image, 10)
+]
+|> Kino.Layout.grid(columns: 2)
+```

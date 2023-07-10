@@ -166,15 +166,15 @@ puppies_img
 ### 膨張、収縮(ノイズ除去)
 
 ```elixir
-noize_img = Image.open!("/home/livebook/vix/noize.png")
+noise_img = Image.open!("/home/livebook/vix/noise.png")
 
-Image.Kino.show(noize_img)
+Image.Kino.show(noise_img)
 ```
 
 ```elixir
 [
-  noize_img |> Image.dilate!(3),
-  noize_img |> Image.erode!(3)
+  noise_img |> Image.dilate!(3),
+  noise_img |> Image.erode!(3)
 ]
 |> Enum.map(&Image.Kino.show(&1, max_height: 400))
 |> Kino.Layout.grid(columns: 2)
@@ -182,8 +182,8 @@ Image.Kino.show(noize_img)
 
 ```elixir
 [
-  noize_img,
-  noize_img |> Image.erode!(3) |> Image.dilate!(3)
+  noise_img,
+  noise_img |> Image.erode!(3) |> Image.dilate!(3)
 ]
 |> Enum.map(&Image.Kino.show(&1, max_height: 400))
 |> Kino.Layout.grid(columns: 2)
