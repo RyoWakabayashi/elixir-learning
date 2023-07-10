@@ -1,0 +1,44 @@
+# Contrast
+
+```elixir
+Mix.install([
+  {:image, "~> 0.35"},
+  {:kino, "~> 0.9"}
+])
+```
+
+## Prepare image
+
+```elixir
+normal_image = Image.open!("/home/livebook/vix/normal.jpg")
+```
+
+## Adjust contrast
+
+```elixir
+[
+  normal_image,
+  Image.contrast!(normal_image, 0.5),
+  Image.contrast!(normal_image, 1.5)
+]
+|> Kino.Layout.grid(columns: 3)
+```
+
+```elixir
+[
+  normal_image,
+  Image.apply_tone_curve!(normal_image, shadows: -30, mid_points: 20, highlights: 30),
+  Image.local_contrast!(normal_image, window_size: 200)
+]
+|> Kino.Layout.grid(columns: 3)
+```
+
+## Sharpen
+
+```elixir
+[
+  normal_image,
+  Image.sharpen!(normal_image, sigma: 3.0)
+]
+|> Kino.Layout.grid(columns: 2)
+```
