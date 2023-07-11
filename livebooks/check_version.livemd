@@ -14,3 +14,9 @@ System.version
 ```elixir
 System.otp_release
 ```
+
+## Check runtime info
+
+```elixir
+IEx.Helpers.runtime_info
+```
