@@ -1,10 +1,10 @@
-# ABC044C - 高橋君とカード
+# ABC130D - Enough Array
 
 ## 問題
 
-<https://atcoder.jp/contests/abc044/tasks/arc060_a>
+<https://atcoder.jp/contests/abc130/tasks/abc130_d>
 
-## 回答
+## 回答（TLE）
 
 ```elixir
 defmodule Main do
@@ -42,7 +42,7 @@ defmodule Main do
   end
 
   def solve(input) do
-    [[n, a], x] =
+    [[n, k], a] =
       input
       |> split_lines()
       |> Enum.map(fn line ->
@@ -51,74 +51,68 @@ defmodule Main do
         |> Enum.map(&String.to_integer/1)
       end)
 
-    x
+    a
     |> Enum.with_index()
-    |> Enum.map(fn {char, index} -> {index, char} end)
-    |> renew_table(:x)
+    |> Enum.map(fn {a_i, i} -> {i, a_i} end)
+    |> renew_table(:a)
 
-    renew_table({{0, 0, 0}, 1}, :dp)
+    renew_table([], :sum)
+    renew_table([], :false_combination)
 
-    for i <- 0..(n - 1),
-        k <- 0..n,
-        s <- 0..(n * a - 1),
-        p = lookup(:dp, {i, k, s}),
-        p > 0 do
-      x_i = lookup(:x, i)
-      p_1_key = {i + 1, k, s}
-      p_2_key = {i + 1, k + 1, s + x_i}
-      p_1 = lookup(:dp, p_1_key)
-      p_2 = lookup(:dp, p_2_key)
+    false_combinations =
+      for i <- 0..(n - 1),
+          j <- i..(n - 1),
+          a_j = lookup(:a, j),
+          pre_sum = lookup(:sum, {i, j - 1}),
+          sum = pre_sum + a_j,
+          :ets.insert(:sum, {{i, j}, sum}),
+          sum < k do
+        1
+      end
+      |> length()
 
-      :ets.insert(:dp, {p_1_key, p_1 + p})
-      :ets.insert(:dp, {p_2_key, p_2 + p})
-    end
+    all_combination = div(n * (n + 1), 2)
 
-    1..n
-    |> Enum.reduce(0, fn k, acc ->
-      acc + lookup(:dp, {n, k, a * k})
-    end)
+    all_combination - false_combinations
   end
 end
 ```
 
 ```elixir
 """
-4 8
-7 9 8 9
+4 10
+6 1 2 7
 """
 |> Main.solve()
-|> then(&(&1 == 5))
+|> then(&(&1 == 2))
 ```
 
 ```elixir
-:dp
+:false_combination
 |> :ets.tab2list()
 |> Enum.sort_by(&elem(&1, 0))
 ```
 
 ```elixir
 """
-3 8
-6 6 9
+3 5
+3 3 3
 """
 |> Main.solve()
-|> then(&(&1 == 0))
+|> then(&(&1 == 3))
+```
+
+```elixir
+:false_combination
+|> :ets.tab2list()
+|> Enum.sort_by(&elem(&1, 0))
 ```
 
 ```elixir
 """
-8 5
-3 6 2 8 7 6 5 9
+10 53462
+103 35322 232 342 21099 90000 18843 9010 35221 19352
 """
 |> Main.solve()
-|> then(&(&1 == 19))
-```
-
-```elixir
-"""
-33 3
-3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3
-"""
-|> Main.solve()
-|> then(&(&1 == 8_589_934_591))
+|> then(&(&1 == 36))
 ```
