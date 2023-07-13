@@ -1,0 +1,108 @@
+# ABC133D - Rain Flows into Dams
+
+## 問題
+
+<https://atcoder.jp/contests/abc133/tasks/abc133_d>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  defp renew_table(objects, table_name) do
+    if :ets.info(table_name) != :undefined do
+      :ets.delete(table_name)
+    end
+
+    :ets.new(table_name, [:set, :protected, :named_table])
+    :ets.insert(table_name, objects)
+  end
+
+  defp lookup(table_name, key) do
+    case :ets.lookup(table_name, key) do
+      [{_, value}] -> value
+      _ -> 0
+    end
+  end
+
+  def solve(input) do
+    [[n], a] =
+      input
+      |> split_lines()
+      |> Enum.map(fn line ->
+        line
+        |> split_words()
+        |> Enum.map(&String.to_integer/1)
+      end)
+
+    a
+    |> Enum.with_index()
+    |> Enum.map(fn {a_i, i} -> {i, a_i} end)
+    |> renew_table(:a)
+
+    x_0 =
+      0..(n - 1)
+      |> Enum.reduce(0, fn i, acc ->
+        case rem(i, 2) do
+          0 -> acc + lookup(:a, i)
+          _ -> acc - lookup(:a, i)
+        end
+      end)
+
+    x =
+      1..(n - 1)
+      |> Enum.map_reduce(x_0, fn i, acc ->
+        x_i = 2 * lookup(:a, i - 1) - acc
+        {x_i, x_i}
+      end)
+      |> elem(0)
+
+    [x_0 | x]
+    |> Enum.map(&Integer.to_string/1)
+    |> Enum.join(" ")
+  end
+end
+```
+
+```elixir
+"""
+3
+2 2 4
+"""
+|> Main.solve()
+|> then(&(&1 == "4 0 4"))
+```
+
+```elixir
+"""
+5
+3 8 7 5 5
+"""
+|> Main.solve()
+|> then(&(&1 == "2 4 12 2 8"))
+```
+
+```elixir
+"""
+3
+1000000000 1000000000 0
+"""
+|> Main.solve()
+|> then(&(&1 == "0 2000000000 0"))
+```
