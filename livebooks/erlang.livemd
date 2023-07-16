@@ -1,0 +1,44 @@
+# Erlang
+
+## Erlang を実行する
+
+```erlang
+Taro = 1,
+Jiro = 2.
+```
+
+```erlang
+Add = fun(A, B) -> A + B end,
+
+Add(Taro, Jiro).
+```
+
+## Elixir から Erlang を参照する
+
+```elixir
+taro + jiro
+```
+
+```elixir
+add.(2, 4)
+```
+
+## Erlang から Elixir を参照する
+
+```elixir
+list = [1, 2, 3]
+```
+
+```erlang
+List.
+```
+
+```elixir
+defmodule Hello do
+  def world(), do: "Hello, world."
+end
+```
+
+```erlang
+'Elixir.Hello':world().
+```
