@@ -1,0 +1,86 @@
+<!-- livebook:{"app_settings":{"access_type":"public","auto_shutdown_ms":5000,"multi_session":true,"show_existing_sessions":false,"slug":"multi"}} -->
+
+# Multi-Sesson Livebook App
+
+```elixir
+Mix.install([
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.10"},
+  {:kino_slack, "~> 0.1"}
+])
+```
+
+## App
+
+```elixir
+gh =
+  Req.new(
+    base_url: "https://api.github.com",
+    auth: {:bearer, System.fetch_env!("LB_GITHUB_TOKEN")},
+    headers: [
+      {"Accept", "application/vnd.github+json"},
+      {"X-GitHub-Api-Version", "2022-11-28"}
+    ]
+  )
+
+Kino.nothing()
+```
+
+```elixir
+repo =
+  "オーナー/リポジトリー"
+  |> Kino.Input.text()
+  |> Kino.render()
+  |> Kino.Input.read()
+
+if not String.contains?(repo, "/") do
+  Kino.interrupt!(:normal, "オーナー/リポジトリー を入力してください")
+end
+
+report =
+  case Req.get!(gh, url: "/repos/#{repo}/security-advisories") do
+    %{status: 200, body: body} ->
+      "リポジトリー #{repo} には #{length(body)} 個の報告があります"
+
+    %{status: 404} ->
+      Kino.interrupt!(:error, "リポジトリー #{repo} は存在しません")
+
+    %{status: status} ->
+      Kino.interrupt!(:error, "GitHub はステータス #{status} でエラーを返しました")
+  end
+```
+
+```elixir
+req =
+  Req.new(
+    base_url: "https://slack.com/api",
+    auth: {:bearer, System.fetch_env!("LB_SLACK_TOKEN")}
+  )
+
+channel =
+  "Slack Channel"
+  |> Kino.Input.text()
+  |> Kino.render()
+  |> Kino.Input.read()
+
+if not String.starts_with?(channel, "#") do
+  Kino.interrupt!(:normal, "送信先チャンネルを指定してください")
+end
+
+response =
+  Req.post!(req,
+    url: "/chat.postMessage",
+    json: %{channel: channel, text: "新しい報告が来ました
+#{report}"}
+  )
+
+case response.body do
+  %{"ok" => true} ->
+    "報告が送信されました！"
+
+  %{"ok" => false, "error" => error} ->
+    Kino.interrupt!(:error, "Slack 送信でエラーが発生しました #{error}")
+end
+```
+
+<!-- livebook:{"offset":1957,"stamp":{"token":"QTEyOEdDTQ.KyLmWNfhqJbWhusa7-d1tzRZgTIAp7dYJzB3rwnvam0iIs2ivJIAYyLPvqc.DZvEl-R1ltg9tT5l.w21frCMPAyCQ74Lv__6iQsTpJbkjin6_XMQdTM_Gkld0oict8a0ZU4mBQnJXXtXclhqG_61tVu4HEt01YPa_.egsNWGpD5R9C1h5YhtJfWQ","version":1}} -->
