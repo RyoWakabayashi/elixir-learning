@@ -1,6 +1,6 @@
-# Doctests
+# Live Doctests
 
-## Section
+## OK
 
 ```elixir
 defmodule OKTest do
@@ -30,6 +30,8 @@ defmodule OKTest do
 end
 ```
 
+## NG
+
 ```elixir
 defmodule NGTest do
   @doc """
@@ -57,6 +59,38 @@ defmodule NGTest do
   end
 end
 ```
+
+## Mixed
+
+```elixir
+defmodule MixedTest do
+  @doc """
+  Add two numbers
+
+  ## Parameters
+
+    - a: a number
+    - b: a number
+
+  ## Examples
+
+  iex> MixedTest.add(1, 1)
+  2
+
+  iex> MixedTest.add(1.1, 2)
+  3.3
+
+  iex> MixedTest.add("1", 2)
+  ** (ArithmeticError) bad argument in arithmetic expression
+  """
+  @spec add(number(), number()) :: number()
+  def add(a, b) do
+    a + b
+  end
+end
+```
+
+## Multi Line
 
 ```elixir
 defmodule MultiLine do
