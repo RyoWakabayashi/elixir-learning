@@ -1,0 +1,101 @@
+# ABC133D - Preparing Boxes
+
+## 問題
+
+<https://atcoder.jp/contests/abc134/tasks/abc134_d>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  defp renew_table(objects, table_name) do
+    if :ets.info(table_name) != :undefined do
+      :ets.delete(table_name)
+    end
+
+    :ets.new(table_name, [:set, :protected, :named_table])
+    :ets.insert(table_name, objects)
+  end
+
+  defp lookup(table_name, key) do
+    case :ets.lookup(table_name, key) do
+      [{_, value}] -> value
+      _ -> 0
+    end
+  end
+
+  def solve(input) do
+    [[n], a] =
+      input
+      |> split_lines()
+      |> Enum.map(fn line ->
+        line
+        |> split_words()
+        |> Enum.map(&String.to_integer/1)
+      end)
+
+    a
+    |> Enum.with_index()
+    |> Enum.map(fn {a_i, i} -> {i + 1, a_i} end)
+    |> renew_table(:a)
+
+    renew_table([], :b)
+
+    n..1
+    |> Enum.each(fn i ->
+      other =
+        2..div(n, i)
+        |> Enum.count(fn j -> lookup(:b, i * j) == 1 end)
+
+      if rem(other, 2) != lookup(:a, i) do
+        :ets.insert(:b, {i, 1})
+      end
+    end)
+
+    ans =
+      :b
+      |> :ets.tab2list()
+      |> Enum.filter(fn {_, b_i} -> b_i == 1 end)
+      |> Enum.map(&elem(&1, 0))
+
+    ~s"#{length(ans)}\n#{Enum.join(ans, " ")}"
+  end
+end
+```
+
+```elixir
+"""
+3
+1 0 0
+"""
+|> Main.solve()
+|> then(&(&1 == ~s"1
+1"))
+```
+
+```elixir
+"""
+5
+0 0 0 0 0
+"""
+|> Main.solve()
+|> then(&(&1 == ~s"0
+"))
+```
