@@ -1,0 +1,100 @@
+# Check new functions
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.10"},
+  {:kino_explorer, "~> 0.1"}
+])
+```
+
+## Get modules
+
+```elixir
+:code.all_loaded()
+|> Enum.sort_by(&elem(&1, 0))
+```
+
+```elixir
+modules =
+  :code.all_loaded()
+  |> Enum.sort_by(&elem(&1, 0))
+  |> Enum.map(&elem(&1, 0))
+  |> Enum.filter(fn atom ->
+    atom
+    |> Atom.to_string()
+    |> then(
+      &(String.starts_with?(&1, "Elixir.") &&
+          not String.starts_with?(&1, "Elixir.Kino") &&
+          not String.starts_with?(&1, "Elixir.Explorer") &&
+          not String.starts_with?(&1, "Elixir.Livebook") &&
+          not String.starts_with?(&1, "Elixir.Logger"))
+    )
+  end)
+```
+
+## Get module documents
+
+```elixir
+Code.fetch_docs(List)
+```
+
+```elixir
+Code.fetch_docs(List)
+|> elem(6)
+|> Enum.filter(fn function ->
+  function
+  |> elem(4)
+  |> Map.get(:since, "0.0.0")
+  |> Version.compare("1.10.2")
+  |> Kernel.==(:gt)
+end)
+|> Enum.map(fn function ->
+  %{
+    function: function |> elem(2) |> Enum.at(0),
+    since: function |> elem(4) |> Map.get(:since)
+  }
+end)
+```
+
+```elixir
+modules
+|> Enum.map(fn module ->
+  case Code.fetch_docs(module) do
+    {:error, _} ->
+      []
+
+    docs ->
+      docs
+      |> elem(6)
+      |> Enum.filter(fn function ->
+        function
+        |> elem(4)
+        |> Map.get(:since, "0.0.0")
+        |> then(fn version ->
+          version_length =
+            version
+            |> String.split(".")
+            |> length()
+
+          cond do
+            version_length >= 3 -> version
+            version_length == 2 -> "#{version}.0"
+            true -> "0.0.0"
+          end
+        end)
+        |> Version.compare("1.10.2")
+        |> Kernel.==(:gt)
+      end)
+      |> Enum.map(fn function ->
+        %{
+          module: module |> Atom.to_string(),
+          function: function |> elem(2) |> Enum.at(0),
+          since: function |> elem(4) |> Map.get(:since)
+        }
+      end)
+  end
+end)
+|> List.flatten()
+|> Explorer.DataFrame.new()
+|> Explorer.DataFrame.select([:module, :function, :since])
+```
