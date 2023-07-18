@@ -1,0 +1,83 @@
+# ABC081C - Not so Diverse
+
+## 問題
+
+<https://atcoder.jp/contests/abc081/tasks/arc086_a>
+
+## 回答
+
+```elixir
+defmodule Main do
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  def solve(input) do
+    [info, a] =
+      input
+      |> split_lines()
+      |> Enum.map(&split_words/1)
+
+    k =
+      info
+      |> Enum.at(1)
+      |> String.to_integer()
+
+    groups =
+      a
+      |> Enum.group_by(& &1)
+      |> Enum.map(fn {_, value} -> value |> length() end)
+
+    cond do
+      length(groups) < k ->
+        0
+
+      true ->
+        groups
+        |> Enum.sort()
+        |> Enum.slice(0, length(groups) - k)
+        |> Enum.sum()
+    end
+  end
+end
+```
+
+```elixir
+"""
+5 2
+1 1 2 2 5
+"""
+|> Main.solve()
+|> then(&(&1 == 1))
+```
+
+```elixir
+"""
+4 4
+1 1 2 2
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
+
+```elixir
+"""
+10 3
+5 1 3 2 4 1 1 2 3 4
+"""
+|> Main.solve()
+|> then(&(&1 == 3))
+```
