@@ -1,0 +1,58 @@
+# Data transform with Smart Cell
+
+```elixir
+Mix.install([
+  {:kino_explorer, "~> 0.1"}
+])
+```
+
+## Prepare Data
+
+```elixir
+require Explorer.DataFrame
+```
+
+```elixir
+df = Explorer.Datasets.fossil_fuels()
+```
+
+## Smart Cells
+
+<!-- livebook:{"attrs":{"assign_to":"processed_df","collect":false,"data_frame":"df","data_frame_alias":"Elixir.Explorer.DataFrame","is_data_frame":true,"missing_require":null,"operations":[{"active":true,"columns":["country"],"data_options":{"bunker_fuels":"integer","cement":"integer","country":"string","gas_flaring":"integer","gas_fuel":"integer","liquid_fuel":"integer","per_capita":"float","solid_fuel":"integer","total":"integer","year":"integer"},"operation_type":"group_by"},{"active":true,"columns":["total","liquid_fuel","solid_fuel","gas_fuel"],"data_options":{"bunker_fuels":"integer","cement":"integer","country":"string","gas_flaring":"integer","gas_fuel":"integer","liquid_fuel":"integer","per_capita":"float","solid_fuel":"integer","total":"integer","year":"integer"},"operation_type":"summarise","query":"mean"},{"active":true,"data_options":{"country":"string","gas_fuel_mean":"float","liquid_fuel_mean":"float","solid_fuel_mean":"float","total_mean":"float"},"direction":"asc","operation_type":"sorting","sort_by":"total_mean"}]},"chunks":null,"kind":"Elixir.KinoExplorer.DataTransformCell","livebook_object":"smart_cell"} -->
+
+```elixir
+processed_df =
+  df
+  |> Explorer.DataFrame.to_lazy()
+  |> Explorer.DataFrame.group_by("country")
+  |> Explorer.DataFrame.summarise(
+    total_mean: mean(total),
+    liquid_fuel_mean: mean(liquid_fuel),
+    solid_fuel_mean: mean(solid_fuel),
+    gas_fuel_mean: mean(gas_fuel)
+  )
+  |> Explorer.DataFrame.arrange(asc: total_mean)
+```
+
+```elixir
+processed_df
+```
+
+<!-- livebook:{"attrs":{"assign_to":null,"collect":false,"data_frame":"df","data_frame_alias":"Elixir.Explorer.DataFrame","is_data_frame":true,"lazy":true,"missing_require":null,"operations":[{"active":true,"column":"year","data_options":{"bunker_fuels":"integer","cement":"integer","country":"string","gas_flaring":"integer","gas_fuel":"integer","liquid_fuel":"integer","per_capita":"float","solid_fuel":"integer","total":"integer","year":"integer"},"datalist":[],"filter":"greater equal","message":null,"operation_type":"filters","type":"integer","value":"2011"},{"active":true,"columns":["bunker_fuels","cement","gas_flaring","liquid_fuel","gas_fuel","per_capita","solid_fuel"],"data_options":{"bunker_fuels":"integer","cement":"integer","country":"string","gas_flaring":"integer","gas_fuel":"integer","liquid_fuel":"integer","per_capita":"float","solid_fuel":"integer","total":"integer","year":"integer"},"operation_type":"discard"},{"active":true,"data_options":{"country":"string","total":"integer","year":"integer"},"names_from":"year","operation_type":"pivot_wider","values_from":["total"]}]},"chunks":null,"kind":"Elixir.KinoExplorer.DataTransformCell","livebook_object":"smart_cell"} -->
+
+```elixir
+df
+|> Explorer.DataFrame.to_lazy()
+|> Explorer.DataFrame.filter(year >= 2011)
+|> Explorer.DataFrame.discard([
+  "bunker_fuels",
+  "cement",
+  "gas_flaring",
+  "liquid_fuel",
+  "gas_fuel",
+  "per_capita",
+  "solid_fuel"
+])
+|> Explorer.DataFrame.collect()
+|> Explorer.DataFrame.pivot_wider("year", "total")
+```
