@@ -3,13 +3,13 @@
 ```elixir
 Mix.install(
   [
-    {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
+    {:nx, "~> 0.5"},
     {:exla, "~> 0.5"},
     {:axon_onnx, "~> 0.4"},
     {:evision, "~> 0.1"},
     {:flow, "~> 1.2"},
     {:req, "~> 0.3"},
-    {:kino, "~> 0.9"}
+    {:kino, "~> 0.10"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )
