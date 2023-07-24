@@ -35,8 +35,14 @@ model_path = "/tmp/efficientnet_v2_m.onnx"
 defmodule EfficientNetV2 do
   import Nx.Defn
 
+  defn normalize(tensor) do
+    (tensor - Nx.tensor([0.485, 0.456, 0.406])) / Nx.tensor([0.229, 0.224, 0.225])
+  end
+
   defn transform_for_input(img_tensor) do
-    Nx.transpose(img_tensor / 255)
+    (img_tensor / 255)
+    |> normalize()
+    |> Nx.transpose(axes: [2, 0, 1])
   end
 
   defn get_top_class_index(outputs) do

@@ -3,13 +3,13 @@
 ```elixir
 Mix.install(
   [
-    {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
+    {:nx, "~> 0.5"},
     {:exla, "~> 0.5"},
     {:axon_onnx, "~> 0.4"},
     {:evision, "~> 0.1"},
     {:flow, "~> 1.2"},
     {:req, "~> 0.3"},
-    {:kino, "~> 0.9"}
+    {:kino, "~> 0.10"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )
@@ -35,7 +35,137 @@ model_path = "/tmp/efficientnet_v2_m.onnx"
 {model, params} = AxonOnnx.import(model_path)
 ```
 
-## Load data
+## Test data
+
+```elixir
+test_files =
+  classes
+  |> Enum.flat_map(fn class ->
+    "/tmp/test_data/#{class}"
+    |> File.ls!()
+    |> Enum.map(fn filename -> "/tmp/test_data/#{class}/#{filename}" end)
+  end)
+  |> Enum.sort()
+```
+
+```elixir
+test_files
+|> Enum.map(fn file_path ->
+  file_path
+  |> Evision.imread()
+  |> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2RGB())
+  |> Evision.resize({80, 80})
+  |> Evision.Mat.to_nx()
+  |> Kino.Image.new()
+end)
+|> Kino.Layout.grid(columns: 10)
+```
+
+```elixir
+test_files
+|> Enum.at(0)
+|> Evision.imread()
+```
+
+```elixir
+test_files
+|> Enum.at(0)
+|> Evision.imread()
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2RGB())
+|> Evision.resize({224, 224})
+|> Evision.Mat.to_nx(EXLA.Backend)
+|> Nx.divide(255)
+|> Nx.transpose(axes: [2, 0, 1])
+```
+
+```elixir
+test_files
+|> Enum.at(0)
+|> Evision.imread()
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2RGB())
+|> Evision.resize({224, 224})
+|> Evision.Mat.to_nx(EXLA.Backend)
+|> Nx.divide(255)
+|> Nx.subtract(Nx.tensor([0.485, 0.456, 0.406]))
+|> Nx.divide(Nx.tensor([0.229, 0.224, 0.225]))
+|> Nx.transpose(axes: [2, 0, 1])
+```
+
+```elixir
+test_files
+|> Enum.at(0)
+|> Evision.imread()
+|> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2RGB())
+|> Evision.resize({224, 224})
+|> Evision.Mat.to_nx(EXLA.Backend)
+|> Nx.divide(255)
+|> Nx.subtract(Nx.tensor([0.485, 0.456, 0.406]))
+|> Nx.divide(Nx.tensor([0.229, 0.224, 0.225]))
+|> Nx.transpose(axes: [2, 0, 1])
+|> then(fn tensor ->
+  model
+  |> Axon.predict(params, Nx.Batch.stack([tensor]))
+  |> Nx.argmax(axis: 1)
+  |> then(&Nx.to_number(&1[0]))
+  |> then(&Enum.at(classes, &1))
+end)
+```
+
+```elixir
+predicted_classes =
+  test_files
+  |> Flow.from_enumerable(stages: 4, max_demand: 4)
+  |> Flow.map(fn file_path ->
+    predicted =
+      file_path
+      |> Evision.imread()
+      |> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2RGB())
+      |> Evision.resize({224, 224})
+      |> Evision.Mat.to_nx(EXLA.Backend)
+      |> Nx.divide(255)
+      |> Nx.subtract(Nx.tensor([0.485, 0.456, 0.406]))
+      |> Nx.divide(Nx.tensor([0.229, 0.224, 0.225]))
+      |> Nx.transpose(axes: [2, 0, 1])
+      |> then(fn tensor ->
+        model
+        |> Axon.predict(params, Nx.Batch.stack([tensor]))
+        |> Nx.argmax(axis: 1)
+        |> then(&Nx.to_number(&1[0]))
+        |> then(&Enum.at(classes, &1))
+      end)
+
+    {file_path, predicted}
+  end)
+  |> Enum.sort_by(&elem(&1, 0))
+```
+
+```elixir
+predicted_classes
+|> Enum.map(fn {file_path, predicted_class} ->
+  if file_path |> String.split("/") |> Enum.at(3) == predicted_class, do: 1, else: 0
+end)
+|> Enum.sum()
+```
+
+```elixir
+predicted_classes
+|> Enum.map(fn {file_path, predicted_class} ->
+  [
+    Kino.Markdown.new(file_path |> String.split("/") |> Enum.at(3)),
+    Kino.Markdown.new(predicted_class),
+    file_path
+    |> Evision.imread()
+    |> Evision.cvtColor(Evision.Constant.cv_COLOR_BGR2RGB())
+    |> Evision.resize({120, 120})
+    |> Evision.Mat.to_nx()
+    |> Kino.Image.new()
+  ]
+  |> Kino.Layout.grid()
+end)
+|> Kino.Layout.grid(columns: 5)
+```
+
+## Tellus data
 
 ```elixir
 defmodule TellusTraveler do
@@ -173,8 +303,14 @@ batch_size = 8
 defmodule EfficientNetV2 do
   import Nx.Defn
 
+  defn normalize(tensor) do
+    (tensor - Nx.tensor([0.485, 0.456, 0.406])) / Nx.tensor([0.229, 0.224, 0.225])
+  end
+
   defn transform_for_input(img_tensor) do
-    Nx.transpose(img_tensor / 255)
+    (img_tensor / 255)
+    |> normalize()
+    |> Nx.transpose(axes: [2, 0, 1])
   end
 
   defn get_top_class_index(outputs) do
@@ -274,7 +410,7 @@ predictions =
   tiled_tensors
   |> Enum.with_index()
   |> Enum.chunk_every(batch_size)
-  |> Flow.from_enumerable(stages: 2, max_demand: 1)
+  |> Flow.from_enumerable(stages: 4, max_demand: 4)
   |> Flow.map(fn batch ->
     tensor_list = Enum.map(batch, &elem(&1, 0))
     index_list = Enum.map(batch, &elem(&1, 1))
