@@ -3,7 +3,7 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.5"},
+    {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
     {:exla, "~> 0.5"},
     {:axon_onnx, "~> 0.4"},
     {:evision, "~> 0.1"},
@@ -233,7 +233,7 @@ predictions =
   tiled_tensors
   |> Enum.with_index()
   |> Enum.chunk_every(batch_size)
-  |> Flow.from_enumerable(stages: 8, max_demand: 8)
+  |> Flow.from_enumerable(stages: 4, max_demand: 4)
   |> Flow.map(fn batch ->
     tensor_list = Enum.map(batch, &elem(&1, 0))
     index_list = Enum.map(batch, &elem(&1, 1))
