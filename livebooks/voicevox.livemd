@@ -1,0 +1,132 @@
+# VOICEVOX
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.10"},
+  {:req, "~> 0.3"}
+])
+```
+
+## Credit
+
+VOICEVOX: ずんだもん
+
+VOICEVOX: WhiteCUL
+
+## List VOICEVOX speakers
+
+```elixir
+core_version =
+  "http://localhost:50021/core_versions"
+  |> Req.get!()
+  |> Map.get(:body)
+  |> Enum.at(0)
+```
+
+```elixir
+Req.new(url: "http://localhost:50021/speakers", params: %{core_version: core_version})
+|> Req.get!()
+|> Map.get(:body)
+|> Enum.flat_map(fn speaker ->
+  speaker["styles"]
+  |> Enum.map(fn style ->
+    %{
+      name: speaker["name"],
+      id: style["id"],
+      style_name: style["name"]
+    }
+  end)
+end)
+|> Enum.sort_by(& &1.id)
+|> Kino.DataTable.new()
+```
+
+## Synthesis
+
+```elixir
+text = "ずんだもんなのだ。エリクサー使いのアルケミストになったのだ"
+speaker_id = 3
+
+# 音声合成用のクエリを生成する
+audio_query =
+  Req.new(
+    url: "http://localhost:50021/audio_query",
+    params: %{
+      text: text,
+      speaker: speaker_id
+    }
+  )
+  |> Req.post!()
+  |> Map.get(:body)
+
+# クエリを使って音声を合成する
+data =
+  Req.new(
+    url: "http://localhost:50021/synthesis",
+    params: %{speaker: speaker_id}
+  )
+  |> Req.post!(json: audio_query)
+  |> Map.get(:body)
+```
+
+```elixir
+base64 = Base.encode64(data)
+```
+
+## Play audio
+
+```elixir
+Kino.HTML.new("""
+<audio controls src="data:audio/wav;base64,#{base64}">
+</audio>
+""")
+```
+
+## VOICEVOX module
+
+```elixir
+defmodule VoiceVox do
+  @base_url "http://localhost:50021"
+
+  defp get_audio_query(text, speaker_id) do
+    Req.new(
+      url: "#{@base_url}/audio_query",
+      params: %{
+        text: text,
+        speaker: speaker_id
+      }
+    )
+    |> Req.post!()
+    |> Map.get(:body)
+  end
+
+  defp synthesis(audio_query, speaker_id) do
+    Req.new(
+      url: "#{@base_url}/synthesis",
+      params: %{speaker: speaker_id}
+    )
+    |> Req.post!(json: audio_query)
+    |> Map.get(:body)
+  end
+
+  defp view(data) do
+    base64 = Base.encode64(data)
+
+    Kino.HTML.new("""
+    <audio controls src="data:audio/wav;base64,#{base64}">
+    </audio>
+    """)
+  end
+
+  def new(text, speaker_id) do
+    text
+    |> get_audio_query(speaker_id)
+    |> synthesis(speaker_id)
+    |> view()
+  end
+end
+```
+
+```elixir
+VoiceVox.new("こんにちは。WhiteCULです。今日はライブブックから喋っています", 26)
+```
