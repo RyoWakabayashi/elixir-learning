@@ -83,6 +83,8 @@ test_files
 end)
 ```
 
+![flow](https://github.com/RyoWakabayashi/elixir-learning/blob/main/livebooks/tellus/distributed/imgs/flow.drawio.png?raw=true)
+
 ```elixir
 predicted_classes =
   test_files
