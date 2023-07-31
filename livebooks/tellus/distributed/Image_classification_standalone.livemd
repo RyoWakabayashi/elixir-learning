@@ -17,6 +17,8 @@ Mix.install(
 
 ## Load models
 
+![standalone](https://github.com/RyoWakabayashi/elixir-learning/blob/main/livebooks/tellus/distributed/imgs/standalone.drawio.png?raw=true)
+
 ```elixir
 Nx.Defn.default_options(compiler: EXLA)
 Nx.global_default_backend(EXLA.Backend)

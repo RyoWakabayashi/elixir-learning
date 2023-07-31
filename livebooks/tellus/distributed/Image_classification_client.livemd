@@ -17,6 +17,8 @@ Mix.install(
 
 ## Load data
 
+![distributed](https://github.com/RyoWakabayashi/elixir-learning/blob/main/livebooks/tellus/distributed/imgs/distributed.drawio.png?raw=true)
+
 ```elixir
 defmodule TellusTraveler do
   @base_path "https://www.tellusxdp.com/api/traveler/v1"
