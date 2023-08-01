@@ -15,9 +15,21 @@ Mix.install(
 )
 ```
 
-## Load data
+## Distributed processing
 
 ![distributed](https://github.com/RyoWakabayashi/elixir-learning/blob/main/livebooks/tellus/distributed/imgs/distributed.drawio.png?raw=true)
+
+## Load data
+
+Tellus Satellite Data Traveler API を使用する
+
+API 仕様: <https://www.tellusxdp.com/docs/travelers/>
+
+提供：だいち(ALOS)　AVNIR-2　データ(JAXA)
+
+だいち(ALOS) AVNIR-2 の仕様はこちら
+
+https://www.eorc.jaxa.jp/ALOS/jp/alos/sensor/avnir2_j.htm
 
 ```elixir
 defmodule TellusTraveler do

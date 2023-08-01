@@ -15,9 +15,11 @@ Mix.install(
 )
 ```
 
-## Load models
+## Standalone processing
 
 ![standalone](https://github.com/RyoWakabayashi/elixir-learning/blob/main/livebooks/tellus/distributed/imgs/standalone.drawio.png?raw=true)
+
+## Load models
 
 ```elixir
 Nx.Defn.default_options(compiler: EXLA)
@@ -83,8 +85,6 @@ test_files
 end)
 ```
 
-![flow](https://github.com/RyoWakabayashi/elixir-learning/blob/main/livebooks/tellus/distributed/imgs/flow.drawio.png?raw=true)
-
 ```elixir
 predicted_classes =
   test_files
@@ -140,6 +140,16 @@ end)
 ```
 
 ## Tellus data
+
+Tellus Satellite Data Traveler API を使用する
+
+API 仕様: <https://www.tellusxdp.com/docs/travelers/>
+
+提供：だいち(ALOS)　AVNIR-2　データ(JAXA)
+
+だいち(ALOS) AVNIR-2 の仕様はこちら
+
+https://www.eorc.jaxa.jp/ALOS/jp/alos/sensor/avnir2_j.htm
 
 ```elixir
 defmodule TellusTraveler do
@@ -273,7 +283,7 @@ end)
 ## Batch Prediction with module
 
 ```elixir
-batch_size = 8
+batch_size = 4
 ```
 
 ```elixir
