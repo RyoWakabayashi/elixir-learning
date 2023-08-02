@@ -7,14 +7,14 @@ Mix.install(
     {:nx, "~> 0.5"},
     {:exla, "~> 0.5"},
     {:torchx, "~> 0.5"},
-    {:evision, "~> 0.1.30"},
-    {:kino, "~> 0.9"}
+    {:evision, "~> 0.1.33"},
+    {:kino, "~> 0.10"}
   ],
   system_env: [
-    {"XLA_TARGET", "cuda111"},
-    {"LIBTORCH_TARGET", "cu113"},
+    {"XLA_TARGET", "cuda118"},
+    {"LIBTORCH_TARGET", "cu116"},
     {"EVISION_ENABLE_CUDA", "true"},
-    {"EVISION_CUDA_VERSION", "111"}
+    {"EVISION_CUDA_VERSION", "118"}
   ]
 )
 ```
