@@ -4,9 +4,9 @@
 Mix.install(
   [
     {:bumblebee, "~> 0.1"},
-    {:nx, "~> 0.4"},
-    {:exla, "~> 0.4"},
-    {:kino, "~> 0.8"}
+    {:nx, "~> 0.5"},
+    {:exla, "~> 0.5"},
+    {:kino, "~> 0.10"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )

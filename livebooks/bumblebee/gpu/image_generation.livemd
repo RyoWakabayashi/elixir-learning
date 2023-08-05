@@ -5,8 +5,8 @@
 ```elixir
 Mix.install(
   [
-    {:kino_bumblebee, "~> 0.3.0"},
-    {:exla, "~> 0.5.1"}
+    {:kino_bumblebee, "~> 0.3"},
+    {:exla, "~> 0.5"}
   ],
   system_env: [
     {"XLA_TARGET", "cuda118"}

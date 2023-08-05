@@ -2,15 +2,15 @@
 
 ```elixir
 Mix.install([
-  {:ex_aws, "~> 2.0"},
-  {:ex_aws_s3, "~> 2.0"},
+  {:ex_aws, "~> 2.4"},
+  {:ex_aws_s3, "~> 2.4"},
   {:poison, "~> 5.0"},
   {:hackney, "~> 1.18"},
   {:sweet_xml, "~> 0.7"},
-  {:explorer, "~> 0.5"},
-  {:evision, "~> 0.1.30"},
+  {:explorer, "~> 0.6"},
+  {:evision, "~> 0.1.33"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.9"}
+  {:kino, "~> 0.10"}
 ])
 ```
 
@@ -27,14 +27,15 @@ require Explorer.DataFrame
 
 ```elixir
 access_key_id_input = Kino.Input.password("ACCESS_KEY_ID")
-```
-
-```elixir
 secret_access_key_input = Kino.Input.password("SECRET_ACCESS_KEY")
-```
-
-```elixir
 region_input = Kino.Input.text("REGION")
+
+[
+  access_key_id_input,
+  secret_access_key_input,
+  region_input
+]
+|> Kino.Layout.grid(columns: 3)
 ```
 
 ```elixir
@@ -44,7 +45,7 @@ auth_config = [
   region: Kino.Input.read(region_input)
 ]
 
-"dummy"
+Kino.nothing()
 ```
 
 ## バケット一覧の取得

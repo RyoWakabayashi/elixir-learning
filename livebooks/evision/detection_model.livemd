@@ -4,9 +4,9 @@
 Mix.install(
   [
     {:nx, "~> 0.5"},
-    {:evision, "~> 0.1.30"},
+    {:evision, "~> 0.1.33"},
     {:req, "~> 0.3"},
-    {:kino, "~> 0.9"}
+    {:kino, "~> 0.10"}
   ],
   system_env: [
     {"EVISION_PREFER_PRECOMPILED", "false"}
@@ -17,9 +17,9 @@ Mix.install(
 ## Download model
 
 ```elixir
-weights_path = "/data/yolov3.weights"
-cfg_path = "/data/yolov3.cfg"
-label_path = "/data/label.txt"
+weights_path = "/tmp/yolov3.weights"
+cfg_path = "/tmp/yolov3.cfg"
+label_path = "/tmp/label.txt"
 
 "https://pjreddie.com/media/files/yolov3.weights"
 |> Req.get!(connect_options: [timeout: 300_000], output: weights_path)
@@ -109,7 +109,7 @@ end)
 ## Load a video
 
 ```elixir
-input_video = Evision.VideoCapture.videoCapture("/tmp/sample.mp4")
+input_video = Evision.VideoCapture.videoCapture("/tmp/sample.mov")
 ```
 
 ```elixir
@@ -188,13 +188,24 @@ end)
 ## Write results to a video file
 
 ```elixir
-fourcc = Evision.VideoWriter.fourcc(hd('m'), hd('p'), hd('4'), hd('v'))
+fourcc =
+  input_video
+  |> Evision.VideoCapture.get(Evision.Constant.cv_CAP_PROP_FOURCC())
+  |> round()
+```
+
+```elixir
+fourcc
+|> Integer.to_string(16)
+|> String.codepoints()
+|> Enum.chunk_every(2)
+|> Enum.map(fn str_list -> str_list |> Enum.join() |> String.to_integer() end)
 ```
 
 ```elixir
 output_video =
   Evision.VideoWriter.videoWriter(
-    "/tmp/sample_detected.mp4",
+    "/Users/oec/sample_detected.mov",
     fourcc,
     input_video.fps,
     {
@@ -215,7 +226,8 @@ Evision.VideoCapture.set(input_video, Evision.Constant.cv_CAP_PROP_POS_FRAMES(),
 
   if input_frame do
     output_frame = detect.(input_frame, model)
-    Evision.VideoWriter.write(output_video, output_frame)
+    ret = Evision.VideoWriter.write(output_video, output_frame)
+    IO.inspect(ret)
     true
   else
     false

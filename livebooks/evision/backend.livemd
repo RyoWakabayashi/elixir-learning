@@ -14,22 +14,22 @@ Mix.install([
 ## 各バックエンドでの加算
 
 ```elixir
-tensor = Nx.tensor([1, 2, 3], type: :f64, backend: {Nx.BinaryBackend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: :f64, backend: Nx.BinaryBackend)
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1, 2, 3], type: :f64, backend: {EXLA.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: :f64, backend: EXLA.Backend)
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1, 2, 3], type: :f64, backend: {Torchx.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: :f64, backend: Torchx.Backend)
 Nx.add(tensor, tensor)
 ```
 
 ```elixir
-tensor = Nx.tensor([1, 2, 3], type: :f64, backend: {Evision.Backend, device: :cpu})
+tensor = Nx.tensor([1, 2, 3], type: :f64, backend: Evision.Backend)
 Nx.add(tensor, tensor)
 ```
 
@@ -39,7 +39,7 @@ Nx.add(tensor, tensor)
 bench = fn backend ->
   tensor =
     {200, 200}
-    |> Nx.iota(type: :f64, backend: {backend, device: :cpu})
+    |> Nx.iota(type: :f64, backend: backend)
 
   Nx.add(tensor, tensor)
 end

@@ -5,10 +5,10 @@
 ```elixir
 Mix.install(
   [
-    {:bumblebee, "~> 0.2"},
+    {:bumblebee, "~> 0.3"},
     {:nx, "~> 0.5"},
     {:exla, "~> 0.5"},
-    {:kino, "~> 0.9"}
+    {:kino, "~> 0.10"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )

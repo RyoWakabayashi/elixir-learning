@@ -4,9 +4,9 @@
 Mix.install(
   [
     {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
-    {:evision, "~> 0.1.30"},
+    {:evision, "~> 0.1.33"},
     {:exla, "~> 0.5"},
-    {:kino, "~> 0.9"},
+    {:kino, "~> 0.10"},
     {:flow, "~> 1.2"}
   ],
   config: [
