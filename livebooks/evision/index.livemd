@@ -7,4 +7,5 @@
 * [Hisogram Flatten](histogram_flatten.livemd)
 * [DNN](dnn.livemd)
 * [Nx Backend](backend.livemd)
+* [Face Recognition](face_recognition.livemd)
 * [Pinecone](pinecone.livemd)
