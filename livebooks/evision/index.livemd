@@ -7,3 +7,4 @@
 * [Hisogram Flatten](histogram_flatten.livemd)
 * [DNN](dnn.livemd)
 * [Nx Backend](backend.livemd)
+* [Pinecone](pinecone.livemd)
