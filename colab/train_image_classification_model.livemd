@@ -1,0 +1,219 @@
+# Train image classification model
+
+```elixir
+Mix.install(
+  [
+    {:axon, "~> 0.5"},
+    {:nx, "~> 0.5"},
+    {:exla, "~> 0.5"},
+    {:req, "~> 0.3"},
+    {:kino, "~> 0.10"},
+    {:kino_vega_lite, "~> 0.1"}
+  ],
+  config: [
+    nx: [default_backend: EXLA.Backend]
+  ],
+  system_env: [
+    {"XLA_TARGET", "cuda118"},
+    {"EXLA_TARGET", "cuda"}
+  ]
+)
+```
+
+## Download data
+
+```elixir
+base_url = "https://storage.googleapis.com/cvdf-datasets/mnist/"
+%{body: train_images} = Req.get!(base_url <> "train-images-idx3-ubyte.gz")
+%{body: train_labels} = Req.get!(base_url <> "train-labels-idx1-ubyte.gz")
+```
+
+```elixir
+<<_::32, n_images::32, n_rows::32, n_cols::32, images::binary>> = train_images
+
+{n_images, n_rows, n_cols}
+```
+
+```elixir
+<<_::32, n_labels::32, labels::binary>> = train_labels
+
+n_labels
+```
+
+## Transform data
+
+```elixir
+images_tensor =
+  images
+  |> Nx.from_binary(:u8)
+  |> Nx.reshape(
+    {n_images, 1, n_rows, n_cols},
+    names: [:images, :channels, :height, :width]
+  )
+```
+
+```elixir
+images_display =
+  images_tensor
+  # 画像 1 枚毎に分割
+  |> Nx.to_batched(1)
+  # 先頭100枚
+  |> Enum.slice(0..99)
+  # 画像毎に形式を変換して表示
+  |> Enum.map(fn tensor ->
+    tensor
+    # 画像枚数の次元を削減する
+    |> Nx.squeeze(axes: [:images])
+    # 色、高さ、幅を高さ、幅、色の順に変える
+    |> Nx.transpose(axes: [:height, :width, :channels])
+    |> Kino.Image.new()
+  end)
+
+# 10列に並べて表示
+Kino.Layout.grid(images_display, columns: 10)
+```
+
+```elixir
+labels_tensor = Nx.from_binary(labels, :u8)
+```
+
+```elixir
+labels_display =
+  labels_tensor
+  |> Nx.to_batched(1)
+  |> Enum.slice(0..99)
+  |> Enum.map(fn tensor ->
+    tensor
+    |> Nx.squeeze()
+    |> Nx.to_number()
+    |> Integer.to_string()
+    |> Kino.Markdown.new()
+  end)
+
+Kino.Layout.grid(labels_display, columns: 10)
+```
+
+```elixir
+images_display
+|> Enum.zip(labels_display)
+|> Enum.map(fn {image, label} ->
+  Kino.Layout.grid([image, label], columns: 2)
+end)
+|> Kino.Layout.grid(columns: 10)
+```
+
+```elixir
+batch_size = 32
+```
+
+```elixir
+images_input =
+  images_tensor
+  |> Nx.divide(255)
+  |> Nx.to_batched(batch_size)
+```
+
+```elixir
+labels_input =
+  labels_tensor
+  |> Nx.new_axis(-1)
+  |> Nx.equal(Nx.tensor(Enum.to_list(0..9)))
+```
+
+```elixir
+labels_input = Nx.to_batched(labels_input, batch_size)
+```
+
+## Define model
+
+```elixir
+model =
+  Axon.input("input", shape: {nil, 1, n_rows, n_cols})
+  |> Axon.flatten()
+  |> Axon.dense(128, activation: :relu)
+  |> Axon.dense(10, activation: :softmax)
+```
+
+## Training
+
+```elixir
+loss_plot =
+  VegaLite.new(width: 300)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "step", type: :quantitative)
+  |> VegaLite.encode_field(:y, "loss", type: :quantitative)
+  |> Kino.VegaLite.new()
+
+acc_plot =
+  VegaLite.new(width: 300)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "step", type: :quantitative)
+  |> VegaLite.encode_field(:y, "accuracy", type: :quantitative)
+  |> Kino.VegaLite.new()
+
+Kino.Layout.grid([loss_plot, acc_plot], columns: 2)
+```
+
+```elixir
+params =
+  model
+  # 損失関数と最適化関数を指定
+  |> Axon.Loop.trainer(:categorical_cross_entropy, :adam)
+  # 正解率をデバッグ表示
+  |> Axon.Loop.metric(:accuracy, "accuracy")
+  # グラフ表示
+  |> Axon.Loop.kino_vega_lite_plot(loss_plot, "loss", event: :epoch_completed)
+  |> Axon.Loop.kino_vega_lite_plot(acc_plot, "accuracy", event: :epoch_completed)
+  # 入力、最大エポック数を指定してトレーニング実行
+  |> Axon.Loop.run(Stream.zip(images_input, labels_input), %{}, epochs: 10, compiler: EXLA)
+```
+
+## Prediction
+
+```elixir
+first_batch = Enum.at(images_input, 0)
+
+output = Axon.predict(model, params, first_batch)
+```
+
+```elixir
+predicted_labels =
+  output
+  |> Nx.argmax(axis: 1)
+  |> Nx.to_flat_list()
+```
+
+```elixir
+scores =
+  output
+  |> Nx.reduce_max(axes: [1])
+  |> Nx.to_flat_list()
+```
+
+```elixir
+[
+  Nx.to_batched(first_batch, 1),
+  predicted_labels,
+  scores
+]
+|> Enum.zip()
+|> Enum.map(fn {tensor, predicted_label, score} ->
+  [
+    tensor
+    |> Nx.multiply(255)
+    |> Nx.as_type(:u8)
+    |> Nx.squeeze(axes: [0])
+    |> Nx.transpose(axes: [1, 2, 0])
+    |> Kino.Image.new(),
+    predicted_label
+    |> Integer.to_string()
+    |> Kino.Markdown.new(),
+    score
+    |> Float.round(3)
+    |> Float.to_string()
+    |> Kino.Markdown.new()
+  ]
+  |> Kino.Layout.grid(columns: 3)
+end)
+|> Kino.Layout.grid(columns: 4)
+```
