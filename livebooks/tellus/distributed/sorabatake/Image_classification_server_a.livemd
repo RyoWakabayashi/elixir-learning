@@ -1,0 +1,164 @@
+# Image Classification Server A
+
+```elixir
+Mix.install(
+  [
+    {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
+    {:exla, "~> 0.5"},
+    {:axon_onnx, "~> 0.4"},
+    {:kino, "~> 0.10"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## Load models
+
+```elixir
+Nx.Defn.default_options(compiler: EXLA)
+Nx.global_default_backend(EXLA.Backend)
+```
+
+```elixir
+classes = ["clear", "cloudy"]
+```
+
+```elixir
+model_path = "/tmp/sorabatake/efficientnet_v2_m.onnx"
+
+{model, params} = AxonOnnx.import(model_path)
+```
+
+## Serve
+
+```elixir
+defmodule EfficientNetV2 do
+  import Nx.Defn
+
+  defn normalize(tensor) do
+    (tensor - Nx.tensor([0.485, 0.456, 0.406])) / Nx.tensor([0.229, 0.224, 0.225])
+  end
+
+  defn transform_for_input(img_tensor) do
+    (img_tensor / 255)
+    |> normalize()
+    |> Nx.transpose(axes: [2, 0, 1])
+  end
+
+  defn get_top_class_index(outputs) do
+    Nx.argmax(outputs, axis: 1)
+  end
+
+  defn softmax(tensor) do
+    Nx.exp(tensor) / Nx.sum(Nx.exp(tensor), axes: [-1], keep_axes: true)
+  end
+
+  defn get_top_class_score(outputs) do
+    outputs
+    |> softmax()
+    |> Nx.reduce_max(axes: [-1])
+  end
+
+  def preprocess(tensor_list, batch_size) do
+    tensor_list
+    |> Enum.map(fn tensor ->
+      transform_for_input(tensor)
+    end)
+    |> Nx.Batch.stack()
+    |> Nx.Batch.pad(batch_size - Enum.count(tensor_list))
+  end
+
+  def postprocess(outputs, classes) do
+    predicted_classes = get_top_class_index(outputs)
+    predicted_scores = get_top_class_score(outputs)
+
+    output_size =
+      outputs
+      |> Nx.shape()
+      |> elem(0)
+
+    0..(output_size - 1)
+    |> Enum.to_list()
+    |> Enum.map(fn index ->
+      predicted_class =
+        predicted_classes[index]
+        |> Nx.to_number()
+        |> then(&Enum.at(classes, &1))
+
+      predicted_score = Nx.to_number(predicted_scores[index])
+
+      %{
+        predicted_class: predicted_class,
+        predicted_score: predicted_score
+      }
+    end)
+  end
+
+  def predict(input_batch, model, params) do
+    Axon.predict(model, params, input_batch)
+  end
+end
+```
+
+```elixir
+frame = Kino.Frame.new()
+```
+
+```elixir
+batch_size = 4
+```
+
+```elixir
+serving =
+  Nx.Serving.new(
+    fn _ ->
+      fn input_batch ->
+        EfficientNetV2.predict(input_batch, model, params)
+      end
+    end,
+    compiler: EXLA
+  )
+  |> Nx.Serving.process_options(batch_size: batch_size)
+  |> Nx.Serving.client_preprocessing(fn tensor_list ->
+    input_batch = EfficientNetV2.preprocess(tensor_list, batch_size)
+    {input_batch, :client_info}
+  end)
+  |> Nx.Serving.client_postprocessing(fn outputs, _metadata, _multi? ->
+    predictions =
+      EfficientNetV2.postprocess(outputs, classes)
+
+    predictions
+    |> Enum.map(fn prediction ->
+      prediction.predicted_class
+    end)
+    |> Enum.join(", ")
+    |> then(&Kino.Frame.render(frame, &1))
+
+    predictions
+  end)
+```
+
+```elixir
+dummy_tensor =
+  0
+  |> Nx.broadcast({224, 224, 3})
+  |> Nx.as_type(:u8)
+```
+
+```elixir
+Nx.Serving.run(serving, [dummy_tensor])
+```
+
+```elixir
+Kino.start_child({Nx.Serving, serving: serving, name: ImageClassification})
+```
+
+```elixir
+Nx.Serving.batched_run({:distributed, ImageClassification}, [dummy_tensor])
+```
+
+## Get connection info
+
+```elixir
+{node(), Node.get_cookie()}
+```
