@@ -4,8 +4,8 @@
 Mix.install(
   [
     {:bumblebee, "~> 0.3"},
-    {:nx, "~> 0.5"},
-    {:exla, "~> 0.5"},
+    {:nx, "~> 0.6"},
+    {:exla, "~> 0.6"},
     {:kino, "~> 0.10"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
@@ -77,7 +77,7 @@ outputs = Axon.predict(resnet.model, resnet.params, inputs)
 outputs.logits
 |> Nx.squeeze()
 |> Axon.Activations.softmax()
-|> Bumblebee.Utils.Nx.top_k(k: 5)
+|> Nx.top_k(k: 5)
 |> then(fn {scores, class_ids} ->
   scores
   |> Nx.to_flat_list()

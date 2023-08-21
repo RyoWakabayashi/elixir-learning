@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:nx, github: "elixir-nx/nx", branch: "main", sparse: "nx", override: true},
+  {:nx, "~> 0.6"},
   {:flow, "~> 1.2"},
   {:kino, "~> 0.10"}
 ])
@@ -18,7 +18,7 @@ serving =
     IO.inspect("client_preprocessing #{Nx.to_number(input[0])}")
     {Nx.Batch.stack([input]), :client_info}
   end)
-  |> Nx.Serving.client_postprocessing(fn output, _metadata, _multi? ->
+  |> Nx.Serving.client_postprocessing(fn {output, _metadata}, _client_info ->
     IO.inspect("client_postprocessing #{Nx.to_number(output[[0, 0]])}")
     Nx.squeeze(output, axes: [0])
   end)

@@ -3,34 +3,39 @@
 # Nx による画像処理
 
 ```elixir
-Mix.install([
-  {:nx, "~> 0.5"},
-  {:kino, "~> 0.10"},
-  {:req, "~> 0.3"},
-  {:pixels, "~> 0.2.1"}
-])
+Mix.install(
+  [
+    {:nx, "~> 0.6"},
+    {:kino, "~> 0.10"},
+    {:req, "~> 0.3"},
+    {:pixels, "~> 0.3"}
+  ],
+  system_env: [
+    {"CROSSCOMPILE", "false"}
+  ]
+)
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
 Resolving Hex dependencies...
-Resolution completed in 0.527s
+Resolution completed in 0.508s
 New:
-  castore 1.0.1
+  castore 1.0.3
   complex 0.5.0
   elixir_make 0.6.3
-  finch 0.15.0
+  finch 0.16.0
   hpax 0.1.2
-  jason 1.4.0
-  kino 0.9.1
-  mime 2.0.3
+  jason 1.4.1
+  kino 0.10.0
+  mime 2.0.5
   mint 1.5.1
-  nimble_options 1.0.1
-  nimble_pool 0.2.6
-  nx 0.5.2
-  pixels 0.2.1
-  req 0.3.6
+  nimble_options 1.0.2
+  nimble_pool 1.0.0
+  nx 0.6.0
+  pixels 0.3.0
+  req 0.3.11
   table 0.1.2
   telemetry 1.2.1
 * Getting nx (Hex package)
@@ -49,26 +54,55 @@ New:
 * Getting hpax (Hex package)
 * Getting table (Hex package)
 * Getting complex (Hex package)
+==> table
+Compiling 5 files (.ex)
+Generated table app
+==> mime
+Compiling 1 file (.ex)
+Generated mime app
 ==> nimble_options
 Compiling 3 files (.ex)
 Generated nimble_options app
-==> hpax
-Compiling 4 files (.ex)
-Generated hpax app
-==> nimble_pool
-Compiling 2 files (.ex)
-Generated nimble_pool app
 ===> Analyzing applications...
 ===> Compiling telemetry
 ==> jason
 Compiling 10 files (.ex)
 Generated jason app
-==> table
-Compiling 5 files (.ex)
-Generated table app
+==> hpax
+Compiling 4 files (.ex)
+Generated hpax app
+==> complex
+Compiling 2 files (.ex)
+Generated complex app
+==> nx
+Compiling 32 files (.ex)
+Generated nx app
+==> kino
+Compiling 41 files (.ex)
+Generated kino app
+==> nimble_pool
+Compiling 2 files (.ex)
+Generated nimble_pool app
 ==> elixir_make
 Compiling 1 file (.ex)
 Generated elixir_make app
+==> pixels
+cc -c -g -O3  -I"/Users/rwakabay/.asdf/installs/erlang/26.0.2/erts-14.0.2/include" -fPIC -o c_src/pixels_jpeg.o c_src/pixels_jpeg.c
+c_src/pixels_jpeg.c:37:11: warning: initializing 'char *' with an expression of type 'unsigned char *' converts between pointers to integer types where one is of the unique plain 'char' type and the other is not [-Wpointer-sign]
+    char *image_data = ujGetImage(uj, NULL);
+          ^            ~~~~~~~~~~~~~~~~~~~~
+1 warning generated.
+cc -c -g -O3  -I"/Users/rwakabay/.asdf/installs/erlang/26.0.2/erts-14.0.2/include" -fPIC -o c_src/pixels_nif.o c_src/pixels_nif.c
+cc -c -g -O3  -I"/Users/rwakabay/.asdf/installs/erlang/26.0.2/erts-14.0.2/include" -fPIC -o c_src/pixels_png.o c_src/pixels_png.c
+cc -c -g -O3  -I"/Users/rwakabay/.asdf/installs/erlang/26.0.2/erts-14.0.2/include" -fPIC -o c_src/ext/lodepng.o c_src/ext/lodepng.c
+cc -c -g -O3  -I"/Users/rwakabay/.asdf/installs/erlang/26.0.2/erts-14.0.2/include" -fPIC -o c_src/ext/ujpeg.o c_src/ext/ujpeg.c
+cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -dynamiclib -undefined dynamic_lookup -shared -o /Users/rwakabay/Library/Caches/mix/installs/elixir-1.15.2-erts-14.0.2/4b392808bf2548e6ef345b9dc8156cfd/_build/dev/lib/pixels/priv/pixels_nif.so
+ld: warning: search path '/usr/local/lib' not found
+Compiling 3 files (.ex)
+warning: extra parentheses on a bitstring specifier "binary()" have been deprecated. Please remove the parentheses: "binary"
+  lib/pixels/identify.ex:10: Pixels.Identify.identify/1
+
+Generated pixels app
 ==> castore
 Compiling 1 file (.ex)
 Generated castore app
@@ -76,29 +110,14 @@ Generated castore app
 Compiling 1 file (.erl)
 Compiling 19 files (.ex)
 Generated mint app
-==> complex
-Compiling 2 files (.ex)
-Generated complex app
-==> nx
-Compiling 31 files (.ex)
-Generated nx app
-==> kino
-Compiling 39 files (.ex)
-Generated kino app
-==> pixels
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_jpeg.o c_src/pixels_jpeg.c
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_nif.o c_src/pixels_nif.c
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/pixels_png.o c_src/pixels_png.c
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/ext/lodepng.o c_src/ext/lodepng.c
-cc -c -g -O3  -I"/usr/local/lib/erlang/erts-12.3.2.2/include" -fPIC -o c_src/ext/ujpeg.o c_src/ext/ujpeg.c
-cc c_src/pixels_jpeg.o c_src/pixels_nif.o c_src/pixels_png.o c_src/ext/lodepng.o c_src/ext/ujpeg.o -Wl,--no-whole-archive -shared -o /home/livebook/.cache/mix/installs/elixir-1.14.2-erts-12.3.2.2/c74cb1a578c92ada3c1e673f9114bec3/_build/dev/lib/pixels/priv/pixels_nif.so
-Compiling 3 files (.ex)
-Generated pixels app
-==> mime
-Compiling 1 file (.ex)
-Generated mime app
 ==> finch
 Compiling 13 files (.ex)
+warning: Logger.warn/1 is deprecated. Use Logger.warning/2 instead
+  lib/finch/http2/pool.ex:362: Finch.HTTP2.Pool.connected/3
+
+warning: Logger.warn/1 is deprecated. Use Logger.warning/2 instead
+  lib/finch/http2/pool.ex:460: Finch.HTTP2.Pool.connected_read_only/3
+
 Generated finch app
 ==> req
 Compiling 5 files (.ex)
@@ -218,23 +237,23 @@ img_path = "rwakabay.png"
     {"content-length", "519082"},
     {"server", "GitHub.com"},
     {"content-type", "image/png"},
-    {"last-modified", "Wed, 05 Apr 2023 13:43:40 GMT"},
+    {"last-modified", "Wed, 26 Jul 2023 15:16:09 GMT"},
     {"access-control-allow-origin", "*"},
-    {"etag", "\"642d7b0c-7ebaa\""},
-    {"expires", "Wed, 12 Apr 2023 05:13:00 GMT"},
+    {"etag", "\"64c138b9-7ebaa\""},
+    {"expires", "Mon, 21 Aug 2023 03:25:17 GMT"},
     {"cache-control", "max-age=600"},
     {"x-proxy-cache", "MISS"},
-    {"x-github-request-id", "786C:572E:C7B16D:D22ACC:64363B84"},
+    {"x-github-request-id", "A1EE:6ED3:4EBFC5:53941A:64E2D6C5"},
     {"accept-ranges", "bytes"},
-    {"date", "Wed, 12 Apr 2023 06:44:53 GMT"},
+    {"date", "Mon, 21 Aug 2023 03:15:18 GMT"},
     {"via", "1.1 varnish"},
     {"age", "0"},
-    {"x-served-by", "cache-itm18827-ITM"},
-    {"x-cache", "HIT"},
-    {"x-cache-hits", "1"},
-    {"x-timer", "S1681281893.274448,VS0,VE161"},
+    {"x-served-by", "cache-itm18834-ITM"},
+    {"x-cache", "MISS"},
+    {"x-cache-hits", "0"},
+    {"x-timer", "S1692587718.813184,VS0,VE192"},
     {"vary", "Accept-Encoding"},
-    {"x-fastly-request-id", "36483fe0b661cf79bac26d241ed97099e42b7442"}
+    {"x-fastly-request-id", "64a006c1ba7e3d9759c7ec66253e761ff1b355a9"}
   ],
   body: "",
   private: %{}

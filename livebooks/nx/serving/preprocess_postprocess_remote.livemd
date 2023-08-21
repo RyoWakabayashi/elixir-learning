@@ -3,8 +3,8 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.5"},
-    {:exla, "~> 0.5"},
+    {:nx, "~> 0.6"},
+    {:exla, "~> 0.6"},
     {:kino, "~> 0.10"}
   ],
   config: [
@@ -63,8 +63,4 @@ distributed_preprocessing = fn input ->
 end
 
 Nx.Serving.batched_run(PrePostServing, Nx.tensor([1]), distributed_preprocessing)
-```
-
-```elixir
-
 ```

@@ -3,7 +3,7 @@
 ```elixir
 Mix.install(
   [
-    {:exla, "~> 0.5"},
+    {:exla, "~> 0.6"},
     {:axon_onnx, "~> 0.4"},
     {:stb_image, "~> 0.6"},
     {:req, "~> 0.3"},
@@ -23,7 +23,7 @@ classes =
 ```
 
 ```elixir
-model_path = "/data/resnet.onnx"
+model_path = "/tmp/resnet.onnx"
 
 unless File.exists?(model_path) do
   "https://media.githubusercontent.com/media/onnx/models/main/vision/classification/resnet/model/resnet18-v1-7.onnx"
@@ -34,7 +34,7 @@ end
 ```
 
 ```elixir
-img_path = "/data/shark.jpg"
+img_path = "/tmp/shark.jpg"
 
 img_tensor =
   "https://www.collinsdictionary.com/images/full/greatwhiteshark_157273892.jpg"

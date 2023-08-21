@@ -3,8 +3,8 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.5"},
-    {:exla, "~> 0.5"},
+    {:nx, "~> 0.6"},
+    {:exla, "~> 0.6"},
     {:kino, "~> 0.10"}
   ],
   config: [
@@ -48,7 +48,7 @@ pre_post_serving =
     # テンソルで与えられた入力をバッチに変換する
     {Nx.Batch.stack([input]), :client_info}
   end)
-  |> Nx.Serving.client_postprocessing(fn output, _metadata, _multi? ->
+  |> Nx.Serving.client_postprocessing(fn {output, _metadata}, _client_info ->
     # 後処理
     IO.inspect("client_postprocessing")
     IO.inspect(Node.self())

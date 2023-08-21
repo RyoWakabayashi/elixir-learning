@@ -2,9 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.5"},
+  {:nx, "~> 0.6"},
   {:axon, "~> 0.5"},
-  {:exla, "~> 0.5"},
+  {:exla, "~> 0.6"},
   {:kino, "~> 0.10"},
   {:kino_vega_lite, "~> 0.1"}
 ])

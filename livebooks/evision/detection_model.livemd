@@ -3,8 +3,8 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.5"},
-    {:evision, "~> 0.1.33"},
+    {:nx, "~> 0.6"},
+    {:evision, "~> 0.1"},
     {:req, "~> 0.3"},
     {:kino, "~> 0.10"}
   ],
@@ -188,24 +188,13 @@ end)
 ## Write results to a video file
 
 ```elixir
-fourcc =
-  input_video
-  |> Evision.VideoCapture.get(Evision.Constant.cv_CAP_PROP_FOURCC())
-  |> round()
-```
-
-```elixir
-fourcc
-|> Integer.to_string(16)
-|> String.codepoints()
-|> Enum.chunk_every(2)
-|> Enum.map(fn str_list -> str_list |> Enum.join() |> String.to_integer() end)
+fourcc = Evision.VideoWriter.fourcc(hd(~c"m"), hd(~c"p"), hd(~c"4"), hd(~c"v"))
 ```
 
 ```elixir
 output_video =
   Evision.VideoWriter.videoWriter(
-    "/Users/oec/sample_detected.mov",
+    "/tmp/sample_detected.mp4",
     fourcc,
     input_video.fps,
     {

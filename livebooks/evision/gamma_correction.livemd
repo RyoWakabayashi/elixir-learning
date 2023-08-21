@@ -3,10 +3,10 @@
 ```elixir
 Mix.install([
   {:req, "~> 0.3"},
-  {:evision, "~> 0.1.33"},
+  {:evision, "~> 0.1"},
   {:kino, "~> 0.10"},
-  {:nx, "~> 0.5"},
-  {:kino_vega_lite, "~> 0.1.9"}
+  {:nx, "~> 0.6"},
+  {:kino_vega_lite, "~> 0.1"}
 ])
 ```
 
