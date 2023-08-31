@@ -1,0 +1,28 @@
+---
+
+name: New Feature
+description: 機能追加
+title: ""
+labels: ["feature"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        - 追加する機能の概要
+          - （機能の概要を簡潔に箇条書きで書く）
+        - 追加する理由
+          - （追加する背景、理由を書く）
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where the feature add
+      description: 昨日の追加場所
+      options:
+        - frontend
+        - backend
+        - infrastructure
+        - other
+      default: 0
+    validations:
+      required: true
