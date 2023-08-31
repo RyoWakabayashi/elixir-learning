@@ -6,13 +6,6 @@ title: "New Feature"
 labels: ["feature"]
 
 body:
-  - type: markdown
-    attributes:
-      value: |
-        - 追加する機能の概要
-          - （機能の概要を簡潔に箇条書きで書く）
-        - 追加する理由
-          - （追加する背景、理由を書く）
   - type: dropdown
     id: where
     attributes:
@@ -26,3 +19,13 @@ body:
       default: 0
     validations:
       required: true
+
+  - type: textarea
+    attributes:
+      label: Description
+      description: 詳細な説明
+      value: |
+        - 追加する機能の概要
+          - （機能の概要を簡潔に箇条書きで書く）
+        - 追加する理由
+          - （追加する背景、理由を書く）
