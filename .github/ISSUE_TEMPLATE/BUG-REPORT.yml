@@ -2,7 +2,7 @@
 
 name: Bug Report
 description: 不具合の報告
-title: ""
+title: "Bug Report"
 labels: ["bug"]
 
 body:
