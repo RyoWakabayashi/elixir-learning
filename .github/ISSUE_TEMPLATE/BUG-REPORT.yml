@@ -6,15 +6,6 @@ title: "Bug Report"
 labels: ["bug"]
 
 body:
-  - type: markdown
-    attributes:
-      value: |
-        - 不具合の現象
-          - （発生した現象を簡潔に箇条書きで書く）
-        - 不具合の再現手順
-          - （この現象が発生したときの操作方法や入力した値などを書く）
-        - 解決後の期待する内容
-          - （本来の正常なあるべき状態を書く）
   - type: dropdown
     id: where
     attributes:
