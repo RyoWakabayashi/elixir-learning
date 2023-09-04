@@ -1,0 +1,202 @@
+# EXGBoost Titanic
+
+```elixir
+Mix.install([
+  {:exgboost, "~> 0.3"},
+  {:explorer, "~> 0.6"},
+  {:nx, "~> 0.6"},
+  {:kino, "~> 0.10"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## Alias
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+require Explorer.DataFrame
+```
+
+## Load data
+
+```elixir
+train_data_input = Kino.Input.file("train data")
+```
+
+```elixir
+test_data_input = Kino.Input.file("test data")
+```
+
+```elixir
+train_data =
+  train_data_input
+  |> Kino.Input.read()
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
+  |> DataFrame.from_csv!()
+
+Kino.DataTable.new(train_data)
+```
+
+```elixir
+test_data =
+  test_data_input
+  |> Kino.Input.read()
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
+  |> DataFrame.from_csv!()
+
+Kino.DataTable.new(test_data)
+```
+
+## Preprocess
+
+```elixir
+defmodule Preprocess do
+  defp load_csv(kino_input) do
+    kino_input
+    |> Kino.Input.read()
+    |> Map.get(:file_ref)
+    |> Kino.Input.file_path()
+    |> DataFrame.from_csv!()
+  end
+
+  defp fill_empty(data, fill_map) do
+    fill_map
+    |> Enum.reduce(data, fn {column_name, fill_value}, acc ->
+      DataFrame.put(
+        acc,
+        column_name,
+        Series.fill_missing(data[column_name], fill_value)
+      )
+    end)
+  end
+
+  defp replace_dummy(data, columns_names) do
+    data
+    |> DataFrame.dummies(columns_names)
+    |> DataFrame.concat_columns(DataFrame.discard(data, columns_names))
+  end
+
+  defp to_tensor(data) do
+    data
+    |> DataFrame.to_columns()
+    |> Map.values()
+    |> Nx.tensor()
+    |> Nx.transpose()
+  end
+
+  def process(kino_input, id_key, label_key) do
+    data_org = load_csv(kino_input)
+
+    id_list = Series.to_list(data_org[id_key])
+
+    has_label_key =
+      data_org
+      |> DataFrame.names()
+      |> Enum.member?(label_key)
+
+    labels =
+      if has_label_key do
+        Series.to_tensor(data_org[label_key])
+      else
+        nil
+      end
+
+    inputs =
+      if has_label_key do
+        DataFrame.discard(data_org, [label_key])
+      else
+        data_org
+      end
+      |> DataFrame.discard([id_key, "Cabin", "Name", "Ticket"])
+      |> fill_empty(%{"Age" => 0.0, "Embarked" => "S", "Fare" => 0.0})
+      |> replace_dummy(["Sex", "Embarked"])
+      |> to_tensor()
+
+    {id_list, labels, inputs}
+  end
+end
+```
+
+```elixir
+{
+  train_id_list,
+  train_labels,
+  train_inputs
+} = Preprocess.process(train_data_input, "PassengerId", "Survived")
+```
+
+```elixir
+{
+  test_id_list,
+  nil,
+  test_inputs
+} = Preprocess.process(test_data_input, "PassengerId", "Survived")
+```
+
+## Training
+
+```elixir
+loss_plot =
+  VegaLite.new(width: 700)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "step", type: :quantitative)
+  |> VegaLite.encode_field(:y, "mlogloss", type: :quantitative)
+  |> Kino.VegaLite.new()
+```
+
+```elixir
+step_callback =
+  EXGBoost.Training.Callback.new(:after_iteration, fn state ->
+    if rem(state.iteration, 20) == 0 do
+      Kino.VegaLite.push(
+        loss_plot,
+        %{"step" => state.iteration, "mlogloss" => state.metrics["training"]["mlogloss"]}
+      )
+    end
+
+    {:cont, state}
+  end)
+```
+
+```elixir
+booster =
+  EXGBoost.train(train_inputs, train_labels,
+    num_class: 2,
+    objective: :multi_softprob,
+    num_boost_rounds: 10000,
+    early_stopping_rounds: 10,
+    evals: [{train_inputs, train_labels, "training"}],
+    callbacks: [step_callback]
+  )
+```
+
+## Prediction
+
+```elixir
+preds = EXGBoost.predict(booster, test_inputs) |> Nx.argmax(axis: -1)
+```
+
+```elixir
+results =
+  preds
+  |> Nx.to_flat_list()
+  |> Enum.map(&round(&1))
+  |> then(
+    &%{
+      "PassengerId" => test_id_list,
+      "Survived" => &1
+    }
+  )
+  |> DataFrame.new()
+
+Kino.DataTable.new(results)
+```
+
+```elixir
+results
+|> DataFrame.dump_csv!()
+|> then(&Kino.Download.new(fn -> &1 end, filename: "result.csv"))
+```
