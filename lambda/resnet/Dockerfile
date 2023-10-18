@@ -1,4 +1,4 @@
-FROM amazonlinux:2022.0.20221207.4 as build
+FROM amazonlinux:2023.2.20231011.0 as build
 
 RUN set -e \
     && yum -y update \
@@ -10,7 +10,7 @@ RUN set -e \
         gcc-c++ \
     && yum clean all
 
-ARG OTP_VERSION="25.2"
+ARG OTP_VERSION="24.3"
 
 RUN set -e \
     && OTP_DOWNLOAD_URL="https://github.com/erlang/otp/archive/OTP-${OTP_VERSION}.tar.gz" \
@@ -21,12 +21,12 @@ RUN set -e \
     && rm otp-src.tar.gz \
     && ( cd $ERL_TOP \
         && ./otp_build autoconf \
-        && ./configure \
+        && ./configure --disable-jit \
         && make -j$(nproc) \
         && make install ) \
     && find /usr/local -name examples | xargs rm -rf
 
-ARG REBAR3_VERSION="3.20.0"
+ARG REBAR3_VERSION="3.22.1"
 
 RUN set -xe \
     && REBAR3_DOWNLOAD_URL="https://github.com/erlang/rebar3/archive/${REBAR3_VERSION}.tar.gz" \
@@ -39,7 +39,7 @@ RUN set -xe \
     && install -v ./rebar3 /usr/local/bin/ \
     && rm -rf /usr/src/rebar3-src
 
-ARG ELIXIR_VERSION=1.14.2
+ARG ELIXIR_VERSION=1.15.7
 
 ENV LANG=en_US.UTF-8
 
@@ -72,7 +72,7 @@ RUN mix download_models
 
 RUN MIX_ENV=prod mix aws.release Resnet
 
-FROM amazonlinux:2022.0.20221207.4
+FROM amazonlinux:2023.2.20231011.0
 
 ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie /usr/local/bin/aws-lambda-rie
 

@@ -3,9 +3,9 @@
 ```elixir
 Mix.install([
   {:exgboost, "~> 0.3"},
-  {:explorer, "~> 0.6"},
+  {:explorer, "~> 0.7"},
   {:nx, "~> 0.6"},
-  {:kino, "~> 0.10"},
+  {:kino, "~> 0.11"},
   {:kino_vega_lite, "~> 0.1"}
 ])
 ```

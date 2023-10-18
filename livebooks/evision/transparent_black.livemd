@@ -3,7 +3,7 @@
 ```elixir
 Mix.install([
   {:evision, "~> 0.1"},
-  {:kino, "~> 0.10"},
+  {:kino, "~> 0.11"},
   {:nx, "~> 0.6"}
 ])
 ```
@@ -18,7 +18,9 @@ img_input = Kino.Input.image("IMAGE", format: :png)
 bgr_img =
   img_input
   |> Kino.Input.read()
-  |> Map.get(:data)
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
+  |> File.read!()
   |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
   |> Evision.Mat.to_nx(Nx.BinaryBackend)
 

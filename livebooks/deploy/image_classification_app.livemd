@@ -5,10 +5,10 @@
 ```elixir
 Mix.install(
   [
-    {:bumblebee, "~> 0.3"},
+    {:bumblebee, "~> 0.4"},
     {:nx, "~> 0.6"},
     {:exla, "~> 0.6"},
-    {:kino, "~> 0.10"}
+    {:kino, "~> 0.11"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )
@@ -53,7 +53,9 @@ Kino.listen(form, fn %{data: %{image: image}, origin: origin} ->
   image =
     image
     |> then(fn input ->
-      input.data
+      input.file_ref
+      |> Kino.Input.file_path()
+      |> File.read!()
       |> Nx.from_binary(:u8)
       |> Nx.reshape({input.height, input.width, 3})
     end)

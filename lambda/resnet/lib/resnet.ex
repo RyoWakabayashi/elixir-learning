@@ -1,7 +1,5 @@
 defmodule Resnet do
   use FaasBase, service: :aws
-  alias FaasBase.Logger
-  alias FaasBase.Aws.Request
   alias FaasBase.Aws.Response
 
   @impl FaasBase

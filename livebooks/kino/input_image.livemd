@@ -4,7 +4,7 @@
 Mix.install([
   {:nx, "~> 0.6"},
   {:evision, "~> 0.1"},
-  {:kino, "~> 0.10"}
+  {:kino, "~> 0.11"}
 ])
 ```
 
@@ -21,7 +21,10 @@ image = Kino.Input.read(image_input)
 ```
 
 ```elixir
-image.data
+image
+|> Map.get(:file_ref)
+|> Kino.Input.file_path()
+|> File.read!()
 |> Nx.from_binary(:u8)
 |> Nx.reshape({image.height, image.width, 3})
 |> Evision.Mat.from_nx_2d()
@@ -29,7 +32,10 @@ image.data
 ```
 
 ```elixir
-image.data
+image
+|> Map.get(:file_ref)
+|> Kino.Input.file_path()
+|> File.read!()
 |> Nx.from_binary(:u8)
 |> Nx.reshape({image.height, image.width, 3})
 |> Kino.Image.new()
@@ -46,7 +52,10 @@ image = Kino.Input.read(image_input)
 ```
 
 ```elixir
-image.data
+image
+|> Map.get(:file_ref)
+|> Kino.Input.file_path()
+|> File.read!()
 |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
@@ -59,7 +68,9 @@ image_input = Kino.Input.image("IMAGE", format: :jpeg)
 ```elixir
 image_input
 |> Kino.Input.read()
-|> Map.get(:data)
+|> Map.get(:file_ref)
+|> Kino.Input.file_path()
+|> File.read!()
 |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
 ```
 
@@ -88,7 +99,9 @@ Kino.Download.new(
   fn ->
     image_input
     |> Kino.Input.read()
-    |> Map.get(:data)
+    |> Map.get(:file_ref)
+    |> Kino.Input.file_path()
+    |> File.read!()
   end,
   filename: "resized.png"
 )

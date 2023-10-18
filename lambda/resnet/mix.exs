@@ -22,10 +22,10 @@ defmodule Resnet.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:faas_base, "~> 1.1.0"},
-      {:bumblebee, "~> 0.1"},
+      {:faas_base, "~> 1.1.1"},
+      {:bumblebee, "~> 0.4"},
       {:stb_image, "~> 0.6"},
-      {:exla, "~> 0.4"}
+      {:exla, "~> 0.6"}
     ]
   end
 end

@@ -2,13 +2,13 @@
 
 ```elixir
 Mix.install([
-  {:ex_aws, "~> 2.4", override: true},
+  {:ex_aws, "~> 2.5", override: true},
   {:ex_aws_translate, "~> 0.3"},
   {:jason, "~> 1.4"},
   {:poison, "~> 5.0"},
-  {:hackney, "~> 1.18"},
+  {:hackney, "~> 1.20"},
   {:sweet_xml, "~> 0.7"},
-  {:kino, "~> 0.10"}
+  {:kino, "~> 0.11"}
 ])
 ```
 

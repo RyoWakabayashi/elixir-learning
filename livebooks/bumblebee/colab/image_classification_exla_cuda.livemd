@@ -3,10 +3,10 @@
 ```elixir
 Mix.install(
   [
-    {:bumblebee, "~> 0.1"},
-    {:nx, "~> 0.5"},
-    {:exla, "~> 0.5"},
-    {:kino, "~> 0.10"}
+    {:bumblebee, "~> 0.4"},
+    {:nx, "~> 0.6"},
+    {:exla, "~> 0.6"},
+    {:kino, "~> 0.11"}
   ],
   system_env: [
     {"XLA_TARGET", "cuda114"}
@@ -61,11 +61,11 @@ image_input = Kino.Input.image("IMAGE", size: {224, 224})
 image =
   image_input
   |> Kino.Input.read()
-  |> then(fn input ->
-    input.data
-    |> Nx.from_binary(:u8)
-    |> Nx.reshape({input.height, input.width, 3})
-  end)
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
+  |> File.read!()
+  |> Nx.from_binary(:u8)
+  |> Nx.reshape({input.height, input.width, 3})
 
 Kino.Image.new(image)
 ```

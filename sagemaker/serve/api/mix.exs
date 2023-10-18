@@ -37,7 +37,7 @@ defmodule Api.MixProject do
       {:telemetry_metrics, "~> 0.6"},
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
-      {:bumblebee, "~> 0.1"},
+      {:bumblebee, "~> 0.4"},
       {:stb_image, "~> 0.6"},
       {:exla, "~> 0.4"},
       {:plug_cowboy, "~> 2.5"}

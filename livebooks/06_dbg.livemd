@@ -2,11 +2,11 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.5"},
-  {:evision, "~> 0.1.33"},
-  {:explorer, "~> 0.6"},
+  {:nx, "~> 0.6"},
+  {:evision, "~> 0.1"},
+  {:explorer, "~> 0.7"},
   {:req, "~> 0.3"},
-  {:kino, "~> 0.10"},
+  {:kino, "~> 0.11"},
   {:kino_vega_lite, "~> 0.1"}
 ])
 ```
@@ -30,7 +30,7 @@ require Explorer.DataFrame
 |> dbg()
 ```
 
-## Section
+## 配列
 
 ```elixir
 [1, 2, 3]
@@ -39,6 +39,8 @@ require Explorer.DataFrame
 |> Enum.map(&(&1 * 2))
 |> dbg()
 ```
+
+## 行列
 
 ```elixir
 [1, 2, 3]
