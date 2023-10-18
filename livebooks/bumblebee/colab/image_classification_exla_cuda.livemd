@@ -61,11 +61,14 @@ image_input = Kino.Input.image("IMAGE", size: {224, 224})
 image =
   image_input
   |> Kino.Input.read()
-  |> Map.get(:file_ref)
-  |> Kino.Input.file_path()
-  |> File.read!()
-  |> Nx.from_binary(:u8)
-  |> Nx.reshape({input.height, input.width, 3})
+  |> then(fn input ->
+    input
+    |> Map.get(:file_ref)
+    |> Kino.Input.file_path()
+    |> File.read!()
+    |> Nx.from_binary(:u8)
+    |> Nx.reshape({input.height, input.width, 3})
+  end)
 
 Kino.Image.new(image)
 ```

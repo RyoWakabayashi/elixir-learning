@@ -23,9 +23,11 @@ chroma_key_img_input = Kino.Input.image("CHROMA KEY IMAGE", format: :rgb)
 ```
 
 ```elixir
+file = Kino.Input.read(chroma_key_img_input)
+
 chroma_key_img =
-  chroma_key_img_input
-  |> Kino.Input.read()
+  file
+  |> Map.merge(%{data: file.file_ref |> Kino.Input.file_path() |> File.read!()})
   |> Image.from_kino!()
 
 Image.Kino.show(chroma_key_img, max_height: 400)
