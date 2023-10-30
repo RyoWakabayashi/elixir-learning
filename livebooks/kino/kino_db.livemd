@@ -1,0 +1,103 @@
+# KinoDB
+
+```elixir
+Mix.install([
+  {:kino_db, "~> 0.2"},
+  {:postgrex, "~> 0.17"}
+])
+```
+
+## Connect to DB
+
+<!-- livebook:{"attrs":{"database":"postgres","hostname":"postgres_for_livebook","password_secret":"DB_PASSWORD","port":5432,"type":"postgres","use_ipv6":false,"use_ssl":false,"username":"postgres","variable":"conn"},"chunks":null,"kind":"Elixir.KinoDB.ConnectionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+opts = [
+  hostname: "postgres_for_livebook",
+  port: 5432,
+  username: "postgres",
+  password: System.fetch_env!("LB_DB_PASSWORD"),
+  database: "postgres"
+]
+
+{:ok, conn} = Kino.start_child({Postgrex, opts})
+```
+
+## Execute Query
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"postgres","variable":"conn"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"CREATE TABLE\n  sample\n(\n  id integer,\n  name varchar(20)\n)","result_variable":"result","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result =
+  Postgrex.query!(
+    conn,
+    """
+    CREATE TABLE
+      sample
+    (
+      id integer,
+      name varchar(20)
+    )
+    """,
+    []
+  )
+```
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"postgres","variable":"conn"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"INSERT INTO\n  sample\n(\n  id,\n  name\n)\nVALUES\n(\n  1,\n  'John'\n)\nRETURNING\n  id","result_variable":"result3","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result3 =
+  Postgrex.query!(
+    conn,
+    """
+    INSERT INTO
+      sample
+    (
+      id,
+      name
+    )
+    VALUES
+    (
+      1,
+      'John'
+    )
+    RETURNING
+      id
+    """,
+    []
+  )
+```
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"postgres","variable":"conn"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"SELECT\n  *\nFROM\n  sample","result_variable":"result2","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result2 =
+  Postgrex.query!(
+    conn,
+    """
+    SELECT
+      *
+    FROM
+      sample
+    """,
+    []
+  )
+```
+
+## SmartCell to Code
+
+```elixir
+opts = [
+  hostname: "postgres_for_livebook",
+  port: 5432,
+  username: "postgres",
+  password: "postgres",
+  database: "postgres"
+]
+
+{:ok, conn2} = Kino.start_child({Postgrex, opts})
+```
+
+```elixir
+result4 = Postgrex.query!(conn2, "SELECT * FROM sample", [])
+```
