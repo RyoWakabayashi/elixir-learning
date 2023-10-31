@@ -83,6 +83,14 @@ RUN apt-get upgrade -y \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
+# For PostgreSQL
+RUN apt-get upgrade -y \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y \
+    postgresql-client \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
 ENV LIVEBOOK_HOME=/home/livebook
 
 COPY ./livebooks /home/livebook

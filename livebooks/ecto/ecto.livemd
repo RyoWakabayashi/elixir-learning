@@ -1,0 +1,190 @@
+# Ecto
+
+```elixir
+Mix.install([
+  {:ecto, "~> 3.10"},
+  {:ecto_sql, "~> 3.10"},
+  {:jason, "~> 1.4"},
+  {:kino, "~> 0.11.0"},
+  {:postgrex, "~> 0.17.3"}
+])
+```
+
+## Connect to DB
+
+```elixir
+defmodule Repo do
+  use Ecto.Repo,
+    otp_app: :my_notebook,
+    adapter: Ecto.Adapters.Postgres
+end
+```
+
+```elixir
+opts = [
+  hostname: "postgres_for_livebook",
+  port: 5432,
+  username: "postgres",
+  password: System.fetch_env!("LB_DB_PASSWORD"),
+  database: "postgres"
+]
+
+Kino.start_child({Repo, opts})
+```
+
+## Migration
+
+```elixir
+defmodule Migrations.CreateTeamMemberTable do
+  use Ecto.Migration
+
+  def change do
+    create table(:team_member) do
+      add(:name, :string)
+      add(:age, :integer)
+      add(:weight, :float)
+      add(:has_license, :boolean)
+      add(:hash, :bit, size: 8)
+      add(:languages, {:array, :string})
+      add(:skil_level, {:map, :integer})
+      add(:salary, :decimal)
+      add(:date_of_birth, :date)
+      add(:starting_time_of_work, :time)
+
+      timestamps()
+    end
+  end
+end
+```
+
+```elixir
+Ecto.Migrator.up(Repo, 1, Migrations.CreateTeamMemberTable)
+```
+
+## Execute query
+
+```elixir
+defmodule TeamMember do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  schema "team_member" do
+    field(:name, :string)
+    field(:age, :integer)
+    field(:weight, :float)
+    field(:has_license, :boolean)
+    field(:hash, :binary)
+    field(:languages, {:array, :string})
+    field(:skil_level, {:map, :integer})
+    field(:salary, :decimal)
+    field(:date_of_birth, :date)
+    field(:starting_time_of_work, :time)
+
+    timestamps()
+  end
+
+  def changeset(team_member, attrs) do
+    team_member
+    |> cast(attrs, [
+      :name,
+      :age,
+      :weight,
+      :has_license,
+      :hash,
+      :languages,
+      :skil_level,
+      :salary,
+      :date_of_birth,
+      :starting_time_of_work
+    ])
+    |> validate_required([:name])
+  end
+end
+```
+
+### Insert
+
+```elixir
+%TeamMember{}
+|> TeamMember.changeset(%{
+  name: "Alice",
+  age: 20,
+  weight: 60.0,
+  has_license: true,
+  hash: <<0b11111111>>,
+  languages: ["Japanese", "English"],
+  skil_level: %{frontend: 5, backend: 3},
+  salary: 1000_000,
+  date_of_birth: ~D[2000-01-01],
+  starting_time_of_work: ~T[08:30:00.0010]
+})
+|> Repo.insert()
+```
+
+```elixir
+now =
+  NaiveDateTime.utc_now()
+  |> NaiveDateTime.truncate(:second)
+
+entries =
+  [
+    %{name: "Bob", age: 20},
+    %{name: "John", age: 30},
+    %{name: "Ryo", age: 39}
+  ]
+  |> Enum.map(fn attr ->
+    Map.merge(attr, %{
+      inserted_at: now,
+      updated_at: now
+    })
+  end)
+
+Repo.insert_all(TeamMember, entries)
+```
+
+### Select
+
+```elixir
+team_members = Repo.all(TeamMember)
+```
+
+```elixir
+team_members
+|> Enum.map(fn team_member ->
+  Map.drop(team_member, [:hash])
+end)
+|> Kino.DataTable.new()
+```
+
+```elixir
+import Ecto.Query
+```
+
+```elixir
+Repo.all(
+  from(tm in TeamMember,
+    select: %{member_name: tm.name, member_age: tm.age},
+    where: tm.age < 25
+  )
+)
+```
+
+### Update
+
+```elixir
+TeamMember
+|> Repo.get!(2)
+|> TeamMember.changeset(%{
+  age: 21,
+  weight: 62.0
+})
+|> Repo.update()
+```
+
+### Delete
+
+```elixir
+TeamMember
+|> Repo.get_by!(name: "Alice")
+|> Repo.delete()
+```
