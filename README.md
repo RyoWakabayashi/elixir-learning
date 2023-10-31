@@ -4,10 +4,26 @@ Elixir 学習用
 
 ## コンテナからの実行
 
+### Livebook 単独での起動
+
+```bash
+
 ```bash
 $ docker-compose up
 ...
 Attaching to elixir-learning-livebook-1
+elixir-learning-livebook-1  | [Livebook] Application running at http://localhost:8080/?token=xxxxx
+```
+
+表示される URL にアクセスする
+
+### Livebook と PostgreSQL を同時に起動
+
+```bash
+$ docker compose -f docker-compose.with-db.yml up --build
+...
+postgres_for_livebook  | 2023-10-30 11:47:54.930 UTC [1] LOG:  database system is ready to accept connections
+...
 elixir-learning-livebook-1  | [Livebook] Application running at http://localhost:8080/?token=xxxxx
 ```
 
