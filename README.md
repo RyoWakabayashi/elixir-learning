@@ -24,7 +24,7 @@ $ docker compose -f docker-compose.with-db.yml up --build
 ...
 postgres_for_livebook  | 2023-10-30 11:47:54.930 UTC [1] LOG:  database system is ready to accept connections
 ...
-elixir-learning-livebook-1  | [Livebook] Application running at http://localhost:8080/?token=xxxxx
+livebook_with_db       | [Livebook] Application running at http://localhost:8080/?token=xxxxx
 ```
 
 表示される URL にアクセスする
