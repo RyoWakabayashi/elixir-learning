@@ -1,0 +1,176 @@
+# Image hash with DB
+
+```elixir
+Mix.install([
+  {:ecto, "~> 3.10"},
+  {:ecto_sql, "~> 3.10"},
+  {:jason, "~> 1.4"},
+  {:postgrex, "~> 0.17.3"},
+  {:image, "~> 0.38"},
+  {:req, "~> 0.3"},
+  {:kino, "~> 0.11"}
+])
+```
+
+## 画像の準備
+
+```elixir
+# 元画像
+original_img =
+  "https://www.elixirconf.eu/assets/images/drops.svg"
+  |> Req.get!()
+  |> Map.get(:body)
+  |> Image.from_binary!()
+
+# グレースケール
+gray_img = Image.to_colorspace!(original_img, :bw)
+
+# リサイズ
+resized_img = Image.resize!(original_img, 0.5)
+
+# 回転
+rotated_img = Image.rotate!(original_img, 45)
+
+# 切り取り
+cropped_img = Image.crop!(original_img, 0.07, 0.07, 0.9, 0.9)
+
+# 文字追加
+text_img = Image.Text.text!("Elixir", text_fill_color: :purple)
+with_text_img = Image.compose!(original_img, text_img, x: 300, y: 100)
+
+# 別画像
+other_img =
+  "https://hexdocs.pm/phoenix/assets/logo.png"
+  |> Req.get!()
+  |> Map.get(:body)
+  |> Image.from_binary!()
+
+img_list =
+  [
+    %{name: "original_img", image: original_img},
+    %{name: "gray_img", image: gray_img},
+    %{name: "resized_img", image: resized_img},
+    %{name: "rotated_img", image: rotated_img},
+    %{name: "cropped_img", image: cropped_img},
+    %{name: "with_text", image: with_text_img},
+    %{name: "other", image: other_img}
+  ]
+
+img_list
+|> Enum.map(fn %{name: name, image: img} ->
+  Kino.Layout.grid([name, img], columns: 1)
+end)
+|> Kino.Layout.grid(columns: 4)
+```
+
+## ハッシュの計算
+
+```elixir
+img_list =
+  Enum.map(img_list, fn %{image: img} = map ->
+    Map.merge(map, %{dhash: Image.dhash(img) |> elem(1)})
+  end)
+```
+
+## DB 準備
+
+```elixir
+defmodule Repo do
+  use Ecto.Repo,
+    otp_app: :my_notebook,
+    adapter: Ecto.Adapters.Postgres
+end
+```
+
+```elixir
+opts = [
+  hostname: "postgres_for_livebook",
+  port: 5432,
+  username: "postgres",
+  password: System.fetch_env!("LB_DB_PASSWORD"),
+  database: "postgres"
+]
+
+Kino.start_child({Repo, opts})
+```
+
+```elixir
+defmodule Migrations.CreateImageTable do
+  use Ecto.Migration
+
+  def change do
+    create table(:image) do
+      add(:name, :string)
+      add(:dhash, :bit, size: 64)
+    end
+  end
+end
+```
+
+```elixir
+Ecto.Migrator.up(Repo, 11, Migrations.CreateImageTable)
+```
+
+## DB への登録
+
+```elixir
+defmodule ImageSchema do
+  use Ecto.Schema
+
+  schema "image" do
+    field(:name, :string)
+    field(:dhash, :binary)
+  end
+end
+```
+
+```elixir
+img_list
+|> Enum.map(fn map ->
+  Map.delete(map, :image)
+end)
+|> then(&Repo.insert_all(ImageSchema, &1))
+```
+
+```elixir
+Repo.all(ImageSchema)
+```
+
+## 類似画像の検索
+
+```elixir
+query =
+  """
+  SELECT
+    src.name as src_name,
+    dst.name as dst_name,
+    bit_count(src.dhash # dst.dhash) as humming_distance
+  FROM
+    image AS src
+  INNER JOIN
+    image AS dst
+  ON
+    src.id < dst.id
+  AND
+    bit_count(src.dhash # dst.dhash) < 20
+  ORDER BY
+    humming_distance ASC
+  """
+
+{:ok, result} = Ecto.Adapters.SQL.query(Repo, query, [])
+```
+
+```elixir
+result.rows
+|> Enum.map(fn [src_img_name, dst_img_name, distance] ->
+  src_img = Enum.find(img_list, fn map -> map.name == src_img_name end) |> Map.get(:image)
+  dst_img = Enum.find(img_list, fn map -> map.name == dst_img_name end) |> Map.get(:image)
+
+  [
+    distance,
+    Kino.Layout.grid([src_img, dst_img], columns: 2)
+  ]
+  |> Kino.Layout.grid(columns: 1)
+end)
+|> Kino.Layout.grid(columns: 4)
+```
