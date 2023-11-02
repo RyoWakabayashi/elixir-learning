@@ -17,13 +17,11 @@ Mix.install(
 )
 ```
 
-## Prepare images
+## 画像の準備
 
 ```elixir
 image_files = Path.wildcard("/home/livebook/evision/test-images/*.{jpg,png}")
-```
 
-```elixir
 images =
   image_files
   |> Enum.map(fn image_file ->
@@ -33,7 +31,7 @@ images =
 Kino.Layout.grid(images, columns: 4)
 ```
 
-## Facial feature extraction
+## 顔特徴量の取得
 
 ```elixir
 recognizer =
@@ -53,9 +51,7 @@ detector =
     conf_threshold: 0.8,
     top_k: 5
   )
-```
 
-```elixir
 [feature_list, visualized_list] =
   images
   |> Enum.reduce([[], []], fn image, [feature_acc, visualized_acc] ->
@@ -126,7 +122,9 @@ Postgrex.Types.define(
   [Pgvector.Extensions.Vector] ++ Ecto.Adapters.Postgres.extensions(),
   []
 )
+```
 
+```elixir
 defmodule Repo do
   use Ecto.Repo,
     otp_app: :my_notebook,
@@ -201,6 +199,10 @@ end
 
 ```elixir
 Repo.insert_all(Face, vectors)
+```
+
+```elixir
+Repo.all(Face)
 ```
 
 ## 似ている顔の検索
