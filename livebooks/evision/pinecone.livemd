@@ -47,7 +47,7 @@ detector =
     backend: Evision.Constant.cv_DNN_BACKEND_OPENCV(),
     target: Evision.Constant.cv_DNN_TARGET_CPU(),
     nms_threshold: 0.3,
-    conf_threshold: 0.9,
+    conf_threshold: 0.8,
     top_k: 5
   )
 ```
