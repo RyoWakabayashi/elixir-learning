@@ -1,0 +1,33 @@
+# KinoDB Snowflake
+
+```elixir
+Mix.install([
+  {:kino_db, "~> 0.2"},
+  {:kino_explorer, "~> 0.1"},
+  {:adbc, "~> 0.2"}
+])
+```
+
+## Connect to DB
+
+<!-- livebook:{"attrs":{"account":"in73999.ap-northeast-3.aws.snowflakecomputing.com","database":"snowflake_sample_data","password_secret":"DB_PASSWORD","schema":"tpch_sf1","type":"snowflake","username":"rwakabay","variable":"conn"},"chunks":null,"kind":"Elixir.KinoDB.ConnectionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+:ok = Adbc.download_driver!(:snowflake)
+
+uri =
+  "rwakabay:" <>
+    System.fetch_env!("LB_DB_PASSWORD") <>
+    "@in73999.ap-northeast-3.aws.snowflakecomputing.com/snowflake_sample_data/tpch_sf1"
+
+{:ok, db} = Kino.start_child({Adbc.Database, driver: :snowflake, uri: uri})
+{:ok, conn} = Kino.start_child({Adbc.Connection, database: db})
+```
+
+## Execute query
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"snowflake","variable":"conn"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"SELECT * FROM lineitem","result_variable":"result","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result = Explorer.DataFrame.from_query!(conn, "SELECT * FROM lineitem", [])
+```
