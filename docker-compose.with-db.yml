@@ -33,5 +33,17 @@ services:
     volumes:
       - postgres_for_livebook:/var/lib/postgresql/data
 
+  sql_server:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: sql_server_for_livebook
+    ports:
+      - '1433:1433'
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=msSql_1234
+    volumes:
+      - sql_server_for_livebook:/var/opt/mssql
+
 volumes:
   postgres_for_livebook:
+  sql_server_for_livebook:

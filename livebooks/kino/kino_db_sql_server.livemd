@@ -1,0 +1,115 @@
+# KinoDB SQL Server
+
+```elixir
+Mix.install([
+  {:kino_db, "~> 0.2"},
+  {:tds, "~> 2.3"}
+])
+```
+
+## Connect to master database
+
+<!-- livebook:{"attrs":{"database":"master","hostname":"sql_server_for_livebook","instance":"","password_secret":"MSSQL_SA_PASSWORD","port":1433,"type":"sqlserver","use_ipv6":false,"use_ssl":false,"username":"SA","variable":"conn"},"chunks":null,"kind":"Elixir.KinoDB.ConnectionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+opts = [
+  hostname: "sql_server_for_livebook",
+  port: 1433,
+  username: "SA",
+  password: System.fetch_env!("LB_MSSQL_SA_PASSWORD"),
+  database: "master"
+]
+
+{:ok, conn} = Kino.start_child({Tds, opts})
+```
+
+## Create database
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"sqlserver","variable":"conn"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"CREATE DATABASE sample_db","result_variable":"result2","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result = Tds.query!(conn, "CREATE DATABASE sample_db", [])
+```
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"sqlserver","variable":"conn"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"SELECT Name from sys.databases","result_variable":"result","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result2 = Tds.query!(conn, "SELECT Name from sys.databases", [])
+```
+
+## Connect to sample database
+
+<!-- livebook:{"attrs":{"database":"sample_db","hostname":"sql_server_for_livebook","instance":"","password_secret":"MSSQL_SA_PASSWORD","port":1433,"type":"sqlserver","use_ipv6":false,"use_ssl":false,"username":"SA","variable":"conn2"},"chunks":null,"kind":"Elixir.KinoDB.ConnectionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+opts = [
+  hostname: "sql_server_for_livebook",
+  port: 1433,
+  username: "SA",
+  password: System.fetch_env!("LB_MSSQL_SA_PASSWORD"),
+  database: "sample_db"
+]
+
+{:ok, conn2} = Kino.start_child({Tds, opts})
+```
+
+## Execute Query
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"sqlserver","variable":"conn2"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"CREATE TABLE\n  sample\n(\n  id integer,\n  name varchar(20)\n)","result_variable":"result3","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result3 =
+  Tds.query!(
+    conn2,
+    """
+    CREATE TABLE
+      sample
+    (
+      id integer,
+      name varchar(20)
+    )
+    """,
+    []
+  )
+```
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"sqlserver","variable":"conn2"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"INSERT INTO\n  sample\n(\n  id,\n  name\n)\nOUTPUT\n  inserted.id\nVALUES\n(\n  1,\n  'John'\n)","result_variable":"result4","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result4 =
+  Tds.query!(
+    conn2,
+    """
+    INSERT INTO
+      sample
+    (
+      id,
+      name
+    )
+    OUTPUT
+      inserted.id
+    VALUES
+    (
+      1,
+      'John'
+    )
+    """,
+    []
+  )
+```
+
+<!-- livebook:{"attrs":{"cache_query":true,"connection":{"type":"sqlserver","variable":"conn2"},"data_frame_alias":"Elixir.Explorer.DataFrame","query":"SELECT\n  *\nFROM\n  sample","result_variable":"result5","timeout":null},"chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result5 =
+  Tds.query!(
+    conn2,
+    """
+    SELECT
+      *
+    FROM
+      sample
+    """,
+    []
+  )
+```
