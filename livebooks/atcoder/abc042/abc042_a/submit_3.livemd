@@ -1,0 +1,77 @@
+# ABC042A - 和風いろはちゃんイージー
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.6"},
+    {:exla, "~> 0.6"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend,
+      default_defn_options: [compiler: EXLA]
+    ]
+  ]
+)
+```
+
+## 問題
+
+<https://atcoder.jp/contests/abc042/tasks/abc042_a>
+
+## 回答3
+
+```elixir
+defmodule Main do
+  import Nx.Defn
+
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  defn equal_tensor(left, right) do
+    Nx.equal(left, right)
+    |> Nx.all()
+  end
+
+  def equal(left, right) do
+    equal_tensor(left, right)
+    |> Nx.to_number()
+    |> then(& &1 == 1)
+  end
+
+  def solve(input) do
+    input
+    |> String.trim()
+    |> split_words()
+    |> Enum.map(&String.to_integer(&1))
+    |> Nx.tensor()
+    |> Nx.sort()
+    |> equal(Nx.tensor([5, 5, 7]))
+    |> if(do: "YES", else: "NO")
+  end
+end
+```
+
+```elixir
+"""
+5 5 7
+"""
+|> Main.solve()
+|> then(&(&1 == "YES"))
+```
+
+```elixir
+"""
+7 7 5
+"""
+|> Main.solve()
+|> then(&(&1 == "NO"))
+```
