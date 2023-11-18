@@ -1,0 +1,126 @@
+# ABC081B - Shift only
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.6"},
+    {:exla, "~> 0.6"},
+    {:kino, "~> 0.11.3"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend,
+      default_defn_options: [compiler: EXLA]
+    ]
+  ]
+)
+```
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc081_b>
+
+## 回答3
+
+```elixir
+:math.pow(2, 29)
+```
+
+```elixir
+powers =
+  Nx.pow(2, Nx.iota({30}))
+```
+
+```elixir
+[8, 12, 40]
+|> Nx.tensor()
+|> Nx.new_axis(0)
+|> Nx.transpose()
+|> Nx.remainder(powers)
+|> Nx.reverse(axes: [1])
+|> Nx.argmin(axis: 1)
+|> then(&Nx.subtract(29, &1))
+|> Nx.reduce_min()
+|> dbg()
+```
+
+```elixir
+defmodule Main do
+  import Nx.Defn
+
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  defn get_powers() do
+    2 ** Nx.iota({30})
+  end
+
+  defn calc(input_tensor, powers) do
+    input_tensor
+    |> Nx.new_axis(0)
+    |> Nx.transpose()
+    |> Nx.remainder(powers)
+    |> Nx.reverse(axes: [1])
+    |> Nx.argmin(axis: 1)
+    |> then(&Nx.subtract(29, &1))
+    |> Nx.reduce_min()
+  end
+
+  def solve(input) do
+    nums =
+      input
+      |> split_lines()
+      |> Enum.at(1)
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+      |> Nx.tensor()
+
+    powers = get_powers()
+
+    nums
+    |> calc(powers)
+    |> Nx.to_number()
+  end
+end
+```
+
+```elixir
+"""
+3
+8 12 40
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+4
+5 6 8 10
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
+
+```elixir
+"""
+6
+382253568 723152896 37802240 379425024 404894720 471526144
+"""
+|> Main.solve()
+|> then(&(&1 == 8))
+```
