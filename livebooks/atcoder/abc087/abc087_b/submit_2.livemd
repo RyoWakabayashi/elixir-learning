@@ -1,0 +1,123 @@
+# ABC087B - Coins
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.6"},
+    {:exla, "~> 0.6"},
+    {:kino, "~> 0.11.3"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend,
+      default_defn_options: [compiler: EXLA]
+    ]
+  ]
+)
+```
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc087_b>
+
+## 回答2
+
+```elixir
+a = Nx.tensor([0, 1, 2])
+b = Nx.tensor([0, 1, 2])
+c = Nx.tensor([0, 1, 2])
+```
+
+```elixir
+ab =
+  a
+  |> Nx.new_axis(0)
+  |> Nx.transpose()
+  |> Nx.add(b)
+```
+
+```elixir
+abc =
+  ab
+  |> Nx.new_axis(0)
+  |> Nx.transpose()
+  |> Nx.add(c)
+```
+
+```elixir
+defmodule Main do
+  import Nx.Defn
+
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_lines(lines) do
+    lines
+    |> String.trim()
+    |> String.split("\n")
+  end
+
+  defn calc(tensor_500, tensor_100, tensor_50, total) do
+    Nx.multiply(tensor_500, 500)
+    |> Nx.new_axis(0)
+    |> Nx.transpose()
+    |> Nx.add(Nx.multiply(tensor_100, 100))
+    |> Nx.new_axis(0)
+    |> Nx.transpose()
+    |> Nx.add(Nx.multiply(tensor_50, 50))
+    |> Nx.equal(total)
+    |> Nx.sum()
+  end
+
+  def solve(input) do
+    [num_500, num_100, num_50, total] =
+      input
+      |> split_lines()
+      |> Enum.map(&String.to_integer/1)
+
+    tensor_500 = Nx.iota({num_500 + 1})
+    tensor_100 = Nx.iota({num_100 + 1})
+    tensor_50 = Nx.iota({num_50 + 1})
+
+    calc(tensor_500, tensor_100, tensor_50, total)
+    |> Nx.to_number()
+  end
+end
+```
+
+```elixir
+"""
+2
+2
+2
+100
+"""
+|> Main.solve()
+|> then(&(&1 == 2))
+```
+
+```elixir
+"""
+5
+1
+0
+150
+"""
+|> Main.solve()
+|> then(&(&1 == 0))
+```
+
+```elixir
+"""
+30
+40
+50
+6000
+"""
+|> Main.solve()
+|> then(&(&1 == 213))
+```
