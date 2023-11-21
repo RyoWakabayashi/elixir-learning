@@ -1,0 +1,108 @@
+# ABC083B - Some Sums
+
+```elixir
+Mix.install(
+  [
+    {:nx, "~> 0.6"},
+    {:exla, "~> 0.6"},
+    {:kino, "~> 0.11.3"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend,
+      default_defn_options: [compiler: EXLA]
+    ]
+  ]
+)
+```
+
+## 問題
+
+<https://atcoder.jp/contests/abs/tasks/abc083_b>
+
+## 回答3
+
+```elixir
+nums = Nx.iota({1235})
+```
+
+```elixir
+digit = Nx.pow(10, Nx.iota({5})) |> Nx.reverse()
+```
+
+```elixir
+sums =
+  nums
+  |> Nx.new_axis(0)
+  |> Nx.transpose()
+  |> Nx.quotient(digit)
+  |> Nx.remainder(10)
+  |> Nx.slice([995, 0], [10, 5])
+```
+
+```elixir
+defmodule Main do
+  import Nx.Defn
+
+  def main do
+    :stdio
+    |> IO.read(:all)
+    |> solve()
+    |> IO.puts()
+  end
+
+  defp split_words(words) do
+    String.split(words, " ")
+  end
+
+  defn calc(nums, digit, a, b) do
+    nums
+    |> Nx.new_axis(0)
+    |> Nx.transpose()
+    |> Nx.quotient(digit)
+    |> Nx.remainder(10)
+    |> Nx.sum(axes: [1])
+    |> then(&Nx.logical_and(Nx.greater_equal(&1, a), Nx.less_equal(&1, b)))
+    |> Nx.multiply(nums)
+    |> Nx.sum()
+  end
+
+  def solve(input) do
+    [n, a, b] =
+      input
+      |> String.trim()
+      |> split_words()
+      |> Enum.map(&String.to_integer/1)
+
+    nums = Nx.iota({n + 1})
+    digit = Nx.pow(10, Nx.iota({5}))
+
+    calc(nums, digit, a, b)
+    |> Nx.to_number()
+  end
+end
+```
+
+```elixir
+"""
+20 2 5
+"""
+|> Main.solve()
+|> then(&(&1 == 84))
+```
+
+```elixir
+"""
+10 1 2
+"""
+|> Main.solve()
+|> then(&(&1 == 13))
+```
+
+```elixir
+"""
+100 4 16
+"""
+|> Main.solve()
+|> then(&(&1 == 4554))
+```
