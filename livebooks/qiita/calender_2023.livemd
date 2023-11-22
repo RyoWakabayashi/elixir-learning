@@ -1,0 +1,69 @@
+# Qiita Advent Calendar 2023
+
+```elixir
+Mix.install([
+  {:req, "~> 0.3"},
+  {:req_easyhtml, "~> 0.1"},
+  {:explorer, "~> 0.7"},
+  {:kino, "~> 0.11"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 準備
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+require Explorer.DataFrame
+```
+
+## カレンダーデータの取得
+
+```elixir
+req =
+  Req.new(http_errors: :raise)
+  |> ReqEasyHTML.attach()
+```
+
+```elixir
+calendar_df =
+  req
+  |> Req.get!(url: "https://qiita.com/advent-calendar/2023/elixir")
+  |> then(& &1.body["[data-js-react-on-rails-store=AppStoreWithReactOnRails]"].nodes())
+  |> Floki.text(js: true)
+  |> Jason.decode!()
+  |> get_in(["adventCalendars", "tableAdventCalendars"])
+  |> Enum.at(0)
+  |> Map.fetch!("items")
+  |> Enum.frequencies_by(&get_in(&1, ["user", "urlName"]))
+  |> then(fn map ->
+    %{
+      name: Enum.map(map, fn {name, _} -> name end),
+      count: Enum.map(map, fn {_, count} -> count end)
+    }
+  end)
+  |> DataFrame.new()
+  |> dbg()
+```
+
+## データテーブルの表示
+
+```elixir
+calendar_df
+|> DataFrame.arrange(desc: count)
+|> Kino.DataTable.new()
+```
+
+## グラフの表示
+
+```elixir
+x = Series.to_list(calendar_df["name"])
+y = Series.to_list(calendar_df["count"])
+
+VegaLite.new(width: 800, height: 400)
+|> VegaLite.data_from_values(x: x, y: y)
+|> VegaLite.mark(:bar)
+|> VegaLite.encode_field(:x, "x", type: :nominal, sort: "-y", title: "アカウント名")
+|> VegaLite.encode_field(:y, "y", type: :quantitative, title: "記事数")
+```
