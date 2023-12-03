@@ -1,0 +1,174 @@
+# Amazon Bedrock
+
+```elixir
+Mix.install([
+  {:aws, git: "https://github.com/aws-beam/aws-elixir/"},
+  {:hackney, "~> 1.20"},
+  {:kino, "~> 0.11"}
+])
+```
+
+## クライアントの準備
+
+```elixir
+access_key_id_input = Kino.Input.password("ACCESS_KEY_ID")
+secret_access_key_input = Kino.Input.password("SECRET_ACCESS_KEY")
+region_input = Kino.Input.text("REGION")
+
+[
+  access_key_id_input,
+  secret_access_key_input,
+  region_input
+]
+|> Kino.Layout.grid(columns: 3)
+```
+
+```elixir
+client =
+  AWS.Client.create(
+    Kino.Input.read(access_key_id_input),
+    Kino.Input.read(secret_access_key_input),
+    Kino.Input.read(region_input)
+  )
+```
+
+## 基盤モデル一覧
+
+```elixir
+models =
+  client
+  |> AWS.Bedrock.list_foundation_models()
+  |> elem(1)
+  |> Map.get("modelSummaries")
+
+Kino.DataTable.new(models)
+```
+
+```elixir
+titan_express_model =
+  models
+  |> Enum.find(fn model ->
+    model["providerName"] == "Amazon" and
+      model["modelName"] == "Titan Text G1 - Express" and
+      model["inferenceTypesSupported"] == ["ON_DEMAND"]
+  end)
+```
+
+```elixir
+titan_express_model_id = titan_express_model["modelId"]
+```
+
+```elixir
+claude_model_id =
+  models
+  |> Enum.find(fn model ->
+    model["modelName"] == "Claude" and
+      model["inferenceTypesSupported"] == ["ON_DEMAND"]
+  end)
+  |> Map.get("modelId")
+```
+
+```elixir
+titan_image_id =
+  models
+  |> Enum.find(fn model ->
+    model["modelName"] == "Titan Image Generator G1" and
+      model["inferenceTypesSupported"] == ["ON_DEMAND"]
+  end)
+  |> Map.get("modelId")
+```
+
+## テキスト生成
+
+```elixir
+input = "Please show me the code to display \"Hello, World\" in Elixir."
+```
+
+```elixir
+results =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    titan_express_model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "inputText" => input
+    }
+  )
+  |> elem(1)
+  |> Map.get("results")
+```
+
+```elixir
+results
+|> Enum.at(0)
+|> Map.get("outputText")
+|> Kino.Markdown.new()
+```
+
+```elixir
+input = "Elixirで5の階乗を計算するコードを教えてください。"
+
+result =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    claude_model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "prompt" => "\n\nHuman: #{input}\n\nAssistant:",
+      "max_tokens_to_sample" => 300
+    },
+    recv_timeout: 60_000
+  )
+  |> elem(1)
+  |> Map.get("completion")
+```
+
+```elixir
+result
+|> Kino.Markdown.new()
+```
+
+## 画像生成
+
+```elixir
+input =
+  "piyopiyo.ex Elixir babies are being born from eggs. Elixir is a purple drop with a pretty face."
+
+results =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    titan_image_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "taskType" => "TEXT_IMAGE",
+      "textToImageParams" => %{
+        "text" => input
+      },
+      "imageGenerationConfig" => %{
+        "numberOfImages" => 1,
+        "quality" => "standard",
+        "height" => 512,
+        "width" => 512,
+        "cfgScale" => 2.0,
+        "seed" => 999
+      }
+    },
+    recv_timeout: 60_000
+  )
+  |> elem(1)
+  |> Map.get("images")
+```
+
+```elixir
+results
+|> Enum.at(0)
+|> then(
+  &"""
+  <img src="data:image/png;base64,#{&1}" />
+  """
+)
+|> Kino.HTML.new()
+```
