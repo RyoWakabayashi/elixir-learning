@@ -1,0 +1,16 @@
+# KinoShell
+
+```elixir
+Mix.install([
+  {:kino_shell, "~> 0.1.0"}
+])
+```
+
+## Section
+
+<!-- livebook:{"attrs":{"source":"cd && ls -l | grep 'livemd'"},"chunks":null,"kind":"Elixir.KinoShell.ShellScriptCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{_, 0} = System.cmd("bash", ["-lc", "cd && ls -l | grep 'livemd'"], into: IO.stream())
+:ok
+```
