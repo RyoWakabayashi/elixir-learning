@@ -1,0 +1,15 @@
+# KinoTextToSpeech
+
+```elixir
+Mix.install([
+  {:kino_text_to_speech, "~> 0.1.1"}
+])
+```
+
+## Smart Cell
+
+<!-- livebook:{"attrs":{"pitch":1.0,"rate":1.0,"text":"この竹垣に竹立てかけたのはこの竹垣に竹立てかけたかったからです","voice":"Google 日本語","volume":1.0},"chunks":null,"kind":"Elixir.KinoTextToSpeech.TextToSpeechCell","livebook_object":"smart_cell"} -->
+
+```elixir
+%Kino.Markdown{content: "**Speaking**:  この竹垣に竹立てかけたのはこの竹垣に竹立てかけたかったからです"}
+```
