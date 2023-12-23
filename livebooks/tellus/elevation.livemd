@@ -7,7 +7,7 @@ Mix.install(
     {:evision, "~> 0.1.33"},
     {:exla, "~> 0.6"},
     {:req, "~> 0.3"},
-    {:kino, "~> 0.11"},
+    {:kino, "~> 0.12"},
     {:kino_maplibre, "~> 0.1"},
     {:kino_vega_lite, "~> 0.1"}
   ],

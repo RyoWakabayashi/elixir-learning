@@ -6,7 +6,7 @@ Mix.install(
     {:ecto, "~> 3.10"},
     {:ecto_sql, "~> 3.10"},
     {:jason, "~> 1.4"},
-    {:kino, "~> 0.11"},
+    {:kino, "~> 0.12"},
     {:postgrex, "~> 0.17.3"},
     {:pgvector, "~> 0.2.0"},
     {:evision, github: "cocoa-xu/evision", branch: "main"}
