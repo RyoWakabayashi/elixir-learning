@@ -1,0 +1,45 @@
+# KinoDiff
+
+```elixir
+Mix.install([
+  {:kino_diff, "~> 0.1.0"}
+])
+```
+
+## Section
+
+```elixir
+KinoDiff.new(
+  """
+  こんにちは
+
+  今年も残すところあと7日ですね
+
+  """,
+  """
+  こんばんは
+
+  今年も残すところあと6日ですね
+
+  """,
+  layout: :inline
+)
+```
+
+```elixir
+KinoDiff.new(
+  """
+  こんにちは
+
+  今年も残すところあと7日ですね
+
+  """,
+  """
+  こんばんは
+
+  今年も残すところあと6日ですね
+
+  """,
+  layout: :split
+)
+```
