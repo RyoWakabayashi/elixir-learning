@@ -1,0 +1,50 @@
+# Advent of Code 2023 Day 1 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxIiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "1", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+digits_map = %{
+  "one" => "o1e",
+  "two" => "t2o",
+  "three" => "t3e",
+  "four" => "f4r",
+  "five" => "f5e",
+  "six" => "s6x",
+  "seven" => "s7n",
+  "eight" => "e8t",
+  "nine" => "n9e"
+}
+
+puzzle_input
+|> String.split("\n")
+|> Enum.map(fn line ->
+  digits =
+    digits_map
+    |> Enum.reduce(line, fn {word, num}, acc ->
+      String.replace(acc, word, num)
+    end)
+    |> then(&Regex.scan(~r/[0-9]/, &1))
+
+  first = digits |> hd() |> hd()
+  last = digits |> Enum.reverse() |> hd() |> hd()
+  String.to_integer(first <> last)
+end)
+|> Enum.sum()
+```
+
+<!-- livebook:{"offset":1009,"stamp":{"token":"XCP.5IO28fugmm4OOyEvFCyu3aMTuL_dXMmPEXVu45HkaHybbvZj3ZZI2WyxFlWf_9kgTdGZKOd3Wlz_0hOKz9MosY6rDevpVpgN2-CaV-hU0fm_Ig","version":2}} -->

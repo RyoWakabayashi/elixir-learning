@@ -1,0 +1,62 @@
+# Advent of Code 2023 Day 2 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIyIiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "2", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+games =
+  puzzle_input
+  |> String.split("\n")
+  |> Enum.into(%{}, fn line ->
+    [title, items] = String.split(line, ":")
+
+    game_num =
+      title
+      |> String.replace("Game ", "")
+      |> String.to_integer()
+
+    game =
+      items
+      |> String.split(";")
+      |> Enum.map(fn subsets ->
+        subsets
+        |> String.split(",")
+        |> Enum.into(%{}, fn subset ->
+          [_, number, color] = String.split(subset, " ")
+          {color, String.to_integer(number)}
+        end)
+      end)
+
+    {game_num, game}
+  end)
+```
+
+```elixir
+games
+|> Enum.map(fn {_game_num, game} ->
+  ["red", "green", "blue"]
+  |> Enum.map(fn color ->
+    game
+    |> Enum.map(&Map.get(&1, color, 0))
+    |> Enum.max()
+  end)
+  |> Enum.product()
+end)
+|> Enum.sum()
+```
+
+<!-- livebook:{"offset":1226,"stamp":{"token":"XCP.U6dY7pruFq_m32GBBZ-YznSFnu6HI7kRv44t8U0wiBZ8MZYDlkPRsbVUIalz0Gug9uPSDqBlGALPvlq6DC0_Fx0XXB3PrcxKJ674eq3oi3ObUA","version":2}} -->
