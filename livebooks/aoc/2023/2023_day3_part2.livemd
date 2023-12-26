@@ -1,0 +1,118 @@
+# Advent of Code 2023 Day 3 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIzIiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "3", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  def parse(input) do
+    parsed_input =
+      input
+      |> String.split("\n")
+      |> Enum.with_index()
+      |> Enum.map(fn {line, row_index} ->
+        number = Regex.scan(~r/[0-9]+/, line)
+        number_index = Regex.scan(~r/[0-9]+/, line, return: :index)
+        symbol = Regex.scan(~r/[^0-9\.]+/, line)
+        symbol_index = Regex.scan(~r/[^0-9\.]+/, line, return: :index)
+
+        numbers =
+          Enum.zip(number_index, number)
+          |> Enum.into(%{}, fn {[{col_index, length}], [number]} ->
+            {{row_index, col_index, length}, String.to_integer(number)}
+          end)
+
+        symbols =
+          Enum.zip(symbol_index, symbol)
+          |> Enum.into(%{}, fn {[{col_index, length}], [symbol]} ->
+            {{row_index, col_index, length}, symbol}
+          end)
+
+        %{
+          numbers: numbers,
+          symbols: symbols
+        }
+      end)
+
+    numbers =
+      parsed_input
+      |> Enum.reduce(%{}, fn line, acc ->
+        Map.merge(acc, line.numbers)
+      end)
+
+    symbols =
+      parsed_input
+      |> Enum.reduce(%{}, fn line, acc ->
+        Map.merge(acc, line.symbols)
+      end)
+
+    {numbers, symbols}
+  end
+
+  def resolve(numbers, symbols) do
+    symbols
+    |> Enum.map(fn {{sym_row_index, sym_col_index, _sym_length}, _symbol} ->
+      adjacents =
+        Enum.filter(numbers, fn {{num_row_index, num_col_index, num_length}, _number} ->
+          sym_row_index >= num_row_index - 1 and sym_row_index <= num_row_index + 1 and
+            sym_col_index >= num_col_index - 1 and sym_col_index <= num_col_index + num_length
+        end)
+
+      if Enum.count(adjacents) > 1 do
+        adjacents
+        |> Enum.map(fn {_, number} -> number end)
+        |> Enum.product()
+      else
+        0
+      end
+    end)
+    |> Enum.sum()
+  end
+end
+```
+
+```elixir
+{numbers, symbols} =
+  """
+  467..114..
+  ...*......
+  ..35..633.
+  ......#...
+  617*......
+  .....+.58.
+  ..592.....
+  ......755.
+  ...$.*....
+  .664.598..
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(numbers, symbols)
+```
+
+```elixir
+{numbers, symbols} = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(numbers, symbols)
+```
+
+<!-- livebook:{"offset":2666,"stamp":{"token":"XCP.yap69HUIpHQA5uthKd2kAYb4dFbjHGTPrzjOu7WSouUtzDQbx6UWYrtk_NDpqMoaxSyCVKtkvE8zzApjcMm_VB8YkQEhzrvmUDDkWmH4chnxZw","version":2}} -->
