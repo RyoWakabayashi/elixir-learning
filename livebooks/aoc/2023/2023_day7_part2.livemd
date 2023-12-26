@@ -1,0 +1,152 @@
+# Advent of Code 2023 Day 7 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI3Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "7", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  @card_strength %{
+    "T" => 10,
+    "J" => 1,
+    "Q" => 12,
+    "K" => 13,
+    "A" => 14
+  }
+
+  def parse(input) do
+    input
+    |> String.split("\n")
+    |> Enum.map(fn line ->
+      line
+      |> String.split(" ", trim: true)
+      |> then(fn [hand, bet] ->
+        hand =
+          hand
+          |> String.codepoints()
+          |> Enum.map(fn card ->
+            strength = Map.get(@card_strength, card)
+
+            if is_nil(strength) do
+              String.to_integer(card)
+            else
+              strength
+            end
+          end)
+
+        has_j = Enum.member?(hand, 1)
+
+        {min_freq, max_freq, uniq} =
+          hand
+          |> Enum.filter(&(&1 != 1))
+          |> Enum.frequencies()
+          |> Map.values()
+          |> then(fn frequencies ->
+            if frequencies == [] do
+              {0, 0, 0}
+            else
+              {
+                Enum.min(frequencies),
+                Enum.max(frequencies),
+                Enum.count(frequencies)
+              }
+            end
+          end)
+
+        type_strength =
+          case {min_freq, max_freq, uniq, has_j} do
+            {_, _, 0, _} ->
+              6
+
+            {_, _, 1, _} ->
+              6
+
+            {2, _, 2, _} ->
+              4
+
+            {_, _, 2, _} ->
+              5
+
+            {_, 3, 3, false} ->
+              3
+
+            {_, 2, 3, false} ->
+              2
+
+            {_, _, 3, true} ->
+              3
+
+            {_, _, 4, _} ->
+              1
+
+            {_, _, 5, _} ->
+              0
+          end
+
+        hand_strength =
+          0..4
+          |> Enum.map(fn index ->
+            Enum.at(hand, index) * Integer.pow(14, 4 - index)
+          end)
+          |> Enum.sum()
+          |> Kernel.+(type_strength * Integer.pow(14, 5))
+
+        %{
+          hand_strength: hand_strength,
+          bet: String.to_integer(bet)
+        }
+      end)
+    end)
+  end
+
+  def resolve(games) do
+    games
+    |> Enum.sort(&(&1.hand_strength < &2.hand_strength))
+    |> Enum.with_index()
+    |> Enum.map(fn {game, index} ->
+      game.bet * (index + 1)
+    end)
+    |> Enum.sum()
+  end
+end
+```
+
+```elixir
+games =
+  """
+  32T3K 765
+  T55J5 684
+  KK677 28
+  KTJJT 220
+  QQQJA 483
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(games)
+```
+
+```elixir
+games = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(games)
+```
+
+<!-- livebook:{"offset":2881,"stamp":{"token":"XCP.sl6va2T5h9HPsVRJoor2K_A1EdJEIPF0-aYZDMq-hh9WoxlQcoBshlJhOkun00LcBJG99Yz1Age7RovdFc7no16uedb4TVQACQbOM-yx-QfNMQ","version":2}} -->
