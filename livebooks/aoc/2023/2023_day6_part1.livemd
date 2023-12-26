@@ -1,0 +1,75 @@
+# Advent of Code 2023 Day 6 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI2Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "6", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  def parse(input) do
+    input
+    |> String.split("\n")
+    |> Enum.map(fn line ->
+      line
+      |> String.split(" ", trim: true)
+      |> tl()
+      |> Enum.map(&String.to_integer(&1))
+    end)
+    |> Enum.zip()
+    |> Enum.map(fn {time, distance} ->
+      %{
+        time: time,
+        distance: distance
+      }
+    end)
+  end
+
+  def resolve(races) do
+    races
+    |> Enum.map(fn %{time: time, distance: distance} ->
+      1..(time - 1)
+      |> Enum.count(fn boost ->
+        (time - boost) * boost > distance
+      end)
+    end)
+    |> Enum.product()
+  end
+end
+```
+
+```elixir
+races =
+  """
+  Time:      7  15   30
+  Distance:  9  40  200
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(races)
+```
+
+```elixir
+races = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(races)
+```
+
+<!-- livebook:{"offset":1317,"stamp":{"token":"XCP.hj8HKRGzSiqcxTThaBRgzCXlUGG-swAD_DEKZyWHPXudOqLt7hskAHQ_xa8cpDcHQc_Vwud_coAIpTJXR9672Hs7_yoy9o0mPfP_5rPDl9OmRg","version":2}} -->
