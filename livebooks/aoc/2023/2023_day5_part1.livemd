@@ -1,0 +1,165 @@
+# Advent of Code 2023 Day 5 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI1Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "5", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  def parse(input) do
+    input
+    |> String.split("\n")
+    |> split_by_blank_line([])
+    |> Enum.into(%{}, fn group ->
+      parse_group(group)
+    end)
+  end
+
+  defp split_by_blank_line(lines, acc) do
+    {head, tail} =
+      Enum.split_while(lines, fn line -> line != "" end)
+
+    if Enum.count(tail) == 0 do
+      acc ++ [head]
+    else
+      tail
+      |> tl()
+      |> split_by_blank_line(acc ++ [head])
+    end
+  end
+
+  defp parse_group(group) when length(group) == 1 do
+    seeds =
+      group
+      |> hd()
+      |> String.split(" ")
+      |> tl()
+      |> Enum.map(&String.to_integer(&1))
+
+    {:seeds, seeds}
+  end
+
+  defp parse_group(group) do
+    group_name =
+      group
+      |> hd()
+      |> String.slice(0..-6)
+      |> String.replace("-", "_")
+      |> String.to_atom()
+
+    mappings =
+      group
+      |> tl()
+      |> Enum.map(fn line ->
+        [dst, src, len] =
+          line
+          |> String.split(" ")
+          |> Enum.map(&String.to_integer(&1))
+
+        %{
+          src: src,
+          dst: dst,
+          len: len
+        }
+      end)
+
+    {group_name, mappings}
+  end
+
+  def resolve(maps) do
+    maps.seeds
+    |> Enum.map(fn seed ->
+      seed
+      |> search(maps.seed_to_soil)
+      |> search(maps.soil_to_fertilizer)
+      |> search(maps.fertilizer_to_water)
+      |> search(maps.water_to_light)
+      |> search(maps.light_to_temperature)
+      |> search(maps.temperature_to_humidity)
+      |> search(maps.humidity_to_location)
+    end)
+    |> Enum.min()
+  end
+
+  defp search(key, mappings) do
+    target_mapping =
+      Enum.find(mappings, fn mapping ->
+        key >= mapping.src and key <= mapping.src + mapping.len - 1
+      end)
+
+    if is_nil(target_mapping) do
+      key
+    else
+      target_mapping.dst + key - target_mapping.src
+    end
+  end
+end
+```
+
+```elixir
+maps =
+  """
+  seeds: 79 14 55 13
+
+  seed-to-soil map:
+  50 98 2
+  52 50 48
+
+  soil-to-fertilizer map:
+  0 15 37
+  37 52 2
+  39 0 15
+
+  fertilizer-to-water map:
+  49 53 8
+  0 11 42
+  42 0 7
+  57 7 4
+
+  water-to-light map:
+  88 18 7
+  18 25 70
+
+  light-to-temperature map:
+  45 77 23
+  81 45 19
+  68 64 13
+
+  temperature-to-humidity map:
+  0 69 1
+  1 0 69
+
+  humidity-to-location map:
+  60 56 37
+  56 93 4
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maps)
+```
+
+```elixir
+maps = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(maps)
+```
+
+<!-- livebook:{"offset":2885,"stamp":{"token":"XCP.ADnlh-Eplgc2MAEjoGuXtS3AK_OdkP5awNuzquiLVWhcrAt-U0AKdGkjvSqgxomvm1aJCsJ240A_Pht424-A8wjQSdaPlUUCCQpvK21CnOeqrw","version":2}} -->
