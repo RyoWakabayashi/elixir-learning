@@ -1,0 +1,118 @@
+# Advent of Code 2023 Day 8 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI4Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "8", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  def parse(input) do
+    [instructions | maps] = String.split(input, "\n\n")
+
+    instructions = String.codepoints(instructions)
+
+    maps =
+      maps
+      |> hd()
+      |> String.split("\n")
+      |> Enum.into(%{}, fn line ->
+        parse_map(line)
+      end)
+
+    {instructions, maps}
+  end
+
+  defp parse_map(line) do
+    [current, left, right] =
+      line
+      |> String.replace("=", "")
+      |> String.replace("(", "")
+      |> String.replace(")", "")
+      |> String.replace(",", "")
+      |> String.split(" ", trim: true)
+      |> Enum.map(&String.reverse(&1))
+
+    {current, %{"L" => left, "R" => right}}
+  end
+
+  def resolve(instructions, maps) do
+    start_points =
+      maps
+      |> Map.keys()
+      |> Enum.filter(fn key ->
+        String.starts_with?(key, "A")
+      end)
+
+    start_points
+    |> Enum.reduce(1, fn start_point, acc ->
+      start_point
+      |> step(maps, 0, instructions, 0)
+      |> lcm(acc)
+    end)
+  end
+
+  defp step("Z" <> _, _, _, _, acc), do: acc
+
+  defp step(current, maps, inst_index, instructions, acc) do
+    instruction = Enum.at(instructions, inst_index)
+
+    next = maps[current][instruction]
+
+    next_inst_index =
+      if inst_index == Enum.count(instructions) - 1 do
+        0
+      else
+        inst_index + 1
+      end
+
+    step(next, maps, next_inst_index, instructions, acc + 1)
+  end
+
+  def lcm(a, b), do: div(a * b, Integer.gcd(a, b))
+end
+```
+
+```elixir
+{instructions, maps} =
+  """
+  LR
+
+  11A = (11B, XXX)
+  11B = (XXX, 11Z)
+  11Z = (11B, XXX)
+  22A = (22B, XXX)
+  22B = (22C, 22C)
+  22C = (22Z, 22Z)
+  22Z = (22B, 22B)
+  XXX = (XXX, XXX)
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(instructions, maps)
+```
+
+```elixir
+{instructions, maps} = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(instructions, maps)
+```
+
+<!-- livebook:{"offset":2314,"stamp":{"token":"XCP.BpckRLYTYpcj14ZqTY4fWm-HM-R7S0RkIL4PnoTgW9EjxfghPNwCtVf8l3qbKKTHRKTp-PUOy4lIis6jwFlWVJfr5rHxUBaA_VxnQfJxcdgr3w","version":2}} -->

@@ -1,0 +1,119 @@
+# Advent of Code 2023 Day 8 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI4Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "8", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  def parse(input) do
+    [instructions | maps] = String.split(input, "\n\n")
+
+    instructions = String.codepoints(instructions)
+
+    maps =
+      maps
+      |> hd()
+      |> String.split("\n")
+      |> Enum.into(%{}, fn line ->
+        parse_map(line)
+      end)
+
+    {instructions, maps}
+  end
+
+  defp parse_map(line) do
+    [current, left, right] =
+      line
+      |> String.replace("=", "")
+      |> String.replace("(", "")
+      |> String.replace(")", "")
+      |> String.replace(",", "")
+      |> String.split(" ", trim: true)
+
+    {current, %{"L" => left, "R" => right}}
+  end
+
+  def resolve(instructions, maps) do
+    step("AAA", maps, 0, instructions, 0)
+  end
+
+  defp step("ZZZ", _, _, _, acc), do: acc
+
+  defp step(current, maps, inst_index, instructions, acc) do
+    instruction = Enum.at(instructions, inst_index)
+
+    next = maps[current][instruction]
+
+    next_inst_index =
+      if inst_index == Enum.count(instructions) - 1 do
+        0
+      else
+        inst_index + 1
+      end
+
+    step(next, maps, next_inst_index, instructions, acc + 1)
+  end
+end
+```
+
+```elixir
+{instructions, maps} =
+  """
+  RL
+
+  AAA = (BBB, CCC)
+  BBB = (DDD, EEE)
+  CCC = (ZZZ, GGG)
+  DDD = (DDD, DDD)
+  EEE = (EEE, EEE)
+  GGG = (GGG, GGG)
+  ZZZ = (ZZZ, ZZZ)
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(instructions, maps)
+```
+
+```elixir
+{instructions, maps} =
+  """
+  LLR
+
+  AAA = (BBB, BBB)
+  BBB = (AAA, ZZZ)
+  ZZZ = (ZZZ, ZZZ)
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(instructions, maps)
+```
+
+```elixir
+{instructions, maps} = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(instructions, maps)
+```
+
+<!-- livebook:{"offset":2178,"stamp":{"token":"XCP.H1z1Yy-spz0z4jxdV5BU85LqgUEiNU5q-4JRrIfiEUr3agpTPnSPQ6BqbIdxabLKDsRfBA70QMpCxO9QO55G13ut4xfJoV-MK5mB5BipgRaxEQ","version":2}} -->
