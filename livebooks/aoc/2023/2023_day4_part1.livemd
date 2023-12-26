@@ -1,0 +1,93 @@
+# Advent of Code 2023 Day 4 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI0Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "4", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  def parse(input) do
+    input
+    |> String.split("\n")
+    |> Enum.map(fn line ->
+      [_, card] = String.split(line, ":")
+      [winning_card, my_card] = String.split(card, "|")
+
+      %{
+        winning_card: parse_card(winning_card),
+        my_card: parse_card(my_card)
+      }
+    end)
+  end
+
+  defp parse_card(card) do
+    card
+    |> String.split(" ")
+    |> Enum.filter(fn value -> value != "" end)
+    |> Enum.map(fn value -> String.to_integer(value) end)
+  end
+
+  def resolve(games) do
+    games
+    |> Enum.map(fn %{winning_card: winning_card, my_card: my_card} ->
+      winning_card
+      |> Enum.count(fn winnig_number ->
+        Enum.member?(my_card, winnig_number)
+      end)
+      |> get_point()
+    end)
+    |> Enum.sum()
+  end
+
+  defp get_point(0), do: 0
+  defp get_point(1), do: 1
+
+  defp get_point(nuber_of_matches) do
+    0..(nuber_of_matches - 2)
+    |> Enum.map(&Integer.pow(2, &1))
+    |> Enum.sum()
+    |> Kernel.+(1)
+  end
+end
+```
+
+```elixir
+games =
+  """
+  Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53
+  Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19
+  Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1
+  Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83
+  Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36
+  Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(games)
+```
+
+```elixir
+games = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(games)
+```
+
+<!-- livebook:{"offset":1961,"stamp":{"token":"XCP.Mc-pCsCDVXb3oRKXyBCjmF8gTCYAFJMr4sEemFKCXewnA5iIq5nng-nlGdS_keg80wW78Xj2JVsj9vtX3DeqVfUZH4OinkkEkEmUruPhqAceGA","version":2}} -->
