@@ -1,0 +1,92 @@
+# Advent of Code 2023 Day 9 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI5Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjMifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "9", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  def parse(input) do
+    input
+    |> String.split("\n")
+    |> Enum.map(fn line ->
+      line
+      |> String.split(" ")
+      |> Enum.map(&String.to_integer(&1))
+    end)
+  end
+
+  def resolve(array_list) do
+    array_list
+    |> Enum.map(fn array ->
+      diff_array_list =
+        0..(Enum.count(array) - 1)
+        |> Enum.reduce_while([array], fn _index, acc ->
+          last_array = Enum.at(acc, -1)
+          diff_array = diff(last_array)
+
+          if Enum.all?(diff_array, &(&1 == 0)) do
+            {:halt, acc ++ [diff_array]}
+          else
+            {:cont, acc ++ [diff_array]}
+          end
+        end)
+
+      diff_array_list
+      |> Enum.map(fn diff_array ->
+        Enum.at(diff_array, -1)
+      end)
+      |> Enum.sum()
+    end)
+    |> Enum.sum()
+  end
+
+  defp diff(array) do
+    {_, a_array} = List.pop_at(array, 0)
+    {_, b_array} = List.pop_at(array, -1)
+
+    Enum.zip(a_array, b_array)
+    |> Enum.map(fn {a, b} ->
+      a - b
+    end)
+  end
+end
+```
+
+```elixir
+array_list =
+  """
+  0 3 6 9 12 15
+  1 3 6 10 15 21
+  10 13 16 21 30 45
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(array_list)
+```
+
+```elixir
+array_list = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(array_list)
+```
+
+<!-- livebook:{"offset":1746,"stamp":{"token":"XCP.562OBj3MsDtkuspcT1ACYT0nb8kprstM_Aqf-z5PE_bRsoMyBzi1yUAlhPoZtjfHfI7sceZjvLP52vqZQUuQCVxf95p-zKUyJDCRyKL94tK7Jw","version":2}} -->
