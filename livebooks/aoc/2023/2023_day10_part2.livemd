@@ -1,0 +1,310 @@
+# Advent of Code 2023 Day 10 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMCIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDIzIn0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "10", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  @pipe_map %{
+    "-" => %{left: true, right: true},
+    "|" => %{up: true, down: true},
+    "F" => %{down: true, right: true},
+    "7" => %{down: true, left: true},
+    "L" => %{up: true, right: true},
+    "J" => %{up: true, left: true},
+    "S" => %{start: true, up: true, down: true, left: true, right: true}
+  }
+
+  @next_direction %{
+    up: :down,
+    down: :up,
+    left: :right,
+    right: :left
+  }
+
+  def parse(input) do
+    input
+    |> String.split("\n")
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn {line, row_index}, acc ->
+      line_maze =
+        line
+        |> String.codepoints()
+        |> Enum.with_index()
+        |> Enum.into(%{}, fn {symbol, col_index} ->
+          {
+            {row_index, col_index},
+            %{
+              symbol: symbol,
+              route: Map.get(@pipe_map, symbol, nil)
+            }
+          }
+        end)
+        |> Map.filter(fn {_, symbol} -> !is_nil(symbol.route) end)
+
+      Map.merge(acc, line_maze)
+    end)
+  end
+
+  def resolve(maze) do
+    {start_position, start_pipe} =
+      maze
+      |> Enum.filter(fn {_, pipe} ->
+        Map.has_key?(pipe.route, :start)
+      end)
+      |> hd()
+
+    main_loop = get_main_loop(start_position, start_pipe, maze)
+
+    IO.inspect(main_loop)
+
+    {top_edge, bottom_edge} =
+      main_loop
+      |> Enum.map(fn {{row, _}, _} -> row end)
+      |> then(fn rows ->
+        {Enum.min(rows), Enum.max(rows)}
+      end)
+
+    {left_edge, right_edge} =
+      main_loop
+      |> Enum.map(fn {{_, col}, _} -> col end)
+      |> then(fn cols ->
+        {Enum.min(cols), Enum.max(cols)}
+      end)
+
+    IO.inspect({top_edge, bottom_edge, left_edge, right_edge})
+
+    top_edge..bottom_edge
+    |> Enum.reduce(0, fn row, row_acc ->
+      {_, col_sum, _} =
+        left_edge..right_edge
+        |> Enum.reduce({nil, 0, false}, fn col, {pre_stack, pre_count, pre_in_loop} ->
+          symbol = Map.get(main_loop, {row, col}, nil)
+          {across, stack} = across?(symbol, pre_stack)
+          in_loop = if across, do: !pre_in_loop, else: pre_in_loop
+
+          if is_nil(symbol) and in_loop do
+            {stack, pre_count + 1, in_loop}
+          else
+            {stack, pre_count, in_loop}
+          end
+        end)
+
+      IO.inspect(col_sum)
+      row_acc + col_sum
+    end)
+  end
+
+  defp get_main_loop(start_position, start_pipe, maze) do
+    Stream.iterate(0, &(&1 + 1))
+    |> Enum.reduce_while(
+      {start_position, start_pipe, :start, [], nil},
+      fn index, {pre_position, pre_pipe, pre_direction, loop_list, start_direction} ->
+        {next_position, next_pipe, next_direction} =
+          search_next(pre_position, pre_pipe, pre_direction, maze)
+
+        loop_list = [{next_position, next_pipe.symbol} | loop_list]
+
+        if Map.has_key?(next_pipe.route, :start) do
+          start_symbol = get_symbol(start_direction, next_direction)
+          {_, loop_list} = List.pop_at(loop_list, 0)
+          {:halt, [{start_position, start_symbol} | loop_list]}
+        else
+          start_direction =
+            if index == 0, do: next_direction, else: start_direction
+
+          {:cont, {next_position, next_pipe, next_direction, loop_list, start_direction}}
+        end
+      end
+    )
+    |> Enum.into(%{})
+  end
+
+  defp search_next(position, pipe, pre_direction, maze) do
+    [:up, :down, :left, :right]
+    |> Enum.filter(&(&1 != pre_direction))
+    |> Enum.map(fn direction ->
+      get_next(position, pipe, direction, maze)
+    end)
+    |> Enum.filter(fn {_, next_pipe, _} ->
+      !is_nil(next_pipe)
+    end)
+    |> hd()
+  end
+
+  defp get_next({row_index, col_index}, pipe, direction, maze)
+       when is_map_key(pipe.route, direction) do
+    next_position =
+      case direction do
+        :up -> {row_index - 1, col_index}
+        :down -> {row_index + 1, col_index}
+        :left -> {row_index, col_index - 1}
+        :right -> {row_index, col_index + 1}
+      end
+
+    next_direction = Map.get(@next_direction, direction)
+
+    next_pipe =
+      maze
+      |> Map.get(next_position)
+      |> check_next(next_direction)
+
+    {next_position, next_pipe, next_direction}
+  end
+
+  defp get_next(_, _, _, _), do: {nil, nil, nil}
+
+  defp check_next(nil, _), do: nil
+
+  defp check_next(next_pipe, next_direction) when is_map_key(next_pipe.route, next_direction) do
+    next_pipe
+  end
+
+  defp check_next(_, _), do: nil
+
+  defp get_symbol(:up, :up), do: "|"
+  defp get_symbol(:down, :down), do: "|"
+  defp get_symbol(:left, :left), do: "-"
+  defp get_symbol(:right, :right), do: "-"
+  defp get_symbol(:down, :right), do: "L"
+  defp get_symbol(:down, :left), do: "J"
+  defp get_symbol(:up, :right), do: "F"
+  defp get_symbol(:up, :left), do: "7"
+  defp get_symbol(:right, :down), do: "F"
+  defp get_symbol(:left, :down), do: "7"
+  defp get_symbol(:right, :up), do: "J"
+  defp get_symbol(:left, :up), do: "L"
+
+  defp across?(nil, stack), do: {false, stack}
+  defp across?("|", _), do: {true, nil}
+  defp across?(symbol, nil), do: {false, symbol}
+  defp across?("-", stack), do: {false, stack}
+  defp across?("J", "F"), do: {true, nil}
+  defp across?("7", "L"), do: {true, nil}
+  defp across?("7", "F"), do: {false, nil}
+  defp across?("J", "L"), do: {false, nil}
+end
+```
+
+```elixir
+maze =
+  """
+  .....
+  .S-7.
+  .|.|.
+  .L-J.
+  .....
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+```elixir
+maze =
+  """
+  -.F7.
+  .FJ|.
+  SJ.L7
+  |F--J
+  LJ...
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+```elixir
+maze =
+  """
+  ...........
+  .S-------7.
+  .|F-----7|.
+  .||.....||.
+  .||.....||.
+  .|L-7.F-J|.
+  .|..|.|..|.
+  .L--J.L--J.
+  ...........
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+```elixir
+maze =
+  """
+  .F----7F7F7F7F-7....
+  .|F--7||||||||FJ....
+  .||.FJ||||||||L7....
+  FJL7L7LJLJ||LJ.L-7..
+  L--J.L7...LJS7F-7L7.
+  ....F-J..F7FJ|L7L7L7
+  ....L7.F7||L7|.L7L7|
+  .....|FJLJ|FJ|F7|.LJ
+  ....FJL-7.||.||||...
+  ....L---J.LJ.LJLJ...
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+```elixir
+maze =
+  """
+  FF7FSF7F7F7F7F7F---7
+  L|LJ||||||||||||F--J
+  FL-7LJLJ||||||LJL-77
+  F--JF--7||LJLJ7F7FJ-
+  L---JF-JLJ.||-FJLJJ7
+  |F|F-JF---7F7-L7L|7|
+  |FFJF7L7F-JF7|JL---7
+  7-L-JL7||F7|L7F-7F7|
+  L.L7LFJ|||||FJL7||LJ
+  L7JLJL-JLJLJL--JLJ.L
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+```elixir
+maze = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+<!-- livebook:{"offset":7015,"stamp":{"token":"XCP.CNnFswqHJ6ZDDGGyVqoSLMt9sulXr4X9wghSrYkaObdlQ2vqL4Ap_HBDtD0wRdmHkucDUIoWcvR9E18L2WelTKR-d0tMgrxcrQVfirV_sBiRlQ","version":2}} -->
