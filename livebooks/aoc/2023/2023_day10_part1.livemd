@@ -1,0 +1,170 @@
+# Advent of Code 2023 Day 10 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMCIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDIzIn0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "10", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  @pipe_map %{
+    "-" => %{left: true, right: true},
+    "|" => %{up: true, down: true},
+    "F" => %{down: true, right: true},
+    "7" => %{down: true, left: true},
+    "L" => %{up: true, right: true},
+    "J" => %{up: true, left: true},
+    "S" => %{start: true, up: true, down: true, left: true, right: true}
+  }
+
+  @next_direction %{
+    up: :down,
+    down: :up,
+    left: :right,
+    right: :left
+  }
+
+  def parse(input) do
+    input
+    |> String.split("\n")
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn {line, row_index}, acc ->
+      line_maze =
+        line
+        |> String.codepoints()
+        |> Enum.with_index()
+        |> Enum.into(%{}, fn {pipe, col_index} ->
+          {
+            {row_index, col_index},
+            Map.get(@pipe_map, pipe, nil)
+          }
+        end)
+        |> Map.filter(fn {_, route} -> !is_nil(route) end)
+
+      Map.merge(acc, line_maze)
+    end)
+  end
+
+  def resolve(maze) do
+    {position, route} =
+      maze
+      |> Enum.filter(fn {_, route} ->
+        Map.has_key?(route, :start)
+      end)
+      |> hd()
+
+    Stream.iterate(0, &(&1 + 1))
+    |> Enum.reduce_while({position, route, :start}, fn index,
+                                                       {next_position, next_route, pre_direction} ->
+      {next_position, next_route, pre_direction} =
+        search_next(next_position, next_route, pre_direction, maze)
+
+      IO.inspect({next_position, next_route, pre_direction})
+
+      if Map.has_key?(next_route, :start) do
+        {:halt, div(index + 1, 2)}
+      else
+        {:cont, {next_position, next_route, pre_direction}}
+      end
+    end)
+  end
+
+  defp search_next(position, route, pre_direction, maze) do
+    [:up, :down, :left, :right]
+    |> Enum.filter(&(&1 != pre_direction))
+    |> Enum.map(fn direction ->
+      get_next(position, route, direction, maze)
+    end)
+    |> Enum.filter(fn {_, next_route, _} ->
+      !is_nil(next_route)
+    end)
+    |> hd()
+  end
+
+  defp get_next({row_index, col_index}, route, direction, maze)
+       when is_map_key(route, direction) do
+    next_position =
+      case direction do
+        :up -> {row_index - 1, col_index}
+        :down -> {row_index + 1, col_index}
+        :left -> {row_index, col_index - 1}
+        :right -> {row_index, col_index + 1}
+      end
+
+    next_direction = Map.get(@next_direction, direction)
+
+    next_route =
+      maze
+      |> Map.get(next_position)
+      |> check_next(next_direction)
+
+    {next_position, next_route, next_direction}
+  end
+
+  defp get_next(_, _, _, _), do: {nil, nil, nil}
+
+  defp check_next(nil, _), do: nil
+
+  defp check_next(next_route, next_direction) when is_map_key(next_route, next_direction) do
+    next_route
+  end
+
+  defp check_next(_, _), do: nil
+end
+```
+
+```elixir
+maze =
+  """
+  .....
+  .S-7.
+  .|.|.
+  .L-J.
+  .....
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+```elixir
+maze =
+  """
+  ..F7.
+  .FJ|.
+  SJ.L7
+  |F--J
+  LJ...
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+```elixir
+maze = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+<!-- livebook:{"offset":3627,"stamp":{"token":"XCP.WqVSIzW0wRty3digqGZ1ElVFXXLOBAFjx6nkaCsqQMi4I81exJnsQZfbUJAGrjfcSQy-wjDKFwcdaxGjyE3Vhu1LuELWVrh3RBQPY3AIoo747A","version":2}} -->
