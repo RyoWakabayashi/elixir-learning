@@ -1,0 +1,38 @@
+# KinoSound
+
+```elixir
+Mix.install([
+  {:kino_sound, "~> 0.1.2"}
+])
+```
+
+## Sounds
+
+<!-- livebook:{"attrs":"e30","chunks":null,"kind":"Elixir.KinoSound","livebook_object":"smart_cell"} -->
+
+```elixir
+:ok
+```
+
+## Examples
+
+```elixir
+IO.inspect("Start!!")
+
+result =
+  0..5
+  |> Enum.reduce(:ok, fn _, acc ->
+    Process.sleep(3000)
+    IO.inspect("Hello!!")
+    KinoSound.print()
+    acc
+  end)
+
+case result do
+  :ok ->
+    KinoSound.success()
+
+  _ ->
+    KinoSound.error()
+end
+```
