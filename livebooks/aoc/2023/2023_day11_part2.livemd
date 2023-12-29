@@ -1,0 +1,123 @@
+# Advent of Code 2023 Day 11 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1.5"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMSIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDIzIn0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "11", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Resolver do
+  def parse(input) do
+    orig_space =
+      input
+      |> String.split("\n")
+      |> Enum.with_index()
+      |> Enum.map(fn {line, row} ->
+        line
+        |> String.codepoints()
+        |> Enum.with_index()
+        |> Enum.filter(fn {cell, _} -> cell == "#" end)
+        |> Enum.map(fn {_, col} -> {row, col} end)
+      end)
+      |> Enum.concat()
+
+    max_row =
+      orig_space
+      |> Enum.map(fn {row, _} -> row end)
+      |> Enum.max()
+
+    max_col =
+      orig_space
+      |> Enum.map(fn {col, _} -> col end)
+      |> Enum.max()
+
+    empty_rows =
+      0..max_row
+      |> Enum.filter(fn target_row ->
+        orig_space
+        |> Enum.map(fn {row, _} -> row end)
+        |> Enum.member?(target_row)
+        |> Kernel.!()
+      end)
+
+    empty_cols =
+      0..max_col
+      |> Enum.filter(fn target_col ->
+        orig_space
+        |> Enum.map(fn {_, col} -> col end)
+        |> Enum.member?(target_col)
+        |> Kernel.!()
+      end)
+
+    orig_space
+    |> Enum.map(fn {row, col} ->
+      ex_rows = Enum.count(empty_rows, fn empty_row -> row > empty_row end) * 999_999
+      ex_cols = Enum.count(empty_cols, fn empty_col -> col > empty_col end) * 999_999
+
+      {row + ex_rows, col + ex_cols}
+    end)
+  end
+
+  def resolve(space) do
+    space
+    |> Enum.with_index()
+    |> Enum.map(fn {{src_row, src_col}, src_index} ->
+      space
+      |> Enum.with_index()
+      |> Enum.map(fn {{dst_row, dst_col}, dst_index} ->
+        if src_index >= dst_index do
+          0
+        else
+          abs(dst_row - src_row) + abs(dst_col - src_col)
+        end
+      end)
+      |> Enum.sum()
+    end)
+    |> Enum.sum()
+  end
+end
+```
+
+```elixir
+maze =
+  """
+  ...#......
+  .......#..
+  #.........
+  ..........
+  ......#...
+  .#........
+  .........#
+  ..........
+  .......#..
+  #...#.....
+  """
+  |> String.slice(0..-2)
+  |> Resolver.parse()
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+```elixir
+maze = Resolver.parse(puzzle_input)
+```
+
+```elixir
+Resolver.resolve(maze)
+```
+
+<!-- livebook:{"offset":2464,"stamp":{"token":"XCP.j8n-NPc4T3gqzfy2jf0hOoPWP-UbHpw0R7FX32ynPURlfSfNU0GNST5X1P4QQVrIfL4dd8jR4Y33g5wPq4L_WkJmprI8c4NikR6wq4ThQRJ2ag","version":2}} -->
