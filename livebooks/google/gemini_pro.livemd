@@ -1,0 +1,183 @@
+# Google Gemini Pro
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.12"},
+  {:req, "~> 0.4"}
+])
+```
+
+## Text
+
+```elixir
+api_key_input = Kino.Input.text("API_KEY")
+```
+
+```elixir
+api_key = Kino.Input.read(api_key_input)
+
+base_url = "https://generativelanguage.googleapis.com/v1beta/models"
+
+headers = %{
+  "Content-Type" => "application/json"
+}
+```
+
+```elixir
+request_body = %{
+  contents: [
+    %{
+      parts: [
+        %{
+          text: "開発言語の Elixir について教えてください"
+        }
+      ]
+    }
+  ]
+}
+```
+
+```elixir
+response =
+  "#{base_url}/gemini-pro:generateContent?key=#{api_key}"
+  |> Req.post!(
+    json: request_body,
+    headers: headers
+  )
+  |> Map.get(:body)
+```
+
+```elixir
+response
+|> Map.get("candidates")
+|> hd()
+|> Map.get("content")
+|> Map.get("parts")
+|> hd()
+|> Map.get("text")
+|> Kino.Markdown.new()
+```
+
+## Text + Image
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :jpeg)
+```
+
+```elixir
+image_binary =
+  image_input
+  |> Kino.Input.read()
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
+  |> File.read!()
+```
+
+```elixir
+request_body = %{
+  contents: [
+    %{
+      parts: [
+        %{
+          text: "首輪は何色ですか"
+        },
+        %{
+          inline_data: %{
+            mime_type: "image/jpeg",
+            data: Base.encode64(image_binary)
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+```elixir
+response =
+  "#{base_url}/gemini-pro-vision:generateContent?key=#{api_key}"
+  |> Req.post!(
+    json: request_body,
+    headers: headers
+  )
+  |> Map.get(:body)
+```
+
+```elixir
+response
+|> Map.get("candidates")
+|> hd()
+|> Map.get("content")
+|> Map.get("parts")
+|> hd()
+|> Map.get("text")
+|> Kino.Markdown.new()
+```
+
+```elixir
+request_body = %{
+  contents: [
+    %{
+      parts: [
+        %{
+          text: "写真内の犬はどういう状態になっていますか"
+        },
+        %{
+          inline_data: %{
+            mime_type: "image/jpeg",
+            data: Base.encode64(image_binary)
+          }
+        }
+      ]
+    }
+  ]
+}
+
+"#{base_url}/gemini-pro-vision:generateContent?key=#{api_key}"
+|> Req.post!(
+  json: request_body,
+  headers: headers
+)
+|> Map.get(:body)
+|> Map.get("candidates")
+|> hd()
+|> Map.get("content")
+|> Map.get("parts")
+|> hd()
+|> Map.get("text")
+|> Kino.Markdown.new()
+```
+
+```elixir
+request_body = %{
+  contents: [
+    %{
+      parts: [
+        %{
+          text: "写真内の犬はどんなことを考えているように見えますか"
+        },
+        %{
+          inline_data: %{
+            mime_type: "image/jpeg",
+            data: Base.encode64(image_binary)
+          }
+        }
+      ]
+    }
+  ]
+}
+
+"#{base_url}/gemini-pro-vision:generateContent?key=#{api_key}"
+|> Req.post!(
+  json: request_body,
+  headers: headers
+)
+|> Map.get(:body)
+|> Map.get("candidates")
+|> hd()
+|> Map.get("content")
+|> Map.get("parts")
+|> hd()
+|> Map.get("text")
+|> Kino.Markdown.new()
+```
