@@ -414,7 +414,7 @@ get_state.(exec_id)
 wine_df
 |> DataFrame.filter(color_intensity < 5)
 |> DataFrame.filter(flavanoids >= 2.0)
-|> DataFrame.arrange(class)
+|> DataFrame.sort_by(class)
 |> DataFrame.select(["class", "color_intensity", "flavanoids"])
 |> Kino.DataTable.new()
 ```
@@ -423,6 +423,6 @@ wine_df
 wine_df
 |> DataFrame.group_by("class")
 |> DataFrame.summarise(alcohol: max(alcohol))
-|> DataFrame.arrange(desc: alcohol)
+|> DataFrame.sort_by(desc: alcohol)
 |> Kino.DataTable.new()
 ```

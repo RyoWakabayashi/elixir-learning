@@ -184,7 +184,7 @@ sample_df["values"]
 
 ```elixir
 sample_df
-|> DataFrame.arrange(asc: values)
+|> DataFrame.sort_by(asc: values)
 |> Kino.DataTable.new()
 ```
 
@@ -274,7 +274,7 @@ population_df
 |> DataFrame.filter(性別 == "男性")
 |> DataFrame.filter(人口 > 300_000)
 |> DataFrame.select(["都道府県", "人口"])
-|> DataFrame.arrange(desc: 人口)
+|> DataFrame.sort_by(desc: 人口)
 |> Kino.DataTable.new()
 ```
 
@@ -292,7 +292,7 @@ sum_df =
   |> DataFrame.mutate(人口_千人: cast(人口_千人, :float))
 
 sum_df
-|> DataFrame.arrange(desc: 人口_千人)
+|> DataFrame.sort_by(desc: 人口_千人)
 |> Kino.DataTable.new()
 ```
 
@@ -309,7 +309,7 @@ sex_ratio_df =
   |> DataFrame.select(["都道府県", "男性率", "女性率"])
 
 sex_ratio_df
-|> DataFrame.arrange(desc: 男性率)
+|> DataFrame.sort_by(desc: 男性率)
 |> Kino.DataTable.new()
 ```
 
@@ -328,7 +328,7 @@ elderly_rate_df =
   |> DataFrame.select(["都道府県", "高齢者率"])
 
 elderly_rate_df
-|> DataFrame.arrange(desc: 高齢者率)
+|> DataFrame.sort_by(desc: 高齢者率)
 |> Kino.DataTable.new(sorting_enabled: true)
 ```
 

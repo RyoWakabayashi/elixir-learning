@@ -200,7 +200,7 @@ histgram.(train_data, "Survived")
 survived_counts =
   train_data["Survived"]
   |> Series.frequencies()
-  |> DataFrame.arrange(values)
+  |> DataFrame.sort_by(values)
   |> DataFrame.to_columns()
   |> Map.get("counts")
 
@@ -240,7 +240,7 @@ cross_table =
   |> DataFrame.group_by(["Pclass", "Survived"])
   |> DataFrame.summarise(count: count(col("Survived")))
   |> DataFrame.pivot_wider("Survived", "count", names_prefix: "Survived_")
-  |> DataFrame.arrange(col("Pclass"))
+  |> DataFrame.sort_by(col("Pclass"))
 
 Kino.DataTable.new(cross_table)
 ```
@@ -262,7 +262,7 @@ train_data
 |> DataFrame.group_by([:fare_group, "Survived"])
 |> DataFrame.summarise(count: count(col("Survived")))
 |> DataFrame.pivot_wider("Survived", "count", names_prefix: "Survived_")
-|> DataFrame.arrange(fare_group)
+|> DataFrame.sort_by(fare_group)
 |> DataFrame.mutate(suvived_rate: col("Survived_1") / (col("Survived_0") + col("Survived_1")))
 |> Kino.DataTable.new()
 ```
@@ -294,7 +294,7 @@ train_data
 |> DataFrame.group_by([:age_group, "Survived"])
 |> DataFrame.summarise(count: count(col("Survived")))
 |> DataFrame.pivot_wider("Survived", "count", names_prefix: "Survived_")
-|> DataFrame.arrange(age_group)
+|> DataFrame.sort_by(age_group)
 |> DataFrame.mutate(suvived_rate: col("Survived_1") / (col("Survived_0") + col("Survived_1")))
 |> Kino.DataTable.new()
 ```
@@ -377,7 +377,7 @@ train_data
 |> DataFrame.group_by(["followers", "Survived"])
 |> DataFrame.summarise(count: count(col("Survived")))
 |> DataFrame.pivot_wider("Survived", "count", names_prefix: "Survived_")
-|> DataFrame.arrange(col("followers"))
+|> DataFrame.sort_by(col("followers"))
 |> DataFrame.mutate(suvived_rate: col("Survived_1") / (col("Survived_0") + col("Survived_1")))
 |> Kino.DataTable.new()
 ```

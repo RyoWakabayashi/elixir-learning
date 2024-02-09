@@ -65,7 +65,7 @@ Kino.DataTable.new(expenses_df)
 ```elixir
 expenses_df["時間軸（年次）"]
 |> Series.frequencies()
-|> DataFrame.arrange(asc: values)
+|> DataFrame.sort_by(asc: values)
 |> Kino.DataTable.new()
 ```
 
@@ -248,7 +248,7 @@ Kino.DataTable.new(summary_df)
 
 ```elixir
 summary_df
-|> DataFrame.arrange(asc: 変動係数)
+|> DataFrame.sort_by(asc: 変動係数)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -269,7 +269,7 @@ end)
 
 ```elixir
 summary_df
-|> DataFrame.arrange(desc: 変動係数)
+|> DataFrame.sort_by(desc: 変動係数)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -306,7 +306,7 @@ change_df =
       "2007年" |> col() |> is_not_nil()
   )
   |> DataFrame.mutate(経年変化率: (col("2022年") - col("2007年")) / col("2007年"))
-  |> DataFrame.arrange(desc: 経年変化率)
+  |> DataFrame.sort_by(desc: 経年変化率)
 
 Kino.DataTable.new(change_df)
 ```
@@ -344,7 +344,7 @@ Kino.DataTable.new(change_df)
 
 ```elixir
 change_df
-|> DataFrame.arrange(asc: 単調変化係数)
+|> DataFrame.sort_by(asc: 単調変化係数)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -363,7 +363,7 @@ end)
 
 ```elixir
 change_df
-|> DataFrame.arrange(desc: 単調変化係数)
+|> DataFrame.sort_by(desc: 単調変化係数)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -407,7 +407,7 @@ Kino.DataTable.new(covid_df)
 
 ```elixir
 covid_df
-|> DataFrame.arrange(asc: コロナ発生時変化率)
+|> DataFrame.sort_by(asc: コロナ発生時変化率)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -428,7 +428,7 @@ end)
 
 ```elixir
 covid_df
-|> DataFrame.arrange(desc: コロナ発生時変化率)
+|> DataFrame.sort_by(desc: コロナ発生時変化率)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -450,7 +450,7 @@ end)
 ```elixir
 covid_df
 |> DataFrame.filter(コロナ発生時変化率 < -0.5 and コロナ発生後変化率 > 0.3)
-|> DataFrame.arrange(desc: コロナ発生後変化率)
+|> DataFrame.sort_by(desc: コロナ発生後変化率)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->
@@ -472,7 +472,7 @@ end)
 ```elixir
 covid_df
 |> DataFrame.filter(コロナ発生時変化率 < -0.5 and コロナ発生後変化率 < 0.2)
-|> DataFrame.arrange(asc: コロナ発生後変化率)
+|> DataFrame.sort_by(asc: コロナ発生後変化率)
 |> DataFrame.slice(0..4)
 |> DataFrame.to_rows()
 |> Enum.map(fn row ->

@@ -51,7 +51,7 @@ calendar_df =
 
 ```elixir
 calendar_df
-|> DataFrame.arrange(desc: count)
+|> DataFrame.sort_by(desc: count)
 |> Kino.DataTable.new()
 ```
 

@@ -95,7 +95,7 @@ choco_df =
   household_df
   |> DataFrame.filter(品目分類 == "チョコレート")
   |> DataFrame.select(["品目分類", "年", "年月", "支出金額"])
-  |> DataFrame.arrange(asc: 年月)
+  |> DataFrame.sort_by(asc: 年月)
 
 Kino.DataTable.new(choco_df)
 ```
@@ -125,7 +125,7 @@ year_choco_df =
     平均: mean(支出金額),
     合計: sum(支出金額)
   )
-  |> DataFrame.arrange(asc: 年)
+  |> DataFrame.sort_by(asc: 年)
 
 Kino.DataTable.new(year_choco_df)
 ```

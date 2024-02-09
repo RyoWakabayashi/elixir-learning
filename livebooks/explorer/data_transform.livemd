@@ -31,7 +31,7 @@ processed_df =
     solid_fuel_mean: mean(solid_fuel),
     gas_fuel_mean: mean(gas_fuel)
   )
-  |> Explorer.DataFrame.arrange(asc: total_mean)
+  |> Explorer.DataFrame.sort_by(asc: total_mean)
 ```
 
 ```elixir

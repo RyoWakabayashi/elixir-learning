@@ -1,4 +1,4 @@
-# AWS S3
+# Cloudflare R2
 
 ```elixir
 Mix.install([
@@ -28,12 +28,12 @@ require Explorer.DataFrame
 ```elixir
 access_key_id_input = Kino.Input.password("ACCESS_KEY_ID")
 secret_access_key_input = Kino.Input.password("SECRET_ACCESS_KEY")
-region_input = Kino.Input.text("REGION")
+endpoint_host_input = Kino.Input.text("ENDPOINT_HOST")
 
 [
   access_key_id_input,
   secret_access_key_input,
-  region_input
+  endpoint_host_input
 ]
 |> Kino.Layout.grid(columns: 3)
 ```
@@ -42,7 +42,7 @@ region_input = Kino.Input.text("REGION")
 auth_config = [
   access_key_id: Kino.Input.read(access_key_id_input),
   secret_access_key: Kino.Input.read(secret_access_key_input),
-  region: Kino.Input.read(region_input)
+  host: Kino.Input.read(endpoint_host_input)
 ]
 
 Kino.nothing()
@@ -74,7 +74,7 @@ bucket_name_input = Kino.Input.text("BUCKET_ANME")
 {contents, next_continuation_token} =
   bucket_name_input
   |> Kino.Input.read()
-  |> S3.list_objects_v2(max_keys: 20)
+  |> S3.list_objects_v2(max_keys: 10)
   |> ExAws.request!(auth_config)
   |> then(&{&1.body.contents, &1.body.next_continuation_token})
 ```
@@ -82,7 +82,7 @@ bucket_name_input = Kino.Input.text("BUCKET_ANME")
 ```elixir
 bucket_name_input
 |> Kino.Input.read()
-|> S3.list_objects_v2(max_keys: 20, continuation_token: next_continuation_token)
+|> S3.list_objects_v2(max_keys: 10, continuation_token: next_continuation_token)
 |> ExAws.request!(auth_config)
 |> then(&{&1.body.contents, &1.body.next_continuation_token})
 ```
@@ -91,7 +91,7 @@ bucket_name_input
 defmodule S3LS do
   def get_contents(continuation_token, bucket_name, auth_config) do
     bucket_name
-    |> S3.list_objects_v2(max_keys: 20, continuation_token: continuation_token)
+    |> S3.list_objects_v2(max_keys: 10, continuation_token: continuation_token)
     |> ExAws.request!(auth_config)
     |> then(&{&1.body.contents, &1.body.next_continuation_token})
   end
@@ -154,13 +154,13 @@ Series.max(all_contents_df["size"])
 
 ```elixir
 all_contents_df
-|> DataFrame.filter(size > 5_000)
+|> DataFrame.filter(size > 20_000)
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 all_contents_df
-|> DataFrame.filter(last_modified < ~N[2021-09-01 00:00:00])
+|> DataFrame.filter(last_modified < ~N[2024-02-09 05:43:42])
 |> Kino.DataTable.new()
 ```
 

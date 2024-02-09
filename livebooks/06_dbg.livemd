@@ -96,7 +96,7 @@ iris = Explorer.Datasets.iris()
 iris
 |> DataFrame.filter(species == "Iris-virginica")
 |> DataFrame.select(["sepal_length", "sepal_width", "petal_length", "petal_width"])
-|> DataFrame.arrange(desc: sepal_width)
+|> DataFrame.sort_by(desc: sepal_width)
 |> DataFrame.rename(["ガクの長さ", "ガクの幅", "花弁の長さ", "花弁の幅"])
 |> DataFrame.to_rows()
 |> Kino.DataTable.new()

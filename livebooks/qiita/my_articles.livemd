@@ -183,35 +183,35 @@ qiita_df
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: page_views_count)
+|> DataFrame.sort_by(desc: page_views_count)
 |> DataFrame.select(["title", "page_views_count", "likes_count", "stocks_count"])
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: likes_count)
+|> DataFrame.sort_by(desc: likes_count)
 |> DataFrame.select(["title", "likes_count", "page_views_count", "stocks_count"])
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: stocks_count)
+|> DataFrame.sort_by(desc: stocks_count)
 |> DataFrame.select(["title", "stocks_count", "likes_count", "page_views_count"])
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: likes_rate)
+|> DataFrame.sort_by(desc: likes_rate)
 |> DataFrame.select(["title", "likes_rate", "likes_count", "page_views_count"])
 |> Kino.DataTable.new()
 ```
 
 ```elixir
 qiita_df
-|> DataFrame.arrange(desc: stocks_rate)
+|> DataFrame.sort_by(desc: stocks_rate)
 |> DataFrame.select(["title", "stocks_rate", "stocks_count", "page_views_count"])
 |> Kino.DataTable.new()
 ```
@@ -349,7 +349,7 @@ qiita_tag_summarised_df =
     stocks_count_sum: sum(stocks_count),
     stocks_count_mean: mean(stocks_count)
   )
-  |> DataFrame.arrange(desc: page_views_count_sum)
+  |> DataFrame.sort_by(desc: page_views_count_sum)
 
 Kino.DataTable.new(qiita_tag_summarised_df)
 ```
