@@ -4,7 +4,7 @@
 Mix.install([
   {:nx, "~> 0.6"},
   {:evision, "~> 0.1"},
-  {:explorer, "~> 0.7"},
+  {:explorer, "~> 0.8"},
   {:req, "~> 0.3"},
   {:kino, "~> 0.12"},
   {:kino_vega_lite, "~> 0.1"}

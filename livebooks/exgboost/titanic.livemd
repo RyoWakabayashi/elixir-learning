@@ -2,8 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:exgboost, "~> 0.3"},
-  {:explorer, "~> 0.7"},
+  {:exgboost, "~> 0.5"},
+  {:explorer, "~> 0.8"},
   {:nx, "~> 0.6"},
   {:kino, "~> 0.12"},
   {:kino_vega_lite, "~> 0.1"}
@@ -149,16 +149,20 @@ loss_plot =
 
 ```elixir
 step_callback =
-  EXGBoost.Training.Callback.new(:after_iteration, fn state ->
-    if rem(state.iteration, 20) == 0 do
-      Kino.VegaLite.push(
-        loss_plot,
-        %{"step" => state.iteration, "mlogloss" => state.metrics["training"]["mlogloss"]}
-      )
-    end
+  EXGBoost.Training.Callback.new(
+    :after_iteration,
+    fn state ->
+      if rem(state.iteration, 1000) == 0 do
+        Kino.VegaLite.push(
+          loss_plot,
+          %{"step" => state.iteration, "mlogloss" => state.metrics["training"]["mlogloss"]}
+        )
+      end
 
-    {:cont, state}
-  end)
+      state
+    end,
+    :loss_plot
+  )
 ```
 
 ```elixir
@@ -166,11 +170,15 @@ booster =
   EXGBoost.train(train_inputs, train_labels,
     num_class: 2,
     objective: :multi_softprob,
-    num_boost_rounds: 10000,
+    num_boost_rounds: 200_000,
+    learning_rates: fn _ -> 0.1 end,
+    max_depth: 6,
     early_stopping_rounds: 10,
     evals: [{train_inputs, train_labels, "training"}],
     callbacks: [step_callback]
   )
+
+Kino.nothing()
 ```
 
 ## Prediction
