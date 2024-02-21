@@ -253,3 +253,23 @@ cd hello_world
 sed -i -e 's/127, 0, 0, 1/0, 0, 0, 0/g' config/dev.exs
 mix phx.server
 ```
+
+## Fly.io へのデプロイ
+
+### 認証
+
+```sh
+fly auth login
+```
+
+### GPU
+
+アプリケーションを初期化する
+
+```sh
+fly apps create livebook-rwakabay-gpu
+```
+
+```sh
+fly deploy --ha=false
+```

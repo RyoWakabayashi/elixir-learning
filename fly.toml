@@ -1,43 +1,35 @@
-# fly.toml app configuration file generated for livebook-rwakabay on 2023-04-25T19:30:36+09:00
+# fly.toml app configuration file generated for livebook-rwakabay-gpu on 2024-02-16T09:24:36+09:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = "livebook-rwakabay"
-kill_signal = "SIGTERM"
-kill_timeout = 5
-primary_region = "nrt"
-processes = []
+app = 'livebook-rwakabay-gpu'
+primary_region = 'ord'
 
 [build]
+  image = 'ghcr.io/livebook-dev/livebook:latest-cuda12.1'
 
 [env]
+  BUMBLEBEE_CACHE_DIR = '/data/cache/bumblebee'
+  ELIXIR_ERL_OPTIONS = '-proto_dist inet6_tcp +sssdio 128'
+  LIVEBOOK_DATA_PATH = '/data'
+  LIVEBOOK_HOME = '/data'
+  LIVEBOOK_IP = '::'
+  LIVEBOOK_ROOT_PATH = '/data'
+  PORT = '8080'
+  XLA_CACHE_DIR = '/data/cache/xla'
+  XLA_TARGET = 'cuda120'
 
-[experimental]
-  allowed_public_ports = []
-  auto_rollback = true
-
-[[services]]
-  http_checks = []
+[http_service]
   internal_port = 8080
-  processes = ["app"]
-  protocol = "tcp"
-  script_checks = []
-  [services.concurrency]
-    hard_limit = 25
-    soft_limit = 20
-    type = "connections"
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ['app']
 
-  [[services.ports]]
-    handlers = ["http"]
-    port = 80
-
-  [[services.ports]]
-    handlers = ["tls", "http"]
-    port = 443
-
-  [[services.tcp_checks]]
-    grace_period = "30s"
-    interval = "15s"
-    restart_limit = 6
-    timeout = "2s"
+[[vm]]
+  size = 'a100-40gb'
+  cpu_kind = 'performance'
+  cpus = 8
+  memory_mb = 32768
