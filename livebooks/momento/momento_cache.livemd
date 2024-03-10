@@ -1,0 +1,54 @@
+# Momento Cache
+
+```elixir
+Mix.install([
+  {:gomomento, "~> 0.6"},
+  {:kino, "~> 0.12"}
+])
+```
+
+## Section
+
+```elixir
+alias Momento.CacheClient
+```
+
+```elixir
+api_key_input = Kino.Input.password("API_KEY")
+```
+
+```elixir
+config = Momento.Configurations.Laptop.latest()
+```
+
+```elixir
+credential_provider =
+  api_key_input
+  |> Kino.Input.read()
+  |> Momento.Auth.CredentialProvider.from_string!()
+```
+
+```elixir
+default_ttl_seconds = 60.0
+client = CacheClient.create!(config, credential_provider, default_ttl_seconds)
+```
+
+```elixir
+cache_name = "cache"
+```
+
+```elixir
+CacheClient.create_cache(client, cache_name)
+```
+
+```elixir
+CacheClient.list_caches(client)
+```
+
+```elixir
+CacheClient.set(client, cache_name, "foo", "bar")
+```
+
+```elixir
+CacheClient.get(client, cache_name, "foo")
+```
