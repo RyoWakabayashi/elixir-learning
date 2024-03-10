@@ -7,11 +7,13 @@ Mix.install([
 ])
 ```
 
-## Section
+## Alias
 
 ```elixir
 alias Momento.CacheClient
 ```
+
+## Prepare client
 
 ```elixir
 api_key_input = Kino.Input.password("API_KEY")
@@ -33,6 +35,8 @@ default_ttl_seconds = 60.0
 client = CacheClient.create!(config, credential_provider, default_ttl_seconds)
 ```
 
+## Crate and list caches
+
 ```elixir
 cache_name = "cache"
 ```
@@ -44,6 +48,8 @@ CacheClient.create_cache(client, cache_name)
 ```elixir
 CacheClient.list_caches(client)
 ```
+
+## Set and get
 
 ```elixir
 CacheClient.set(client, cache_name, "foo", "bar")
