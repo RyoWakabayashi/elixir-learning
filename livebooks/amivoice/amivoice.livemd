@@ -1,0 +1,92 @@
+# AmiVoice
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.12"},
+  {:multipart, "~> 0.4"},
+  {:req, "~> 0.4"},
+  {:vice, "~> 0.1"}
+])
+```
+
+## 認証情報の設定
+
+```elixir
+appkey_input = Kino.Input.password("APPKEY")
+```
+
+```elixir
+auth_part =
+  appkey_input
+  |> Kino.Input.read()
+  |> Multipart.Part.text_field("u")
+
+Kino.nothing()
+```
+
+## 同期リクエスト
+
+```elixir
+api_endpoint = "https://acp-api.amivoice.com/v1/nolog/recognize"
+```
+
+```elixir
+audio_input = Kino.Input.audio("Audio", format: :wav, sampling_rate: 16_000)
+```
+
+```elixir
+audio_path =
+  audio_input
+  |> Kino.Input.read()
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
+```
+
+```elixir
+File.copy!(audio_path, "/tmp/input.wav")
+```
+
+```elixir
+Vice.start()
+```
+
+```elixir
+{:async, worker} = Vice.convert("/tmp/input.wav", "/tmp/input_16b.wav", output_bits: 16)
+```
+
+```elixir
+Vice.status(worker)
+```
+
+```elixir
+audio_content = File.read!("/tmp/input_16b.wav")
+audio_part = Multipart.Part.file_content_field("audio", audio_content, "a")
+```
+
+```elixir
+multipart =
+  Multipart.new()
+  |> Multipart.add_part(auth_part)
+  |> Multipart.add_part(Multipart.Part.text_field("-a-general", "d"))
+  |> Multipart.add_part(audio_part)
+
+Kino.nothing()
+```
+
+```elixir
+content_length = Multipart.content_length(multipart)
+content_type = Multipart.content_type(multipart, "multipart/form-data")
+
+headers = [
+  {"Content-Type", content_type},
+  {"Content-Length", to_string(content_length)}
+]
+```
+
+```elixir
+{:ok, response} = Req.post(api_endpoint, headers: headers, body: Multipart.body_stream(multipart))
+```
+
+```elixir
+response.body
+```

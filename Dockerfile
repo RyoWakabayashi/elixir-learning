@@ -91,6 +91,13 @@ RUN apt-get upgrade -y \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
+# For SoX (Sound eXchange)
+RUN apt-get upgrade -y \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y sox \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
 ENV LIVEBOOK_HOME=/home/livebook
 
 COPY ./livebooks /home/livebook
