@@ -1,0 +1,59 @@
+# Mistral
+
+```elixir
+Mix.install(
+  [
+    {:bumblebee, "~> 0.5"},
+    {:nx, "~> 0.7"},
+    {:exla, "~> 0.7"},
+    {:kino, "~> 0.12"}
+  ],
+  system_env: [
+    {"XLA_TARGET", "cuda120"},
+    {"EXLA_TARGET", "cuda"}
+  ]
+)
+
+Nx.global_default_backend({EXLA.Backend, client: :host})
+```
+
+## 実行
+
+```elixir
+hf_token = System.fetch_env!("LB_HF_TOKEN")
+repo = {:hf, "mistralai/Mistral-7B-Instruct-v0.2", auth_token: hf_token}
+
+{:ok, model_info} = Bumblebee.load_model(repo, type: :bf16, backend: EXLA.Backend)
+{:ok, tokenizer} = Bumblebee.load_tokenizer(repo)
+{:ok, generation_config} = Bumblebee.load_generation_config(repo)
+
+:ok
+```
+
+```elixir
+generation_config =
+  Bumblebee.configure(generation_config,
+    max_new_tokens: 256,
+    strategy: %{type: :multinomial_sampling, top_p: 0.6}
+  )
+
+serving =
+  Bumblebee.Text.generation(model_info, tokenizer, generation_config,
+    compile: [batch_size: 1, sequence_length: 1028],
+    stream: true,
+    defn_options: [compiler: EXLA]
+  )
+
+# Should be supervised
+Kino.start_child({Nx.Serving, name: Mistral, serving: serving})
+```
+
+```elixir
+prompt = """
+<s>[INST] What is your favourite condiment? [/INST]
+Well, I'm quite partial to a good squeeze of fresh lemon juice. It adds just the right amount of zesty flavour to whatever I'm cooking up in the kitchen!</s>
+[INST] Do you have mayonnaise recipes? [/INST]\
+"""
+
+Nx.Serving.batched_run(Mistral, prompt) |> Enum.each(&IO.write/1)
+```
