@@ -1,0 +1,31 @@
+# Delux
+
+## 設定の確認
+
+```elixir
+Application.get_env(:delux, :indicators)
+```
+
+## Section
+
+```elixir
+# 色
+:green
+# 周波数
+|> Delux.Effects.blink(4)
+|> Delux.render()
+```
+
+```elixir
+Delux.info()
+```
+
+## モールス信号
+
+```elixir
+# 色
+:green
+# モールス信号にしたい文字列、繰り返し
+|> Delux.Morse.encode("SOS", loop?: true)
+|> Delux.render()
+```
