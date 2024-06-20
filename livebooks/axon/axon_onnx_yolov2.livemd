@@ -3,11 +3,11 @@
 ```elixir
 Mix.install(
   [
-    {:exla, "~> 0.6"},
-    {:axon_onnx, "~> 0.4"},
+    {:exla, "~> 0.7"},
+    {:axon_onnx, "~> 0.4", git: "https://github.com/mortont/axon_onnx/"},
     {:stb_image, "~> 0.6"},
-    {:req, "~> 0.3"},
-    {:kino, "~> 0.12"}
+    {:req, "~> 0.5"},
+    {:kino, "~> 0.13"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )
@@ -32,8 +32,8 @@ num_classes = Enum.count(classes)
 model_path = "/tmp/yolov2.onnx"
 
 unless File.exists?(model_path) do
-  "https://media.githubusercontent.com/media/onnx/models/main/vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx"
-  |> Req.get!(connect_options: [timeout: 300_000], output: model_path)
+  "https://media.githubusercontent.com/media/onnx/models/main/validated/vision/object_detection_segmentation/yolov2-coco/model/yolov2-coco-9.onnx?download=true"
+  |> Req.get!(connect_options: [timeout: 300_000], into: File.stream!(model_path))
 end
 
 {model, params} = AxonOnnx.import(model_path)

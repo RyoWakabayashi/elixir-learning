@@ -5,9 +5,9 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.6"},
-    {:kino, "~> 0.12"},
-    {:req, "~> 0.3"},
+    {:nx, "~> 0.7"},
+    {:kino, "~> 0.13"},
+    {:req, "~> 0.5"},
     {:pixels, "~> 0.3"}
   ],
   system_env: [
@@ -223,8 +223,8 @@ Nx.tensor(inputs)
 ```elixir
 img_path = "rwakabay.png"
 
-"https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
-|> Req.get!(output: img_path)
+"https://www.elixirconf.eu/assets/images/ryo-wakabayashi.jpg"
+|> Req.get!(into: File.stream!(img_path))
 ```
 
 <!-- livebook:{"output":true} -->

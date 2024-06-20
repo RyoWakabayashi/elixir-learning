@@ -6,7 +6,7 @@ Mix.install(
     {:bumblebee, "~> 0.5"},
     {:nx, "~> 0.7"},
     {:exla, "~> 0.7"},
-    {:kino, "~> 0.12"}
+    {:kino, "~> 0.13"}
   ],
   system_env: [
     {"XLA_TARGET", "cuda120"},

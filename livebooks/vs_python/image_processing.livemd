@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:req, "~> 0.3"},
-  {:evision, "~> 0.1"},
-  {:kino, "~> 0.12"},
-  {:nx, "~> 0.6"}
+  {:req, "~> 0.5"},
+  {:evision, "~> 0.2"},
+  {:kino, "~> 0.13"},
+  {:nx, "~> 0.7"}
 ])
 ```
 
@@ -13,7 +13,7 @@ Mix.install([
 
 ```elixir
 img =
-  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.jpg"
   |> Req.get!()
   |> Map.get(:body)
   |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
@@ -68,7 +68,7 @@ img
   # 文字列
   "Ryo",
   # 左下{x, y}
-  {250, 200},
+  {200, 350},
   # フォント種類
   Evision.Constant.cv_FONT_HERSHEY_SIMPLEX(),
   # フォントサイズ

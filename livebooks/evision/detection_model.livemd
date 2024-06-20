@@ -3,10 +3,10 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.6"},
-    {:evision, "~> 0.1"},
-    {:req, "~> 0.3"},
-    {:kino, "~> 0.12"}
+    {:nx, "~> 0.7"},
+    {:evision, "~> 0.2"},
+    {:req, "~> 0.5"},
+    {:kino, "~> 0.13"}
   ],
   system_env: [
     {"EVISION_PREFER_PRECOMPILED", "false"}
@@ -22,13 +22,13 @@ cfg_path = "/tmp/yolov3.cfg"
 label_path = "/tmp/label.txt"
 
 "https://pjreddie.com/media/files/yolov3.weights"
-|> Req.get!(connect_options: [timeout: 300_000], output: weights_path)
+|> Req.get!(connect_options: [timeout: 300_000], into: File.stream!(weights_path))
 
 "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
-|> Req.get!(output: cfg_path)
+|> Req.get!(into: File.stream!(cfg_path))
 
 "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
-|> Req.get!(output: label_path)
+|> Req.get!(into: File.stream!(label_path))
 ```
 
 ## Load model

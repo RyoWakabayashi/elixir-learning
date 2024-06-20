@@ -3,8 +3,8 @@
 ```elixir
 Mix.install([
   {:image, "~> 0.38"},
-  {:req, "~> 0.3"},
-  {:kino, "~> 0.12"}
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.13"}
 ])
 ```
 
@@ -37,7 +37,7 @@ Image.Kino.show(chroma_key_img, max_height: 400)
 
 ```elixir
 ryo_img =
-  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.jpg"
   |> Req.get!()
   |> Map.get(:body)
   |> Image.from_binary!()

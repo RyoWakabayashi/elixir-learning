@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.6"},
-  {:evision, "~> 0.1"},
-  {:req, "~> 0.3"},
-  {:kino, "~> 0.12"}
+  {:nx, "~> 0.7"},
+  {:evision, "~> 0.2"},
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.13"}
 ])
 ```
 
@@ -34,7 +34,7 @@ Download the image of me, Ryo Wakabayashi.
 img_path = "rwakabay.png"
 
 Req.get!(
-  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png",
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.jpg",
   output: img_path
 )
 

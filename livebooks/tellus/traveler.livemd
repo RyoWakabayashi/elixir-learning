@@ -3,12 +3,12 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.6"},
+    {:nx, "~> 0.7"},
     {:evision, "~> 0.1.33"},
-    {:exla, "~> 0.6"},
-    {:req, "~> 0.3"},
+    {:exla, "~> 0.7"},
+    {:req, "~> 0.5"},
     {:geo, "~> 3.5"},
-    {:kino, "~> 0.12"},
+    {:kino, "~> 0.13"},
     {:kino_maplibre, "~> 0.1"}
   ],
   config: [
@@ -131,7 +131,7 @@ defmodule TellusTraveler do
       unless File.exists?(file_path) do
         token
         |> get_data_file_download_url(dataset_id, scene_id, file["id"])
-        |> Req.get!(output: file_path)
+        |> Req.get!(into: File.stream!(file_path))
       end
 
       file_path

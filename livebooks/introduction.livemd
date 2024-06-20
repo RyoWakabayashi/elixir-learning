@@ -3,17 +3,17 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.6"},
-    {:evision, "~> 0.1"},
-    {:exla, "~> 0.6"},
+    {:nx, "~> 0.7"},
+    {:evision, "~> 0.2"},
+    {:exla, "~> 0.7"},
     {:explorer, "~> 0.8"},
     {:flow, "~> 1.2"},
     {:image, "~> 0.38"},
-    {:kino, "~> 0.12"},
+    {:kino, "~> 0.13"},
     {:kino_bumblebee, "~> 0.4"},
     {:kino_maplibre, "~> 0.1"},
     {:kino_vega_lite, "~> 0.1"},
-    {:req, "~> 0.3"}
+    {:req, "~> 0.5"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )
@@ -138,7 +138,7 @@ Kino.DataTable.new(year_choco_df)
 
 ```elixir
 img =
-  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png"
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.jpg"
   |> Req.get!()
   |> Map.get(:body)
   |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())

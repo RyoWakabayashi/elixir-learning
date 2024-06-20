@@ -3,11 +3,11 @@
 ```elixir
 Mix.install(
   [
-    {:exla, "~> 0.6"},
-    {:axon_onnx, "~> 0.4"},
+    {:exla, "~> 0.7"},
+    {:axon_onnx, "~> 0.4", git: "https://github.com/mortont/axon_onnx/"},
     {:stb_image, "~> 0.6"},
-    {:req, "~> 0.3"},
-    {:kino, "~> 0.12"}
+    {:req, "~> 0.5"},
+    {:kino, "~> 0.13"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )
@@ -26,8 +26,8 @@ classes =
 model_path = "/tmp/resnet.onnx"
 
 unless File.exists?(model_path) do
-  "https://media.githubusercontent.com/media/onnx/models/main/vision/classification/resnet/model/resnet18-v1-7.onnx"
-  |> Req.get!(connect_options: [timeout: 300_000], output: model_path)
+  "https://media.githubusercontent.com/media/onnx/models/main/validated/vision/classification/resnet/model/resnet18-v1-7.onnx?download=true"
+  |> Req.get!(connect_options: [timeout: 300_000], into: File.stream!(model_path))
 end
 
 {model, params} = AxonOnnx.import(model_path)

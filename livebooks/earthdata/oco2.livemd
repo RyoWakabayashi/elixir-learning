@@ -3,12 +3,12 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.6"},
+    {:nx, "~> 0.7"},
     {:evision, "~> 0.1.33"},
-    {:exla, "~> 0.6"},
+    {:exla, "~> 0.7"},
     {:netcdf, "~> 0.1"},
     {:geo, "~> 3.5"},
-    {:kino, "~> 0.12"},
+    {:kino, "~> 0.13"},
     {:kino_maplibre, "~> 0.1"},
     {:kino_vega_lite, "~> 0.1"}
   ],

@@ -2,11 +2,12 @@
 
 ```elixir
 Mix.install([
-  {:exla, "~> 0.6"},
-  {:axon, "~> 0.5"},
-  {:kino, "~> 0.12"},
+  {:exla, "~> 0.7"},
+  {:axon, "~> 0.6", git: "https://github.com/elixir-nx/axon/"},
+  {:kino, "~> 0.13"},
   {:kino_vega_lite, "~> 0.1"},
-  {:explorer, "~> 0.8"}
+  {:explorer, "~> 0.8"},
+  {:table_rex, "~> 4.0", override: true}
 ])
 ```
 
@@ -229,11 +230,11 @@ Kino.Layout.grid([loss_plot, acc_plot], columns: 2)
 ```elixir
 trained_state =
   model
-  |> Axon.Loop.trainer(:mean_squared_error, Axon.Optimizers.adam(0.0005))
+  |> Axon.Loop.trainer(:mean_squared_error, Polaris.Optimizers.adam(learning_rate: 0.0005))
   |> Axon.Loop.metric(:accuracy, "accuracy")
   |> Axon.Loop.kino_vega_lite_plot(loss_plot, "loss", event: :epoch_completed)
   |> Axon.Loop.kino_vega_lite_plot(acc_plot, "accuracy", event: :epoch_completed)
-  |> Axon.Loop.run(train_data, %{}, epochs: 50, compiler: EXLA)
+  |> Axon.Loop.run(train_data, Axon.ModelState.empty(), epochs: 50, compiler: EXLA)
 ```
 
 ## 未知データに対する推論

@@ -3,7 +3,7 @@
 ```elixir
 Mix.install(
   [
-    {:kino, "~> 0.12"},
+    {:kino, "~> 0.13"},
     {:evision, github: "cocoa-xu/evision", branch: "main"}
   ],
   system_env: [

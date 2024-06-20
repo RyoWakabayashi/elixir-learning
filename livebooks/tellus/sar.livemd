@@ -3,8 +3,8 @@
 ```elixir
 Mix.install([
   {:evision, "~> 0.1.33"},
-  {:req, "~> 0.3"},
-  {:kino, "~> 0.12"},
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.13"},
   {:kino_maplibre, "~> 0.1"}
 ])
 ```
@@ -181,7 +181,7 @@ get_png = fn type, work_id, z, x, y ->
 
   img_path = "sar_#{type}_#{work_id}_#{z}_#{x}_#{y}.png"
 
-  Req.get!(png_url, headers: [auth_header], output: img_path)
+  Req.get!(png_url, headers: [auth_header], into: File.stream!(img_path))
 
   img_path
   |> Evision.imread()
@@ -217,7 +217,7 @@ get_tif = fn type, work_id ->
 
   tiff_path = "sar_#{type}_#{work_id}.tif"
 
-  Req.get!(tiff_url, headers: [auth_header], output: tiff_path)
+  Req.get!(tiff_url, headers: [auth_header], into: File.stream!(tiff_path))
 
   tiff_path
   |> Evision.imread()

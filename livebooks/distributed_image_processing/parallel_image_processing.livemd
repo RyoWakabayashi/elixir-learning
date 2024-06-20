@@ -2,12 +2,12 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.6"},
-  {:evision, "~> 0.1"},
+  {:nx, "~> 0.7"},
+  {:evision, "~> 0.2"},
   {:flow, "~> 1.2"},
-  {:req, "~> 0.3"},
-  {:kino, "~> 0.12"},
-  {:benchee, "~> 1.1"}
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.13"},
+  {:benchee, "~> 1.3"}
 ])
 ```
 
@@ -18,7 +18,7 @@ Mix.install([
 img_path = "rwakabay.png"
 
 Req.get!(
-  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.png",
+  "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.jpg",
   output: img_path
 )
 

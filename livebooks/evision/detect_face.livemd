@@ -2,9 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:req, "~> 0.3"},
-  {:evision, "~> 0.1"},
-  {:kino, "~> 0.12"}
+  {:req, "~> 0.5"},
+  {:evision, "~> 0.2"},
+  {:kino, "~> 0.13"}
 ])
 ```
 
@@ -16,17 +16,17 @@ prefix = "https://github.com/opencv/opencv/raw/master/data/haarcascades"
 frontal_face_model_path = "frontal_face_model.xml"
 
 "#{prefix}/haarcascade_frontalface_default.xml"
-|> Req.get!(connect_options: [timeout: 300_000], output: frontal_face_model_path)
+|> Req.get!(connect_options: [timeout: 300_000], into: File.stream!(frontal_face_model_path))
 
 eye_model_path = "eye_model.xml"
 
 "#{prefix}/haarcascade_eye.xml"
-|> Req.get!(connect_options: [timeout: 300_000], output: eye_model_path)
+|> Req.get!(connect_options: [timeout: 300_000], into: File.stream!(eye_model_path))
 
 profile_face_model_path = "profile_face_model.xml"
 
 "#{prefix}/haarcascade_profileface.xml"
-|> Req.get!(connect_options: [timeout: 300_000], output: profile_face_model_path)
+|> Req.get!(connect_options: [timeout: 300_000], into: File.stream!(profile_face_model_path))
 ```
 
 ## Load models
