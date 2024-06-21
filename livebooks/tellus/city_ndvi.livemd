@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:nx, "~> 0.7"},
-    {:evision, "~> 0.1.33"},
+    {:evision, "~> 0.2"},
     {:exla, "~> 0.7"},
     {:geo, "~> 3.5"},
     {:jason, "~> 1.4"},
@@ -252,7 +252,8 @@ ndvi_map =
   |> Nx.add(128)
   |> Nx.as_type(:u8)
   |> Evision.Mat.from_nx_2d()
-  |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+  |> then(&[src: &1, colormap: Evision.Constant.cv_COLORMAP_WINTER()])
+  |> Evision.applyColorMap()
 
 Evision.resize(ndvi_map, {640, 640})
 ```
@@ -294,7 +295,7 @@ MapLibre.new(center: center, zoom: 8, style: :terrain)
 
 青森県の行政区域データを /tmp/GML にダウンロードしておく
 
-出典: 「国土数値情報（行政区域データ）」（国土交通省）（https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v3_1.html）を加工して作成
+出典: 「国土数値情報（行政区域データ）」（国土交通省）（https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-2024.html）を加工して作成
 
 ```elixir
 gml_dir = "/tmp/GML"
@@ -748,7 +749,8 @@ defmodule CityNDVI do
       |> Nx.multiply(128)
       |> Nx.add(128)
       |> Nx.as_type(:u8)
-      |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+      |> then(&[src: &1, colormap: Evision.Constant.cv_COLORMAP_WINTER()])
+      |> Evision.applyColorMap()
       |> Evision.Mat.to_nx(EXLA.Backend)
 
     croped_city_ndvi_map =

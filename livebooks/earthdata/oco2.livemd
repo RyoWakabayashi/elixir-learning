@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:nx, "~> 0.7"},
-    {:evision, "~> 0.1.33"},
+    {:evision, "~> 0.2"},
     {:exla, "~> 0.7"},
     {:netcdf, "~> 0.1"},
     {:geo, "~> 3.5"},
@@ -174,7 +174,8 @@ jet_map =
   |> Nx.tile([256, 1])
   |> Nx.as_type(:u8)
   |> Evision.Mat.from_nx_2d()
-  |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_JET())
+  |> then(&[src: &1, colormap: Evision.Constant.cv_COLORMAPcv_COLORMAP_JET_WINTER()])
+  |> Evision.applyColorMap()
 ```
 
 ```elixir

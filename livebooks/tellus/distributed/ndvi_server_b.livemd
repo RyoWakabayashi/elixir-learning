@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:nx, "~> 0.7"},
-    {:evision, "~> 0.1.33"},
+    {:evision, "~> 0.2"},
     {:exla, "~> 0.7"},
     {:kino, "~> 0.13"}
   ],
@@ -57,7 +57,8 @@ serving =
     res
     |> Evision.Mat.from_nx_2d()
     |> Evision.resize({320, 320})
-    |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+    |> then(&[src: &1, colormap: Evision.Constant.cv_COLORMAP_WINTER()])
+    |> Evision.applyColorMap()
     |> then(&Kino.Frame.render(frame, &1))
 
     res

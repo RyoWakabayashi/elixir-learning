@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:nx, "~> 0.7"},
-    {:evision, "~> 0.1.33"},
+    {:evision, "~> 0.2"},
     {:exla, "~> 0.7"},
     {:req, "~> 0.5"},
     {:geo, "~> 3.5"},
@@ -191,7 +191,7 @@ dataset_id_list = Enum.map(opt_datasets, & &1["id"])
 
 青森県の行政区域データを /tmp/GML にダウンロードしておく
 
-出典: 「国土数値情報（行政区域データ）」（国土交通省）（https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-v3_1.html）を加工して作成
+出典: 「国土数値情報（行政区域データ）」（国土交通省）（https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-2024.html）を加工して作成
 
 ```elixir
 gml_dir = "/tmp/GML"

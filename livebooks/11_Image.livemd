@@ -221,7 +221,7 @@ Nx.tensor(inputs)
 画像をダウンロードする
 
 ```elixir
-img_path = "rwakabay.png"
+img_path = "rwakabay.jpg"
 
 "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.jpg"
 |> Req.get!(into: File.stream!(img_path))

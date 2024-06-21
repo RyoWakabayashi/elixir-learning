@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:nx, "~> 0.7"},
-    {:evision, "~> 0.1.33"},
+    {:evision, "~> 0.2"},
     {:exla, "~> 0.7"},
     {:kino, "~> 0.13"},
     {:flow, "~> 1.2"}
@@ -186,9 +186,7 @@ ndvi_list =
 ```elixir
 ndvi_list
 |> Enum.map(fn {date, ndvi_tensor} ->
-  img =
-    ndvi_tensor
-    |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+  img = Evision.applyColorMap(src: ndvi_tensor, colormap: Evision.Constant.cv_COLORMAP_WINTER())
 
   {date, img}
 end)

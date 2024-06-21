@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:nx, "~> 0.7"},
-    {:evision, "~> 0.1.33"},
+    {:evision, "~> 0.2"},
     {:exla, "~> 0.7"},
     {:kino, "~> 0.13"},
     {:kino_maplibre, "~> 0.1"},
@@ -386,7 +386,8 @@ ndvi_map =
   |> Nx.add(128)
   |> Nx.as_type(:u8)
   |> Evision.Mat.from_nx_2d()
-  |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+  |> then(&[src: &1, colormap: Evision.Constant.cv_COLORMAP_WINTER()])
+  |> Evision.applyColorMap()
 
 Evision.resize(ndvi_map, {640, 640})
 ```
@@ -485,7 +486,8 @@ ndvi_list
     |> Nx.add(128)
     |> Nx.as_type(:u8)
     |> Evision.resize({640, 640})
-    |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+    |> then(&[src: &1, colormap: Evision.Constant.cv_COLORMAP_WINTER()])
+    |> Evision.applyColorMap()
     |> get_data_url.()
 
   map =

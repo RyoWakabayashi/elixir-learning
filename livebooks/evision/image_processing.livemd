@@ -52,7 +52,7 @@ img = Evision.imdecode(img_binary, Evision.Constant.cv_IMREAD_COLOR())
 ## 画像の書込
 
 ```elixir
-img_path = "rwakabay.png"
+img_path = "rwakabay.jpg"
 
 Evision.imwrite(img_path, img)
 ```

@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:nx, "~> 0.7"},
-    {:evision, "~> 0.1.33"},
+    {:evision, "~> 0.2"},
     {:exla, "~> 0.7"},
     {:geo, "~> 3.5"},
     {:jason, "~> 1.4"},
@@ -319,7 +319,8 @@ defmodule NDVI do
     |> Nx.multiply(128)
     |> Nx.add(128)
     |> Nx.as_type(:u8)
-    |> Evision.applyColorMap(Evision.Constant.cv_COLORMAP_WINTER())
+    |> then(&[src: &1, colormap: Evision.Constant.cv_COLORMAP_WINTER()])
+    |> Evision.applyColorMap()
   end
 end
 ```

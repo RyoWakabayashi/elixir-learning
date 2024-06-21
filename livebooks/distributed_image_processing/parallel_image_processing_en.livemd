@@ -26,11 +26,11 @@ Process 128 images in parallel and compare the speeds of sequential, one-paralle
 
 ```elixir
 # Download the image
-img_path = "rwakabay.png"
+img_path = "rwakabay.jpg"
 
 Req.get!(
   "https://www.elixirconf.eu/assets/images/ryo-wakabayashi.jpg",
-  output: img_path
+  output: File.stream!(img_path)
 )
 
 img_mat = Evision.imread(img_path)
