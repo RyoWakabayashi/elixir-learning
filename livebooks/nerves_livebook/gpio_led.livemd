@@ -1,0 +1,35 @@
+# GPIO LED
+
+## List GPIO pins
+
+```elixir
+Circuits.GPIO.enumerate()
+|> Kino.DataTable.new()
+```
+
+## LED の点灯
+
+```elixir
+{:ok, gpio} = Circuits.GPIO.open("GPIO17", :output)
+
+Circuits.GPIO.write(gpio, 1)
+
+Circuits.GPIO.close(gpio)
+```
+
+```elixir
+Circuits.GPIO.write_one("GPIO17", 0)
+```
+
+## LED の点滅
+
+```elixir
+{:ok, gpio} = Circuits.GPIO.open("GPIO17", :output)
+
+Enum.each(1..10, fn index ->
+  Circuits.GPIO.write(gpio, rem(index, 2))
+  Process.sleep(500)
+end)
+
+Circuits.GPIO.close(gpio)
+```
