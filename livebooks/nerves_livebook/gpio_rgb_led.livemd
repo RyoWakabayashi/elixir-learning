@@ -1,0 +1,104 @@
+# GPIO RGB LED
+
+## ピンを開く
+
+```elixir
+{:ok, red} = Circuits.GPIO.open("GPIO17", :output)
+{:ok, green} = Circuits.GPIO.open("GPIO18", :output)
+{:ok, blue} = Circuits.GPIO.open("GPIO27", :output)
+```
+
+## LED の点灯
+
+```elixir
+# Red
+Circuits.GPIO.write(red, 1)
+Circuits.GPIO.write(green, 0)
+Circuits.GPIO.write(blue, 0)
+```
+
+```elixir
+# Green
+Circuits.GPIO.write(red, 0)
+Circuits.GPIO.write(green, 1)
+Circuits.GPIO.write(blue, 0)
+```
+
+```elixir
+# Blue
+Circuits.GPIO.write(red, 0)
+Circuits.GPIO.write(green, 0)
+Circuits.GPIO.write(blue, 1)
+```
+
+```elixir
+# Yellow
+Circuits.GPIO.write(red, 1)
+Circuits.GPIO.write(green, 1)
+Circuits.GPIO.write(blue, 0)
+```
+
+```elixir
+# Purple
+Circuits.GPIO.write(red, 1)
+Circuits.GPIO.write(green, 0)
+Circuits.GPIO.write(blue, 1)
+```
+
+```elixir
+# White
+Circuits.GPIO.write(red, 1)
+Circuits.GPIO.write(green, 1)
+Circuits.GPIO.write(blue, 1)
+```
+
+## PWM
+
+```elixir
+Circuits.GPIO.write(red, 0)
+Circuits.GPIO.write(green, 0)
+Circuits.GPIO.write(blue, 0)
+```
+
+```elixir
+defmodule PWM do
+  def set(led, duty, length) do
+    on_time = (10 * duty) |> round()
+    off_time = 10 - on_time
+    full_time = (length / 10) |> round()
+
+    1..full_time
+    |> Enum.map(fn _ ->
+      Circuits.GPIO.write(led, 0)
+      Process.sleep(off_time)
+      Circuits.GPIO.write(led, 1)
+      Process.sleep(on_time)
+    end)
+  end
+end
+```
+
+```elixir
+PWM.set(red, 0.3, 1000)
+PWM.set(red, 0.6, 1000)
+PWM.set(red, 1.0, 1000)
+```
+
+```elixir
+Circuits.GPIO.write(red, 0)
+Circuits.GPIO.write(green, 1)
+Circuits.GPIO.write(blue, 0)
+```
+
+```elixir
+# Cyan
+PWM.set(blue, 0.2, 5000)
+```
+
+## ピンを閉じる
+
+```elixir
+Circuits.GPIO.close(red)
+Circuits.GPIO.close(green)
+Circuits.GPIO.close(blue)
+```
