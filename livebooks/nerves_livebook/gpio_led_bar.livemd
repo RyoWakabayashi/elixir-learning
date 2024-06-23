@@ -1,0 +1,101 @@
+# GPIO LED Bar
+
+## List GPIO pins
+
+```elixir
+Circuits.GPIO.enumerate()
+|> Kino.DataTable.new()
+```
+
+## ピンを開く
+
+```elixir
+Circuits.GPIO.status("GPIO5")
+```
+
+```elixir
+led_list =
+  [
+    "GPIO17",
+    "GPIO18",
+    "GPIO27",
+    "GPIO22",
+    "GPIO23",
+    "GPIO24",
+    "GPIO25",
+    "SDA1",
+    "SCL1",
+    "GPIO5"
+  ]
+  |> Enum.map(fn label ->
+    label
+    |> Circuits.GPIO.open(:output)
+    |> elem(1)
+  end)
+```
+
+## LED の点灯
+
+```elixir
+Circuits.GPIO.write(led_list |> Enum.at(0), 1)
+Circuits.GPIO.write(led_list |> Enum.at(1), 1)
+Circuits.GPIO.write(led_list |> Enum.at(2), 1)
+Circuits.GPIO.write(led_list |> Enum.at(3), 1)
+Circuits.GPIO.write(led_list |> Enum.at(4), 0)
+Circuits.GPIO.write(led_list |> Enum.at(5), 0)
+Circuits.GPIO.write(led_list |> Enum.at(6), 0)
+Circuits.GPIO.write(led_list |> Enum.at(7), 0)
+Circuits.GPIO.write(led_list |> Enum.at(8), 0)
+Circuits.GPIO.write(led_list |> Enum.at(9), 0)
+```
+
+```elixir
+defmodule LEDBar do
+  def set(led_list, value) do
+    led_list
+    |> Enum.with_index()
+    |> Enum.map(fn {led, index} ->
+      Circuits.GPIO.write(led, if(10 - index <= value, do: 1, else: 0))
+    end)
+  end
+end
+```
+
+```elixir
+LEDBar.set(led_list, 6)
+```
+
+## LED 棒グラフの上昇
+
+```elixir
+defmodule LEDElevator do
+  def set(led_list, interval) do
+    led_list
+    |> Enum.map(fn led ->
+      Circuits.GPIO.write(led, 0)
+    end)
+
+    Process.sleep(interval)
+
+    led_list
+    |> Enum.reverse()
+    |> Enum.map(fn led ->
+      Circuits.GPIO.write(led, 1)
+      Process.sleep(interval)
+    end)
+  end
+end
+```
+
+```elixir
+LEDElevator.set(led_list, 500)
+```
+
+## ピンを閉じる
+
+```elixir
+led_list
+|> Enum.map(fn led ->
+  Circuits.GPIO.close(led)
+end)
+```
