@@ -7,7 +7,7 @@
 {:ok, btn} = Circuits.GPIO.open("GPIO18", :input)
 ```
 
-## Section
+## LED の点灯
 
 ```elixir
 Circuits.GPIO.write(led, 1)
