@@ -1,0 +1,86 @@
+# Button
+
+## ピンを開く
+
+```elixir
+{:ok, led} = Circuits.GPIO.open("GPIO17", :output)
+{:ok, btn} = Circuits.GPIO.open("GPIO18", :input)
+```
+
+## Section
+
+```elixir
+Circuits.GPIO.write(led, 1)
+```
+
+```elixir
+Circuits.GPIO.write(led, 0)
+```
+
+## ボタンのON/OFF入力
+
+```elixir
+Circuits.GPIO.read(btn)
+```
+
+## ピンを閉じる
+
+```elixir
+Circuits.GPIO.close(led)
+Circuits.GPIO.close(btn)
+```
+
+## ボタンとLEDの連動
+
+```elixir
+defmodule LEDButton do
+  use GenServer
+
+  require Logger
+
+  alias Circuits.GPIO
+
+  @btn "GPIO18"
+  @led "GPIO17"
+
+  def start_link(frame) do
+    GenServer.start_link(__MODULE__, %{frame: frame}, [])
+  end
+
+  def init(state) do
+    {:ok, btn} = GPIO.open(@btn, :input, pull_mode: :pullup)
+    GPIO.set_interrupts(btn, :both)
+
+    {:ok, led} = GPIO.open(@led, :output)
+
+    {:ok, %{btn: btn, led: led, frame: state.frame}}
+  end
+
+  def handle_info({:circuits_gpio, @btn, _timestamp, value}, state) do
+    Kino.Frame.render(state.frame, value)
+
+    GPIO.write(state.led, value)
+
+    {:noreply, state}
+  end
+
+  def handle_info(:stop, state) do
+    Circuits.GPIO.close(state.led)
+    Circuits.GPIO.close(state.btn)
+
+    {:stop, "stopped", state}
+  end
+end
+```
+
+```elixir
+frame = Kino.Frame.new()
+```
+
+```elixir
+{:ok, pid} = LEDButton.start_link(frame)
+```
+
+```elixir
+GenServer.stop(pid)
+```
