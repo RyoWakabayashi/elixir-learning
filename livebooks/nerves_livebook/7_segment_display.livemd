@@ -31,7 +31,14 @@ import Bitwise
 ```
 
 ```elixir
-(0b10100001 <<< 2 &&& 0x80) |> inspect(base: :binary)
+(0b10100001 <<< 0 &&& 0b10000000) |> IO.inspect(base: :binary)
+(0b10100001 <<< 1 &&& 0b10000000) |> IO.inspect(base: :binary)
+(0b10100001 <<< 2 &&& 0b10000000) |> IO.inspect(base: :binary)
+(0b10100001 <<< 3 &&& 0b10000000) |> IO.inspect(base: :binary)
+(0b10100001 <<< 4 &&& 0b10000000) |> IO.inspect(base: :binary)
+(0b10100001 <<< 5 &&& 0b10000000) |> IO.inspect(base: :binary)
+(0b10100001 <<< 6 &&& 0b10000000) |> IO.inspect(base: :binary)
+(0b10100001 <<< 7 &&& 0b10000000) |> IO.inspect(base: :binary)
 ```
 
 ```elixir
@@ -64,7 +71,7 @@ end
 shift_out.(0b00111111, sdi, rclk, srclk)
 ```
 
-## Section
+## 16 進数を表示する
 
 ```elixir
 seg_code = [
@@ -93,7 +100,7 @@ seg_code
 end)
 ```
 
-## HELLO を出力する
+## HELLO. を表示する
 
 ```elixir
 elixir_code = [
