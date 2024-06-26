@@ -1,0 +1,123 @@
+# 7 セグメントディスプレイ
+
+## ピンを開く
+
+```elixir
+{:ok, sdi} = Circuits.GPIO.open("GPIO17", :output)
+{:ok, rclk} = Circuits.GPIO.open("GPIO18", :output)
+{:ok, srclk} = Circuits.GPIO.open("GPIO27", :output)
+```
+
+## 2進数をビットに分割する
+
+```elixir
+import Bitwise
+```
+
+```elixir
+0b10100001 |> inspect(base: :binary)
+```
+
+```elixir
+0b10100001 <<< 1 |> inspect(base: :binary)
+```
+
+```elixir
+0b10100001 <<< 2 |> inspect(base: :binary)
+```
+
+```elixir
+0b10100001 <<< 3 |> inspect(base: :binary)
+```
+
+```elixir
+(0b10100001 <<< 2 &&& 0x80) |> inspect(base: :binary)
+```
+
+```elixir
+data = 0b10100001
+
+for bit <- 0..7 do
+  div(data <<< bit &&& 0x80, 128)
+end
+```
+
+## 74HC595 に並列出力を設定する
+
+```elixir
+shift_out = fn data, sdi, rclk, srclk ->
+  for bit <- 0..7 do
+    bit = data <<< bit &&& 0x80
+    Circuits.GPIO.write(sdi, bit)
+    Circuits.GPIO.write(srclk, 1)
+    Process.sleep(1)
+    Circuits.GPIO.write(srclk, 0)
+  end
+
+  Circuits.GPIO.write(rclk, 1)
+  Process.sleep(1)
+  Circuits.GPIO.write(rclk, 0)
+end
+```
+
+```elixir
+shift_out.(0b00111111, sdi, rclk, srclk)
+```
+
+## Section
+
+```elixir
+seg_code = [
+  0x3F,
+  0x06,
+  0x5B,
+  0x4F,
+  0x66,
+  0x6D,
+  0x7D,
+  0x07,
+  0x7F,
+  0x6F,
+  0x77,
+  0x7C,
+  0x39,
+  0x5E,
+  0x79,
+  0x71
+]
+
+seg_code
+|> Enum.map(fn code ->
+  shift_out.(code, sdi, rclk, srclk)
+  Process.sleep(500)
+end)
+```
+
+## HELLO を出力する
+
+```elixir
+elixir_code = [
+  0b01110110,
+  0b01111001,
+  0b00111000,
+  0b00111000,
+  0b00111111,
+  0b10000000
+]
+
+elixir_code
+|> Enum.map(fn code ->
+  shift_out.(code, sdi, rclk, srclk)
+  Process.sleep(500)
+  shift_out.(0b00000000, sdi, rclk, srclk)
+  Process.sleep(200)
+end)
+```
+
+## ピンを閉じる
+
+```elixir
+Circuits.GPIO.close(sdi)
+Circuits.GPIO.close(rclk)
+Circuits.GPIO.close(srclk)
+```
