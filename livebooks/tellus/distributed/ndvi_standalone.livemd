@@ -165,7 +165,11 @@ ndvi_list =
 ```elixir
 ndvi_list
 |> Enum.map(fn {date, ndvi_tensor} ->
-  img = Evision.applyColorMap(src: ndvi_tensor, colormap: Evision.Constant.cv_COLORMAP_WINTER())
+  img =
+    Evision.applyColorMap(src: ndvi_tensor, colormap: Evision.Constant.cv_COLORMAP_WINTER())
+    |> Evision.cvtColor(Evision.Constant.cv_COLOR_RGB2BGR())
+    |> Evision.Mat.to_nx()
+    |> Kino.Image.new()
 
   {date, img}
 end)

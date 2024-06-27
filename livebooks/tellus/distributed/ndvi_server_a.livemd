@@ -51,7 +51,7 @@ serving =
     batch = Nx.Batch.stack([input])
     {batch, :client_info}
   end)
-  |> Nx.Serving.client_postprocessing(fn output, _metadata, _multi? ->
+  |> Nx.Serving.client_postprocessing(fn {output, _metadata}, _multi? ->
     res = output[0]
 
     res

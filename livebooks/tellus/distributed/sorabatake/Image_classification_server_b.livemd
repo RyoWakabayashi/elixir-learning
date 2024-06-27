@@ -123,7 +123,7 @@ serving =
     input_batch = EfficientNetV2.preprocess(tensor_list, batch_size)
     {input_batch, :client_info}
   end)
-  |> Nx.Serving.client_postprocessing(fn outputs, _metadata, _multi? ->
+  |> Nx.Serving.client_postprocessing(fn {outputs, _metadata}, _multi? ->
     predictions =
       EfficientNetV2.postprocess(outputs, classes)
 
