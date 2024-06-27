@@ -1,0 +1,169 @@
+# 4 Digit 7 Segment LED
+
+## 準備
+
+```elixir
+import Bitwise
+```
+
+## ピンを開く
+
+```elixir
+Circuits.GPIO.enumerate()
+|> Kino.DataTable.new()
+```
+
+```elixir
+{:ok, sdi} = Circuits.GPIO.open("GPIO24", :output)
+{:ok, rclk} = Circuits.GPIO.open("GPIO23", :output)
+{:ok, srclk} = Circuits.GPIO.open("GPIO18", :output)
+```
+
+```elixir
+place_pins =
+  [
+    "SPI_MOSI",
+    "GPIO22",
+    "GPIO27",
+    "GPIO17"
+  ]
+  |> Enum.map(fn label ->
+    label
+    |> Circuits.GPIO.open(:output)
+    |> elem(1)
+  end)
+```
+
+## 関数を定義する
+
+```elixir
+clear_display = fn sdi, rclk, srclk ->
+  Enum.each(1..8, fn _ ->
+    Circuits.GPIO.write(sdi, 1)
+    Circuits.GPIO.write(srclk, 1)
+    Circuits.GPIO.write(srclk, 0)
+  end)
+
+  Circuits.GPIO.write(rclk, 1)
+  Circuits.GPIO.write(rclk, 0)
+end
+```
+
+```elixir
+shift_out = fn data, sdi, rclk, srclk ->
+  for bit <- 0..7 do
+    bit = data <<< bit &&& 0x80
+    Circuits.GPIO.write(sdi, bit)
+    Circuits.GPIO.write(srclk, 1)
+    Process.sleep(1)
+    Circuits.GPIO.write(srclk, 0)
+  end
+
+  Circuits.GPIO.write(rclk, 1)
+  Process.sleep(1)
+  Circuits.GPIO.write(rclk, 0)
+end
+```
+
+```elixir
+pick_digit = fn place_pins, digit ->
+  Enum.each(place_pins, fn pin ->
+    Circuits.GPIO.write(pin, 0)
+  end)
+
+  place_pins
+  |> Enum.at(digit)
+  |> Circuits.GPIO.write(1)
+end
+```
+
+```elixir
+clear_display.(sdi, rclk, srclk)
+
+pick_digit.(place_pins, 0)
+
+seg_code
+|> Enum.at(0)
+|> shift_out.(sdi, rclk, srclk)
+```
+
+```elixir
+clear_display.(sdi, rclk, srclk)
+
+pick_digit.(place_pins, 1)
+
+seg_code
+|> Enum.at(2)
+|> shift_out.(sdi, rclk, srclk)
+```
+
+```elixir
+display = fn char, place, place_pins, sdi, rclk, srclk ->
+  clear_display.(sdi, rclk, srclk)
+
+  pick_digit.(place_pins, place)
+
+  shift_out.(char, sdi, rclk, srclk)
+end
+```
+
+## COOL を出力する
+
+```elixir
+cool_code = [
+  0b00111001,
+  0b00111111,
+  0b00111111,
+  0b00111000
+]
+
+0..100
+|> Enum.map(fn _ ->
+  ~~~Enum.at(cool_code, 3)
+  |> display.(0, place_pins, sdi, rclk, srclk)
+
+  ~~~Enum.at(cool_code, 2)
+  |> display.(1, place_pins, sdi, rclk, srclk)
+
+  ~~~Enum.at(cool_code, 1)
+  |> display.(2, place_pins, sdi, rclk, srclk)
+
+  ~~~Enum.at(cool_code, 0)
+  |> display.(3, place_pins, sdi, rclk, srclk)
+end)
+```
+
+## 4桁カウンターを表示する
+
+```elixir
+seg_code = [0xC0, 0xF9, 0xA4, 0xB0, 0x99, 0x92, 0x82, 0xF8, 0x80, 0x90]
+```
+
+```elixir
+0..1000
+|> Enum.map(fn counter ->
+  seg_code
+  |> Enum.at(rem(counter, 10))
+  |> display.(0, place_pins, sdi, rclk, srclk)
+
+  seg_code
+  |> Enum.at(div(rem(counter, 100), 10))
+  |> display.(1, place_pins, sdi, rclk, srclk)
+
+  seg_code
+  |> Enum.at(div(rem(counter, 1000), 100))
+  |> display.(2, place_pins, sdi, rclk, srclk)
+
+  seg_code
+  |> Enum.at(div(rem(counter, 10000), 1000))
+  |> display.(3, place_pins, sdi, rclk, srclk)
+end)
+```
+
+## ピンを閉じる
+
+```elixir
+Circuits.GPIO.close(sdi)
+Circuits.GPIO.close(rclk)
+Circuits.GPIO.close(srclk)
+```
