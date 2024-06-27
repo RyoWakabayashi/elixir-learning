@@ -107,7 +107,7 @@ display = fn char, place, place_pins, sdi, rclk, srclk ->
 end
 ```
 
-## COOL を出力する
+## COOL を表示する
 
 ```elixir
 cool_code = [
@@ -166,4 +166,11 @@ end)
 Circuits.GPIO.close(sdi)
 Circuits.GPIO.close(rclk)
 Circuits.GPIO.close(srclk)
+```
+
+```elixir
+place_pins
+|> Enum.map(fn pin ->
+  Circuits.GPIO.close(pin)
+end)
 ```
