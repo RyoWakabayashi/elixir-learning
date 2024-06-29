@@ -67,7 +67,7 @@ S3.list_buckets()
 ## ファイル一覧の取得
 
 ```elixir
-bucket_name_input = Kino.Input.text("BUCKET_ANME")
+bucket_name_input = Kino.Input.text("BUCKET_NAME")
 ```
 
 ```elixir

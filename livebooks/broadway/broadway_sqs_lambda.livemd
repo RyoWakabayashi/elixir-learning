@@ -156,7 +156,7 @@ def handler(event, context):
 ```
 
 ```elixir
-bucket_name_input = Kino.Input.text("BUCKET_ANME")
+bucket_name_input = Kino.Input.text("BUCKET_NAME")
 ```
 
 ```elixir

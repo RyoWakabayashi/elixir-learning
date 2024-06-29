@@ -192,7 +192,7 @@ ExAws.S3.list_buckets()
 ```
 
 ```elixir
-bucket_name_input = Kino.Input.text("BUCKET_ANME")
+bucket_name_input = Kino.Input.text("BUCKET_NAME")
 ```
 
 ```elixir

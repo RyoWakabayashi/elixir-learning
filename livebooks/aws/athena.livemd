@@ -72,7 +72,7 @@ Kino.DataTable.new(buckets_res["ListAllMyBucketsResult"]["Buckets"]["Bucket"])
 ```
 
 ```elixir
-bucket_name_input = Kino.Input.text("BUCKET_ANME")
+bucket_name_input = Kino.Input.text("BUCKET_NAME")
 ```
 
 ```elixir

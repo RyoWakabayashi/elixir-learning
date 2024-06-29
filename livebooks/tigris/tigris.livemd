@@ -1,4 +1,4 @@
-# Cloudflare R2
+# Tigris
 
 ```elixir
 Mix.install([
@@ -67,7 +67,7 @@ S3.list_buckets()
 ## ファイル一覧の取得
 
 ```elixir
-bucket_name_input = Kino.Input.text("BUCKET_ANME")
+bucket_name_input = Kino.Input.text("BUCKET_NAME")
 ```
 
 ```elixir
@@ -222,7 +222,7 @@ mat = Evision.imread(ryo_path)
 ```elixir
 bucket_name_input
 |> Kino.Input.read()
-|> S3.put_object("ryo_2.jpg", Evision.imencode(".jpg", mat))
+|> S3.put_object("ryo-wakabayashi.jpg", Evision.imencode(".jpg", mat))
 |> ExAws.request!(auth_config)
 ```
 
@@ -240,12 +240,12 @@ bucket_name_input
 ```elixir
 bucket_name_input
 |> Kino.Input.read()
-|> S3.download_file("ryo-wakabayashi.jpg", "ryo_downloaded.jpg")
+|> S3.download_file("ryo-wakabayashi.jpg", "ryo-wakabayashi_downloaded.jpg")
 |> ExAws.request!(auth_config)
 ```
 
 ```elixir
-mat = Evision.imread("ryo_downloaded.jpg")
+mat = Evision.imread("ryo-wakabayashi_downloaded.jpg")
 ```
 
 ### インメモリにダウンロード
@@ -268,14 +268,14 @@ bucket_name
 |> ExAws.request!(auth_config)
 |> then(&Evision.imdecode(&1.body, Evision.Constant.cv_IMREAD_COLOR()))
 |> Evision.blur({9, 9})
-|> then(&S3.put_object(bucket_name, "ryo_blur.jpg", Evision.imencode(".jpg", &1)))
+|> then(&S3.put_object(bucket_name, "ryo-wakabayashi_blur.jpg", Evision.imencode(".jpg", &1)))
 |> ExAws.request!(auth_config)
 ```
 
 ```elixir
 bucket_name_input
 |> Kino.Input.read()
-|> S3.get_object("ryo_blur.jpg")
+|> S3.get_object("ryo-wakabayashi_blur.jpg")
 |> ExAws.request!(auth_config)
 |> then(&Evision.imdecode(&1.body, Evision.Constant.cv_IMREAD_COLOR()))
 ```
