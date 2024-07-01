@@ -1,0 +1,163 @@
+# LED dot matrix
+
+## ピンを開く
+
+```elixir
+import Bitwise
+```
+
+```elixir
+{:ok, sdi} = Circuits.GPIO.open("GPIO17", :output)
+{:ok, rclk} = Circuits.GPIO.open("GPIO18", :output)
+{:ok, srclk} = Circuits.GPIO.open("GPIO27", :output)
+```
+
+```elixir
+shift_out = fn data, sdi, rclk, srclk ->
+  for bit <- 0..7 do
+    bit = data <<< bit &&& 0x80
+    Circuits.GPIO.write(sdi, bit)
+    Circuits.GPIO.write(srclk, 1)
+    Process.sleep(1)
+    Circuits.GPIO.write(srclk, 0)
+  end
+
+  Circuits.GPIO.write(rclk, 1)
+  Process.sleep(1)
+  Circuits.GPIO.write(rclk, 0)
+end
+```
+
+```elixir
+# 1 行目だけが光る
+# 列は 0 が光る
+shift_out.(0b00000000, sdi, rclk, srclk)
+# 行は 1 が光る
+shift_out.(0b00000001, sdi, rclk, srclk)
+```
+
+```elixir
+# 2 行目だけが光る
+# 列は 0 が光る
+shift_out.(0b00000000, sdi, rclk, srclk)
+# 行は 1 が光る
+shift_out.(0b00000010, sdi, rclk, srclk)
+```
+
+```elixir
+# 1 列目だけが光る
+# 列は 0 が光る
+shift_out.(0b11111110, sdi, rclk, srclk)
+# 行は 1 が光る
+shift_out.(0b11111111, sdi, rclk, srclk)
+```
+
+```elixir
+# 1 列目と 2列目が光る
+# 列は 0 が光る
+shift_out.(0b11111100, sdi, rclk, srclk)
+# 行は 1 が光る
+shift_out.(0b11111111, sdi, rclk, srclk)
+```
+
+```elixir
+# 全部光る
+# 列は 0 が光る
+shift_out.(0b00000000, sdi, rclk, srclk)
+# 行は 1 が光る
+shift_out.(0b11111111, sdi, rclk, srclk)
+```
+
+```elixir
+# 真ん中だけ光る
+# 列は 0 が光る
+shift_out.(0b11000011, sdi, rclk, srclk)
+# 行は 1 が光る
+shift_out.(0b00111100, sdi, rclk, srclk)
+```
+
+## アニメーション を出力する
+
+```elixir
+animate = fn code_row, code_col, sdi, rclk, srclk, sleep ->
+  code_row
+  |> Enum.zip(code_col)
+  |> Enum.map(fn {row, col} ->
+    shift_out.(col, sdi, rclk, srclk)
+    shift_out.(row, sdi, rclk, srclk)
+    Process.sleep(sleep)
+  end)
+end
+```
+
+```elixir
+code_row = [
+  0b00000001,
+  0b00000010,
+  0b00000100,
+  0b00001000,
+  0b00010000,
+  0b00100000,
+  0b01000000,
+  0b10000000
+]
+
+code_col = [
+  0b00000000,
+  0b00000000,
+  0b00000000,
+  0b00000000,
+  0b00000000,
+  0b00000000,
+  0b00000000,
+  0b00000000
+]
+```
+
+```elixir
+0..5
+|> Enum.map(fn _ ->
+  animate.(code_row, code_col, sdi, rclk, srclk, 1)
+  animate.(code_row |> Enum.reverse(), code_col |> Enum.reverse(), sdi, rclk, srclk, 1)
+end)
+```
+
+```elixir
+code_row = [
+  0b11111111,
+  0b11111111,
+  0b11111111,
+  0b11111111,
+  0b11111111,
+  0b11111111,
+  0b11111111,
+  0b11111111
+]
+
+code_col = [
+  0b11111110,
+  0b11111101,
+  0b11111011,
+  0b11110111,
+  0b11101111,
+  0b11011111,
+  0b10111111,
+  0b01111111
+]
+```
+
+```elixir
+0..5
+|> Enum.map(fn _ ->
+  animate.(code_row, code_col, sdi, rclk, srclk, 1)
+  animate.(code_row |> Enum.reverse(), code_col |> Enum.reverse(), sdi, rclk, srclk, 1)
+end)
+```
+
+## ピンを閉じる
+
+```elixir
+Circuits.GPIO.close(sdi)
+Circuits.GPIO.close(rclk)
+Circuits.GPIO.close(srclk)
+```
