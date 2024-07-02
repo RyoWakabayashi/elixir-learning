@@ -1,0 +1,84 @@
+# Passive Buzzer
+
+## ブザーを鳴らす
+
+```elixir
+gpio = 12
+# 50%
+Pigpiox.Pwm.hardware_pwm(gpio, 440, 500_000)
+```
+
+```elixir
+# 0%
+Pigpiox.Pwm.hardware_pwm(gpio, 440, 0)
+```
+
+## 音階を鳴らす
+
+```elixir
+codes = [
+  131,
+  147,
+  165,
+  175,
+  196,
+  211,
+  248,
+  262,
+  294,
+  330,
+  350,
+  393,
+  441,
+  495,
+  525,
+  589,
+  661,
+  700,
+  786,
+  882,
+  990
+]
+```
+
+```elixir
+scales = [7, 8, 9, 10, 11, 12, 13, 14]
+```
+
+```elixir
+beats = [1, 1, 1, 1, 1, 1, 1, 1]
+```
+
+```elixir
+scales
+|> Enum.zip(beats)
+|> Enum.map(fn {code_index, beat} ->
+  code = Enum.at(codes, code_index)
+  Pigpiox.Pwm.hardware_pwm(gpio, code, 500_000)
+  Process.sleep(beat * 500)
+end)
+
+Pigpiox.Pwm.hardware_pwm(gpio, 440, 0)
+```
+
+## ドレミの歌を演奏する
+
+```elixir
+play = fn gpio, scales, beats ->
+  scales
+  |> Enum.zip(beats)
+  |> Enum.map(fn {code_index, beat} ->
+    code = Enum.at(codes, code_index)
+    Pigpiox.Pwm.hardware_pwm(gpio, code, 500_000)
+    Process.sleep(beat * 250)
+  end)
+
+  Pigpiox.Pwm.hardware_pwm(gpio, 440, 0)
+end
+```
+
+```elixir
+scales = [7, 8, 9, 7, 9, 7, 9, 8, 9, 10, 10, 9, 8, 10]
+beats = [2, 1, 2, 1, 2, 2, 4, 2, 1, 1, 1, 1, 1, 8]
+play.(gpio, scales, beats)
+```
