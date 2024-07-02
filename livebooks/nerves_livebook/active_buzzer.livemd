@@ -1,0 +1,25 @@
+# Active Buzzer
+
+## ピンを開く
+
+```elixir
+{:ok, buzzer} = Circuits.GPIO.open("GPIO17", :output, initial_value: 1)
+```
+
+## ブザーを鳴らす
+
+```elixir
+Circuits.GPIO.write(buzzer, 0)
+```
+
+## ブザーを止める
+
+```elixir
+Circuits.GPIO.write(buzzer, 1)
+```
+
+## ピンを閉じる
+
+```elixir
+Circuits.GPIO.close(buzzer)
+```
