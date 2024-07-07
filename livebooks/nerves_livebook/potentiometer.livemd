@@ -1,0 +1,135 @@
+# Potentiometer
+
+## ピンを開く
+
+```elixir
+{:ok, cs} = Circuits.GPIO.open("GPIO17", :output)
+{:ok, clk} = Circuits.GPIO.open("GPIO18", :output)
+{:ok, dio} = Circuits.GPIO.open("GPIO27", :output)
+```
+
+## モジュール定義
+
+```elixir
+defmodule ADC do
+  import Bitwise
+
+  def get_result(dio, clk, cs, channel \\ 0) do
+    sel = if channel > 1, do: 1, else: 0
+    odd = channel &&& 1
+
+    Circuits.GPIO.write(cs, 0)
+
+    start_adc(dio, clk)
+    single_end_mode(dio, clk)
+    set_odd(dio, clk, odd)
+    set_sel(dio, clk, sel)
+
+    Circuits.GPIO.set_direction(dio, :input)
+
+    dat1 =
+      0..7
+      |> Enum.reduce(0, fn _i, acc ->
+        Circuits.GPIO.write(clk, 1)
+        :timer.sleep(2)
+        Circuits.GPIO.write(clk, 0)
+        :timer.sleep(2)
+
+        Circuits.GPIO.set_direction(dio, :input)
+
+        bit = Circuits.GPIO.read(dio)
+        acc = acc <<< 1 ||| bit
+        acc
+      end)
+
+    dat2 =
+      0..7
+      |> Enum.reduce(0, fn i, acc ->
+        bit = Circuits.GPIO.read(dio)
+        acc = acc ||| bit <<< i
+        Circuits.GPIO.write(clk, 1)
+        :timer.sleep(2)
+        Circuits.GPIO.write(clk, 0)
+        :timer.sleep(2)
+
+        acc
+      end)
+
+    Circuits.GPIO.write(cs, 1)
+    Circuits.GPIO.set_direction(dio, :output)
+
+    if dat1 == dat2, do: dat1, else: 0
+  end
+
+  defp start_adc(dio, clk) do
+    Circuits.GPIO.write(clk, 0)
+    Circuits.GPIO.write(dio, 1)
+    :timer.sleep(2)
+    Circuits.GPIO.write(clk, 1)
+    :timer.sleep(2)
+  end
+
+  defp single_end_mode(dio, clk) do
+    Circuits.GPIO.write(clk, 0)
+    Circuits.GPIO.write(dio, 1)
+    :timer.sleep(2)
+    Circuits.GPIO.write(clk, 1)
+    :timer.sleep(2)
+  end
+
+  defp set_odd(dio, clk, odd) do
+    Circuits.GPIO.write(clk, 0)
+    Circuits.GPIO.write(dio, odd)
+    :timer.sleep(2)
+    Circuits.GPIO.write(clk, 1)
+    :timer.sleep(2)
+  end
+
+  defp set_sel(dio, clk, sel) do
+    Circuits.GPIO.write(clk, 0)
+    Circuits.GPIO.write(dio, sel)
+    :timer.sleep(2)
+    Circuits.GPIO.write(clk, 1)
+    :timer.sleep(2)
+    Circuits.GPIO.write(clk, 0)
+    :timer.sleep(2)
+  end
+end
+```
+
+## アナログ値を取得する
+
+```elixir
+analog_val = ADC.get_result(dio, clk, cs)
+```
+
+## LEDの点灯
+
+```elixir
+duty = round(analog_val * 1_000_000 / 255)
+duty / 10000
+```
+
+```elixir
+Pigpiox.Pwm.hardware_pwm(12, 2000, duty)
+```
+
+## ポテンショメーターとLEDを連動させる
+
+```elixir
+1..300
+|> Enum.map(fn _i ->
+  analog_val = ADC.get_result(dio, clk, cs)
+  duty = round(analog_val * 1_000_000 / 255)
+  IO.inspect(duty / 10000)
+  Pigpiox.Pwm.hardware_pwm(12, 2000, duty)
+end)
+```
+
+## ピンを閉じる
+
+```elixir
+Circuits.GPIO.close(cs)
+Circuits.GPIO.close(clk)
+Circuits.GPIO.close(dio)
+```
