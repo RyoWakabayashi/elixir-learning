@@ -1,0 +1,59 @@
+# Reduce colors
+
+```elixir
+Mix.install(
+  [
+    {:image, "~> 0.52"},
+    {:kino, "~> 0.13"},
+    {:scholar, "~> 0.3"},
+    {:exla, "~> 0.7"}
+  ],
+  config: [
+    nx: [
+      default_backend: EXLA.Backend,
+      default_defn_options: [compiler: EXLA]
+    ]
+  ]
+)
+```
+
+## Prepare image
+
+```elixir
+{puppies_img, _} =
+  "/home/livebook/vix/puppies.png"
+  |> Image.open!()
+  |> Image.split_alpha()
+
+puppies_img
+```
+
+## Reduce colors
+
+```elixir
+Image.k_means!(puppies_img)
+```
+
+```elixir
+Image.k_means!(puppies_img, num_clusters: 8)
+|> Enum.map(fn color ->
+  Image.new!(100, 100, color: color)
+end)
+|> Kino.Layout.grid(columns: 8)
+```
+
+```elixir
+Image.reduce_colors!(puppies_img)
+```
+
+```elixir
+[
+  puppies_img,
+  Image.reduce_colors!(puppies_img, colors: 10),
+  Image.reduce_colors!(puppies_img, colors: 8),
+  Image.reduce_colors!(puppies_img, colors: 6),
+  Image.reduce_colors!(puppies_img, colors: 4),
+  Image.reduce_colors!(puppies_img, colors: 2)
+]
+|> Kino.Layout.grid(columns: 3)
+```
