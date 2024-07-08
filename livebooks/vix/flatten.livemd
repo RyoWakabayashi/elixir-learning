@@ -1,4 +1,4 @@
-# SVG to PNG
+# Flatten
 
 ```elixir
 Mix.install([
@@ -8,18 +8,22 @@ Mix.install([
 ])
 ```
 
-## Download SVG
+## 画像の読込
 
 ```elixir
-svg_img =
+original_img =
   "https://www.elixirconf.eu/assets/images/drops.svg"
   |> Req.get!()
   |> Map.get(:body)
-  |> Image.from_svg!()
+  |> Image.from_binary!()
 ```
 
-## Save as PNG
+## 背景の塗りつぶし
 
 ```elixir
-Image.write(svg_img, "png_img.png")
+Image.flatten!(original_img)
+```
+
+```elixir
+Image.flatten!(original_img, background_color: :blue)
 ```

@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:image, "~> 0.38"},
+  {:image, "~> 0.52"},
   {:nx, "~> 0.7"},
   {:evision, "~> 0.2"},
   {:req, "~> 0.5"},

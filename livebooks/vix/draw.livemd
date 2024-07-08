@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:image, "~> 0.38"},
+  {:image, "~> 0.52"},
   {:req, "~> 0.5"},
   {:kino, "~> 0.13"}
 ])
@@ -210,8 +210,6 @@ text_image =
     "Hello, Livebook!",
     font_weight: 600,
     text_fill_color: :yellow,
-    text_stroke_color: :black,
-    text_stroke_width: 4,
     background_fill_color: :green,
     background_fill_opacity: 1.0,
     background_stroke_color: :blue,
