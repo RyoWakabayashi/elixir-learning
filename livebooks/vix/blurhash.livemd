@@ -1,0 +1,43 @@
+# Bluehash
+
+```elixir
+Mix.install([
+  {:image, "~> 0.52"},
+  {:kino, "~> 0.13"}
+])
+```
+
+## 画像の読込
+
+```elixir
+{puppies_img, _} =
+  "/home/livebook/vix/puppies.png"
+  |> Image.open!()
+  |> Image.split_alpha()
+
+puppies_img
+```
+
+## Blurhash の取得
+
+```elixir
+{:ok, blurhash} = Image.Blurhash.encode(puppies_img)
+```
+
+```elixir
+{:ok, decoded} = Image.Blurhash.decode(blurhash, 400, 400)
+
+decoded
+```
+
+```elixir
+1..9
+|> Enum.map(fn components ->
+  puppies_img
+  |> Image.Blurhash.encode(x_components: components, y_components: components)
+  |> elem(1)
+  |> Image.Blurhash.decode(400, 400)
+  |> elem(1)
+end)
+|> Kino.Layout.grid(columns: 3)
+```
