@@ -39,7 +39,7 @@ puppies_img
 ## ぼかし具合の制御
 
 ```elixir
-2..9
+9..2//-1
 |> Enum.map(fn components ->
   puppies_img
   |> Image.Blurhash.encode(x_components: components, y_components: components)
@@ -47,7 +47,6 @@ puppies_img
   |> Image.Blurhash.decode(400, 400)
   |> elem(1)
 end)
-|> Enum.reverse()
 |> then(&[puppies_img | &1])
 |> Kino.Layout.grid(columns: 3)
 ```
