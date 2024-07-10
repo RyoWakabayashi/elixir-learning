@@ -1,4 +1,4 @@
-# Bluehash
+# BlueHash
 
 ```elixir
 Mix.install([
@@ -18,20 +18,28 @@ Mix.install([
 puppies_img
 ```
 
-## Blurhash の取得
+## BlurHash の文字列取得
 
 ```elixir
 {:ok, blurhash} = Image.Blurhash.encode(puppies_img)
 ```
 
+## BlurHash の画像取得
+
 ```elixir
 {:ok, decoded} = Image.Blurhash.decode(blurhash, 400, 400)
 
-decoded
+[
+  puppies_img,
+  decoded
+]
+|> Kino.Layout.grid(columns: 2)
 ```
 
+## ぼかし具合の制御
+
 ```elixir
-1..9
+2..9
 |> Enum.map(fn components ->
   puppies_img
   |> Image.Blurhash.encode(x_components: components, y_components: components)
@@ -39,5 +47,7 @@ decoded
   |> Image.Blurhash.decode(400, 400)
   |> elem(1)
 end)
+|> Enum.reverse()
+|> then(&[puppies_img | &1])
 |> Kino.Layout.grid(columns: 3)
 ```
