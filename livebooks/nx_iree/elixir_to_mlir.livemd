@@ -1,0 +1,96 @@
+# Elixir to MLIR
+
+```elixir
+Mix.install([
+  {:exla, "~> 0.7", github: "elixir-nx/nx", sparse: "exla"},
+  {:nx, "~> 0.7", github: "elixir-nx/nx", sparse: "nx", override: true},
+  {:nx_iree, "~> 0.1", git: "https://github.com/elixir-nx/nx_iree"},
+  {:kino, "~> 0.13"},
+  {:benchee, "~> 1.3"},
+  {:statistics, "~> 0.6"}
+])
+```
+
+## Softmax
+
+```elixir
+softmax = fn tensor ->  
+  Nx.divide(
+    Nx.exp(tensor),
+    Nx.sum(Nx.exp(tensor), axes: [-1], keep_axes: true)
+  )
+end
+
+input = Nx.tensor([1.0, 2.0, -1.0, -1.5])
+args = [input]
+
+mlir_module = EXLA.to_mlir_module(softmax, args)
+
+Kino.Text.new(mlir_module)
+```
+
+```elixir
+dev =
+  NxIREE.list_devices("metal")
+  |> elem(1)
+  |> hd()
+```
+
+```elixir
+flags = [
+  "--iree-hal-target-backends=metal-spirv",
+  "--iree-input-type=stablehlo_xla",
+  "--iree-execution-model=async-internal"
+]
+```
+
+```elixir
+module = NxIREE.compile(mlir_module, flags)
+```
+
+```elixir
+NxIREE.call(module, args, device: dev)
+```
+
+```elixir
+softmax.(input)
+```
+
+## 速度比較
+
+```elixir
+exla_input = Nx.backend_transfer(input, EXLA.Backend)
+```
+
+```elixir
+Benchee.run(%{
+  "nx" => fn -> softmax.(input) end,
+  "exla" => fn -> softmax.(exla_input) end,
+  "nx_iree" => fn -> NxIREE.call(module, [input], device: dev) end
+})
+```
+
+```elixir
+input =
+  1..100000
+  |> Enum.map(fn _ -> Statistics.Distributions.Normal.rand() end)
+  |> Nx.tensor()
+
+args = [input]
+
+mlir_module = EXLA.to_mlir_module(softmax, args)
+
+Kino.Text.new(mlir_module)
+```
+
+```elixir
+module = NxIREE.compile(mlir_module, flags)
+```
+
+```elixir
+Benchee.run(%{
+  "nx" => fn -> softmax.(input) end,
+  "exla" => fn -> softmax.(exla_input) end,
+  "nx_iree" => fn -> NxIREE.call(module, [input], device: dev) end
+})
+```

@@ -1,0 +1,63 @@
+# NxIREE
+
+```elixir
+Mix.install([
+  {:nx_iree, "~> 0.1", git: "https://github.com/elixir-nx/nx_iree"}
+])
+```
+
+## Section
+
+```elixir
+NxIREE.list_drivers()
+|> elem(1)
+```
+
+```elixir
+dev =
+  NxIREE.list_devices("metal")
+  |> elem(1)
+  |> hd()
+```
+
+```elixir
+# Obtained by using EXLA.to_mlir_module(fn a, b -> Nx.add(Nx.cos(a), Nx.sin(b)) end, [Nx.template({4}, :f32), Nx.template({4}, :s64)])
+mlir_module = """
+module {
+  func.func public @main(%arg0: tensor<4xf32>, %arg1: tensor<4xi64>) -> tensor<4xf32> {
+    %0 = stablehlo.cosine %arg0 : tensor<4xf32>
+    %1 = stablehlo.convert %arg1 : (tensor<4xi64>) -> tensor<4xf32>
+    %2 = stablehlo.sine %1 : tensor<4xf32>
+    %3 = stablehlo.add %0, %2 : tensor<4xf32>
+    return %3 : tensor<4xf32>
+  }
+}
+"""
+```
+
+```elixir
+flags = [
+  "--iree-hal-target-backends=metal-spirv",
+  "--iree-input-type=stablehlo_xla",
+  "--iree-execution-model=async-internal"
+]
+```
+
+```elixir
+module = NxIREE.compile(mlir_module, flags)
+```
+
+```elixir
+arg0 = Nx.tensor([1.0, 2.0, 3.0, 4.0])
+arg1 = Nx.tensor([1, -1, 1, -1])
+
+NxIREE.call(module, [arg0, arg1], device: dev)
+```
+
+```elixir
+nx_function = fn a, b ->
+  Nx.add(Nx.cos(a), Nx.sin(b))
+end
+
+nx_function.(arg0, arg1)
+```
