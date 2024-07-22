@@ -1,0 +1,154 @@
+<!-- livebook:{"app_settings":{"access_type":"public","slug":"kino-proxy"}} -->
+
+# Kino Proxy
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.13"},
+  {:plug, "~> 1.16"},
+  {:jason, "~> 1.4"}
+])
+```
+
+## 関数による API 実装
+
+```elixir
+{:ok, child} = Kino.Proxy.listen(fn conn ->
+  conn
+  |> Plug.Conn.put_resp_header("content-type", "application/text")
+  |> Plug.Conn.send_resp(200, "Hello, Livebook")
+end)
+```
+
+ターミナルを開く
+
+* 環境変数を設定する
+
+  ```shell
+  export ROOT_URL=<LivebookのURL>
+  export SESSION_ID=<セッションID=現在のURLの末尾>
+  ```
+
+  例)
+
+  ```shell
+  export ROOT_URL=http://localhost:8080/
+  export SESSION_ID=xnpahp25bbu2rvlk76lyajnv3malznlokhblx33ltw7iiewj
+  ```
+
+* 以下のコマンドを実行すると、 `Hello, Livebook` が返ってくる
+
+  ```shell
+  curl "${ROOT_URL}proxy/sessions/${SESSION_ID}/"
+  ```
+
+```elixir
+# APIのプロセスを終了させる
+Kino.terminate_child(child)
+```
+
+## モジュールによる API 実装
+
+```elixir
+defmodule MyPlug do
+  def init([]), do: false
+
+  def call(%{path_info: ["api"]} = conn, _opts) do
+    conn
+    |> Plug.Conn.put_resp_header("content-type", "application/text")
+    |> Plug.Conn.send_resp(200, "Hello, API!")
+  end
+
+  def call(conn, _opts) do
+    conn
+    |> Plug.Conn.put_resp_header("content-type", "application/text")
+    |> Plug.Conn.send_resp(200, "Not Found")
+  end
+end
+
+{:ok, child} = Kino.Proxy.listen(MyPlug)
+```
+
+* `/api` で `Hello, API!` が返ってくる
+
+  ```
+  curl "${ROOT_URL}proxy/sessions/${SESSION_ID}/api"
+  ```
+
+* それ以外だと `Not Found` が返ってくる
+
+  ```
+  curl "${ROOT_URL}proxy/sessions/${SESSION_ID}/others"
+  ```
+
+```elixir
+Kino.terminate_child(child)
+```
+
+## Plug.Router による API 実装
+
+```elixir
+defmodule ApiRouter do
+  use Plug.Router
+
+  plug :match
+  plug Plug.Parsers,
+       parsers: [:json], json_decoder: Jason
+  plug :dispatch
+
+  get "/echo/:message" do
+    send_resp(conn, 200, String.upcase(message))
+  end
+
+  post "/api" do
+    IO.inspect(conn.body_params)
+
+    return_text =
+      conn.body_params
+      |> Enum.map(fn {key, value} ->
+        "#{key}=#{value}"
+      end)
+      |> Enum.join(",")
+
+    send_resp(conn, 200, "POST #{return_text}")
+  end
+
+  match _ do
+    send_resp(conn, 404, "Not Found")
+  end
+end
+
+{:ok, child} = Kino.Proxy.listen(ApiRouter)
+```
+
+* パスパラメーター
+
+  ```
+  curl "${ROOT_URL}proxy/sessions/${SESSION_ID}/echo/hello"
+  ```
+
+* JSON 入力
+
+  ```
+  curl -XPOST \
+    -H "Content-Type: application/json" \
+    -d '{"a": 1, "b": 2}' \
+    "${ROOT_URL}proxy/sessions/${SESSION_ID}/api"
+  ```
+
+## アプリケーションとして起動
+
+* Slug の設定
+
+  ```
+  export SLUG="kino-proxy"
+  ```
+
+* API 呼び出し
+
+  ```
+  curl -XPOST \
+    -H "Content-Type: application/json" \
+    -d '{"a": 1, "b": 2}' \
+    "${ROOT_URL}proxy/apps/${SLUG}/api"
+  ```
