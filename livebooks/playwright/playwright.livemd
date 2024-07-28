@@ -1,0 +1,226 @@
+# Playwright
+
+```elixir
+Mix.install([
+  {:playwright, "~> 1.44.0-alpha.2"},
+  {:kino, "~> 0.13"},
+  {:image, "~> 0.53.0"}
+])
+```
+
+## Install playwright browsers and dependencies
+
+```elixir
+Playwright.SDK.CLI.install()
+```
+
+## Open Web site
+
+```elixir
+# Chromium ブラウザを起動
+{:ok, browser} = Playwright.launch(:chromium, %{})
+
+# 新しいページを開く
+page = Playwright.Browser.new_page(browser)
+
+# 画面サイズの設定
+Playwright.Page.set_viewport_size(page, %{width: 375, height: 667})
+
+# Wev サイトにアクセス
+Playwright.Page.goto(page, "https://qiita.com/")
+
+# スクリーンショットを取得
+base64 = Playwright.Page.screenshot(page)
+```
+
+```elixir
+tensor =
+  base64
+  |> Base.decode64!()
+  |> Image.from_binary!()
+```
+
+```elixir
+page
+|> Playwright.Page.query_selector("nav[aria-label='Global']")
+|> Playwright.ElementHandle.screenshot()
+```
+
+```elixir
+page
+|> Playwright.Page.query_selector("nav[aria-label='Global'] ol li:nth-child(2) a")
+|> Playwright.ElementHandle.text_content()
+```
+
+## Scroll
+
+```elixir
+page
+|> Playwright.Page.query_selector("nav[aria-label='Global'] ol li:last-child a")
+|> Playwright.ElementHandle.scroll_into_view()
+
+page
+|> Playwright.Page.screenshot()
+|> Base.decode64!()
+|> Image.from_binary!()
+```
+
+```elixir
+page
+|> Playwright.Page.query_selector("footer nav dl:last-child")
+|> Playwright.ElementHandle.scroll_into_view()
+
+page
+|> Playwright.Page.screenshot()
+|> Base.decode64!()
+|> Image.from_binary!()
+```
+
+## Click
+
+```elixir
+Playwright.Page.click(page, "nav[aria-label='Global'] ol li:nth-child(2) a")
+
+page
+|> Playwright.Page.screenshot()
+|> Base.decode64!()
+|> Image.from_binary!()
+```
+
+```elixir
+Playwright.Page.url(page)
+```
+
+```elixir
+page
+|> Playwright.Page.query_selector("form[aria-label='Search']:nth-child(2) input")
+|> Playwright.ElementHandle.is_visible()
+```
+
+```elixir
+Playwright.Page.click(page, "header button")
+Playwright.Page.wait_for_selector(page, "form[aria-label='Search']:nth-child(2) input")
+
+page
+|> Playwright.Page.screenshot()
+|> Base.decode64!()
+|> Image.from_binary!()
+```
+
+```elixir
+page
+|> Playwright.Page.query_selector("form[aria-label='Search']:nth-child(2) input")
+|> Playwright.ElementHandle.is_visible()
+```
+
+## Input
+
+```elixir
+Playwright.Page.fill(page, "form[aria-label='Search']:nth-child(2) input", "Elixir")
+
+page
+|> Playwright.Page.screenshot()
+|> Base.decode64!()
+|> Image.from_binary!()
+```
+
+```elixir
+Playwright.Page.press(page, "form[aria-label='Search']:nth-child(2) input", "Enter")
+
+page
+|> Playwright.Page.screenshot()
+|> Base.decode64!()
+|> Image.from_binary!()
+```
+
+## E2E Test
+
+```elixir
+ExUnit.start()
+```
+
+```elixir
+defmodule Sample.TabsTest do
+  use ExUnit.Case, async: true
+  use PlaywrightTest.Case
+
+  describe "Click tabs" do
+    test "click all tabs", %{browser: browser} do
+      page = Playwright.Browser.new_page(browser)
+      Playwright.Page.set_viewport_size(page, %{width: 375, height: 667})
+
+      [
+        %{
+          tab_index: 1,
+          text: "Trend",
+          title: "Qiita",
+          url: "https://qiita.com/"
+        },
+        %{
+          tab_index: 2,
+          text: "Question",
+          title: "Question - Qiita",
+          url: "https://qiita.com/question-feed"
+        },
+        %{
+          tab_index: 3,
+          text: "Official Event",
+          title: "Official Events - Qiita",
+          url: "https://qiita.com/official-events"
+        },
+        %{
+          tab_index: 4,
+          text: "Official Column",
+          title: "Official Columns - Qiita",
+          url: "https://qiita.com/official-columns"
+        },
+        %{
+          tab_index: 5,
+          text: "signpostCareer",
+          title: "Qiita x Findy エンジニアのキャリアを支援するコラボレーションページ - Qiita",
+          url: "https://qiita.com/opportunities/findy"
+        },
+        %{
+          tab_index: 6,
+          text: "Organization",
+          title: "organization一覧 - Qiita",
+          url: "https://qiita.com/organizations"
+        }
+      ]
+      |> Enum.map(fn map ->
+        Playwright.Page.goto(page, "https://qiita.com/")
+
+        tab_selector = "nav[aria-label='Global'] ol li:nth-child(#{map.tab_index}) a"
+
+        assert page
+               |> Playwright.Page.query_selector(tab_selector)
+               |> Playwright.ElementHandle.text_content() == map.text
+
+        Playwright.Page.click(page, tab_selector)
+
+        assert Playwright.Page.title(page) == map.title
+        assert Playwright.Page.url(page) == map.url
+
+        page
+        |> Playwright.Page.screenshot()
+        |> Base.decode64!()
+        |> then(&File.write!("/tmp/tab-#{map.tab_index}-clicked.png", &1))
+      end)
+
+      Playwright.Page.close(page)
+    end
+  end
+end
+```
+
+```elixir
+ExUnit.run()
+```
+
+```elixir
+1..6
+|> Enum.map(fn index ->
+  Image.open!("/tmp/tab-#{index}-clicked.png")
+end)
+|> Kino.Layout.grid(columns: 3)
+```
