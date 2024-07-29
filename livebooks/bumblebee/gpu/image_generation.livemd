@@ -9,7 +9,7 @@ Mix.install(
     {:exla, "~> 0.7"}
   ],
   system_env: [
-    {"XLA_TARGET", "cuda118"}
+    {"XLA_TARGET", "cuda120"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )

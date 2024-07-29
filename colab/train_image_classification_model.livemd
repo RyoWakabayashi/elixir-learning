@@ -14,7 +14,7 @@ Mix.install(
     nx: [default_backend: EXLA.Backend]
   ],
   system_env: [
-    {"XLA_TARGET", "cuda118"},
+    {"XLA_TARGET", "cuda120"},
     {"EXLA_TARGET", "cuda"}
   ]
 )
