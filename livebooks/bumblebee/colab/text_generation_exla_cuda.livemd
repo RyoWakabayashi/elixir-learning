@@ -29,26 +29,26 @@ cache_dir = "/tmp/bumblebee_cache"
 
 ```elixir
 {:ok, gpt2} =
-  Bumblebee.load_model({
-    :hf,
-    "gpt2",
-    cache_dir: cache_dir
-  })
+  Bumblebee.load_model({:hf, "gpt2", cache_dir: cache_dir})
 ```
 
 ```elixir
 {:ok, tokenizer} =
-  Bumblebee.load_tokenizer({
-    :hf,
-    "gpt2",
-    cache_dir: cache_dir
-  })
+  Bumblebee.load_tokenizer({:hf, "gpt2", cache_dir: cache_dir})
+```
+
+```elixir
+{:ok, generation_config} =
+  Bumblebee.load_generation_config({:hf, "gpt2", cache_dir: cache_dir})
+
+generation_config =
+  Bumblebee.configure(generation_config, max_new_tokens: 10)
 ```
 
 ## サービスの提供
 
 ```elixir
-serving = Bumblebee.Text.generation(gpt2, tokenizer, max_new_tokens: 10)
+serving = Bumblebee.Text.generation(gpt2, tokenizer, generation_config)
 ```
 
 ## 補完する文章の準備
@@ -83,20 +83,18 @@ end)
 ```elixir
 serve_model = fn repository_id ->
   {:ok, model} =
-    Bumblebee.load_model({
-      :hf,
-      repository_id,
-      cache_dir: cache_dir
-    })
+    Bumblebee.load_model({:hf, repository_id, cache_dir: cache_dir})
 
   {:ok, tokenizer} =
-    Bumblebee.load_tokenizer({
-      :hf,
-      repository_id,
-      cache_dir: cache_dir
-    })
+    Bumblebee.load_tokenizer({:hf, repository_id, cache_dir: cache_dir})
 
-  Bumblebee.Text.generation(model, tokenizer, max_new_tokens: 10)
+  {:ok, generation_config} =
+    Bumblebee.load_generation_config({:hf, repository_id, cache_dir: cache_dir})
+
+  generation_config =
+    Bumblebee.configure(generation_config, max_new_tokens: 10)
+
+  Bumblebee.Text.generation(model, tokenizer, generation_config)
 end
 ```
 
