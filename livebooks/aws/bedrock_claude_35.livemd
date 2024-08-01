@@ -1,0 +1,167 @@
+# Bedrock Claude 3.5
+
+```elixir
+Mix.install([
+  {:aws, "~> 1.0"},
+  {:hackney, "~> 1.20"},
+  {:kino, "~> 0.13"}
+])
+```
+
+## クライアントの作成
+
+```elixir
+client =
+  AWS.Client.create(
+    System.get_env("LB_ACCESS_KEY_ID"),
+    System.get_env("LB_SECRET_ACCESS_KEY"),
+    "us-east-1"
+  )
+```
+
+## 基盤モデル一覧の取得
+
+```elixir
+models =
+  client
+  |> AWS.Bedrock.list_foundation_models()
+  |> elem(1)
+  |> Map.get("modelSummaries")
+
+keys = [
+  "modelId",
+  "modelName",
+  "providerName",
+  "inputModalities",
+  "outputModalities"
+]
+
+Kino.DataTable.new(models, keys: keys)
+```
+
+## Section
+
+```elixir
+model_id_claude = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+```
+
+```elixir
+input = "Elixirで5の階乗を計算するコードを教えてください。"
+
+{:ok, body, _response} =
+  client
+  |> AWS.BedrockRuntime.converse(
+    model_id_claude,
+    %{
+      "messages" => [%{
+        "role" => "user",
+        "content" => [%{"text" => input}]
+      }]
+    },
+    recv_timeout: 60_000
+  )
+```
+
+```elixir
+body
+|> Map.get("output")
+|> Map.get("message")
+|> Map.get("content")
+|> Enum.at(0)
+|> Map.get("text")
+|> Kino.Markdown.new()
+```
+
+## Section
+
+```elixir
+image = File.read!("/home/livebook/vix/puppies.png")
+```
+
+```elixir
+invoke_claude = fn content ->
+  client
+  |> AWS.BedrockRuntime.converse(
+    model_id_claude,
+    %{
+      "messages" => [%{
+        "role" => "user",
+        "content" => content
+      }]
+    },
+    recv_timeout: 60_000
+  )
+  |> elem(1)
+  |> Map.get("output")
+  |> Map.get("message")
+  |> Map.get("content")
+  |> Enum.at(0)
+  |> Map.get("text")
+end
+```
+
+```elixir
+result =
+  invoke_claude.([
+    %{
+      "image" => %{
+        "format" => "png",
+        "source" => %{"bytes" => Base.encode64(image)}
+      }
+    },
+    %{"text"=> "画像に写っているものを説明してください"},
+  ])
+
+[
+  image,
+  Kino.Markdown.new(result)
+]
+|> Kino.Layout.grid(columns: 2)
+```
+
+## Section
+
+```elixir
+describe_image = fn image ->
+  invoke_claude.([
+    %{
+      "image" => %{
+        "format" => "png",
+        "source" => %{"bytes" => Base.encode64(image)}
+      }
+    },
+    %{"text"=> "画像に写っているものを説明してください"},
+  ])
+end
+```
+
+```elixir
+# 入力用フォーム
+form =
+  Kino.Control.form(
+    [
+      image: Kino.Input.image("IMAGE", format: :png)
+    ],
+    submit: "Submit"
+  )
+
+# 出力用フレーム
+frame = Kino.Frame.new()
+
+# フォーム送信時の処理
+Kino.listen(form, fn event ->
+  image =
+    event.data.image.file_ref
+    |> Kino.Input.file_path()
+    |> File.read!()
+
+  result = describe_image.(image)
+
+  result
+  |> Kino.Markdown.new()
+  |> then(&Kino.Frame.render(frame, &1))
+end)
+
+# 入出力を並べて表示
+Kino.Layout.grid([form, frame], columns: 2)
+```
