@@ -1,0 +1,258 @@
+# 国土交通省 GIS 都市計画データ
+
+```elixir
+Mix.install([
+  {:geo, "~> 3.6"},
+  {:jason, "~> 1.4"},
+  {:kino, "~> 0.13"},
+  {:kino_maplibre, "~> 0.1"}
+])
+```
+
+## 都市計画データの取得
+
+国土交通省の都市計画データをダウンロードする
+
+出典：「国土数値情報（都市計画データ）」（国土交通省）（<https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-A55-2022.html>）を加工して作成
+
+```elixir
+geo_dir = "/tmp/geo"
+
+geojson_file =
+  geo_dir
+  # ファイル一覧取得
+  |> File.ls!()
+  # `.geojson` で終わるものを取得
+  |> Enum.filter(&String.ends_with?(&1, ".geojson"))
+  # 並べ替え
+  |> Enum.sort()
+```
+
+## GeoJSON の読込
+
+```elixir
+geo_data =
+  geojson_file
+  |> Enum.into(%{}, fn filename ->
+    key =
+      filename
+      |> String.split(".")
+      |> hd()
+      |> String.split("_")
+      |> Enum.reverse()
+      |> hd()
+      |> String.to_atom()
+
+    data =
+      [geo_dir, filename]
+      |> Path.join()
+      |> File.read!()
+      |> Jason.decode!()
+      |> Geo.JSON.decode!()
+
+    {key, data}
+  end)
+```
+
+```elixir
+geo_data.tokei
+```
+
+## 関数の定義
+
+```elixir
+# 地理情報を抽出する
+filter_geometries = fn geometries, key, value ->
+  geometries
+  |> Enum.filter(fn geometry ->
+    Map.get(geometry.properties, key) == value
+  end)
+  |> then(fn filtered ->
+    %{
+      __struct__: Geo.GeometryCollection,
+      srid: nil,
+      geometries: filtered,
+      properties: %{}
+    }
+  end)
+end
+```
+
+```elixir
+# 地図上にレイヤーを追加する
+add_layer = fn map, data, key, color, opacity ->
+  map
+  |> MapLibre.add_geo_source(key, data)
+  |> MapLibre.add_layer(
+    id: key,
+    source: key,
+    type: :fill,
+    paint: [fill_color: color, fill_opacity: opacity]
+  )
+end
+```
+
+## 都市計画区域
+
+```elixir
+MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 9.5)
+|> add_layer.(geo_data.tokei, "都市計画区域", "#0000FF", 0.5)
+```
+
+## 区域区分
+
+```elixir
+hd(geo_data.senbiki.geometries)
+```
+
+```elixir
+senbiki_color_map =
+  %{
+    "市街化区域" => "#FF00FF",
+    "市街化調整区域" => "#00FF00"
+  }
+```
+
+```elixir
+senbiki_map = MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 9.5)
+
+senbiki_color_map
+|> Enum.reduce(senbiki_map, fn {senbiki, color}, map ->
+  target_data = filter_geometries.(geo_data.senbiki.geometries, "区域区分", senbiki)
+  add_layer.(map, target_data, senbiki, color, 0.7)
+end)
+```
+
+## 用途地域
+
+```elixir
+youto_color_map =
+  %{
+    "第１種低層住居専用地域" => "#549F52",
+    "第２種低層住居専用地域" => "#B0D397",
+    "第１種中高層住居専用地域" => "#64B36D",
+    "第２種中高層住居専用地域" => "#9FC662",
+    "第１種住居地域" => "#F4EB4E",
+    "第２種住居地域" => "#F5C345",
+    "準住居地域" => "#ED9D3E",
+    "田園住居地域" => "#BE6C38",
+    "近隣商業地域" => "#EACFE2",
+    "商業地域" => "#BC7CAE",
+    "準工業地域" => "#9595C5",
+    "工業地域" => "#D9EBF1",
+    "工業専用地域" => "#77C4F2"
+  }
+```
+
+```elixir
+youto_map = MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 10.5)
+
+youto_color_map
+|> Enum.reduce(youto_map, fn {youto, color}, map ->
+  target_data = filter_geometries.(geo_data.youto.geometries, "用途地域", youto)
+  add_layer.(map, target_data, youto, color, 0.7)
+end)
+```
+
+```elixir
+youto_color_map
+|> Enum.map(fn {youto, color} ->
+  target_data = filter_geometries.(geo_data.youto.geometries, "用途地域", youto)
+
+  map =
+    MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 10.5)
+    |> add_layer.(target_data, youto, color, 0.7)
+
+  {youto, map}
+end)
+|> Kino.Layout.tabs()
+```
+
+## 高度利用地区
+
+```elixir
+MapLibre.new(style: :terrain, center: {131.606, 33.234}, zoom: 16)
+|> add_layer.(geo_data.koudori, "高度利用地区", "#0000FF", 0.7)
+```
+
+## 防火地域・準防火地域
+
+```elixir
+bouka_color_map =
+  %{
+    "防火地域" => "#FF0000",
+    "準防火地域" => "#880000"
+  }
+
+bouka_map = MapLibre.new(style: :terrain, center: {131.64, 33.24}, zoom: 12)
+
+bouka_color_map
+|> Enum.reduce(bouka_map, fn {bouka, color}, map ->
+  target_data = filter_geometries.(geo_data.bouka.geometries, "防火準防火", bouka)
+  add_layer.(map, target_data, bouka, color, 0.8)
+end)
+```
+
+## 地区計画
+
+```elixir
+MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 10.5)
+|> add_layer.(geo_data.chikukei, "地区計画", "#0000FF", 0.8)
+```
+
+## 特別用途地区
+
+```elixir
+MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 10.5)
+|> add_layer.(geo_data.tkbt, "特別用途地区", "#0000FF", 0.8)
+```
+
+## 土地区画整理事業
+
+```elixir
+MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 10.5)
+|> add_layer.(geo_data.tochiku, "土地区画整理事業", "#FF00FF", 0.8)
+```
+
+## 立地適正化計画
+
+```elixir
+ritteki_color_map =
+  %{
+    "居住誘導区域" => "#FF0000",
+    "都市機能誘導区域" => "#0000FF"
+  }
+
+ritteki_map = MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 10.5)
+
+ritteki_color_map
+|> Enum.reduce(ritteki_map, fn {ritteki, color}, map ->
+  target_data = filter_geometries.(geo_data.ritteki.geometries, "区域区分", ritteki)
+  add_layer.(map, target_data, ritteki, color, 0.5)
+end)
+```
+
+## 都市施設
+
+```elixir
+kouen_color_map =
+  %{
+    "公園" => "#FFFF00",
+    "緑地" => "#00FF00",
+    "墓園" => "#0000FF"
+  }
+
+road_data = filter_geometries.(geo_data.douro.geometries, "区分", "道路")
+plaza_data = filter_geometries.(geo_data.douro.geometries, "区分", "広場")
+
+kouen_map = MapLibre.new(style: :terrain, center: {131.68, 33.21}, zoom: 10.5)
+
+kouen_color_map
+|> Enum.reduce(kouen_map, fn {kouen, color}, map ->
+  target_data = filter_geometries.(geo_data.kouen.geometries, "種類", kouen)
+  add_layer.(map, target_data, kouen, color, 0.5)
+end)
+|> add_layer.(geo_data.douro, "広場", "#FF00FF", 0.5)
+|> MapLibre.add_geo_source("道路", road_data)
+|> MapLibre.add_layer(id: "道路", source: "道路", type: :line)
+```
