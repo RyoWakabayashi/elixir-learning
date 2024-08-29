@@ -5,8 +5,8 @@ Mix.install(
   [
     {:image, "~> 0.52"},
     {:bumblebee, "~> 0.5"},
-    {:exla, "~> 0.7"},
-    {:kino, "~> 0.13"}
+    {:exla, "~> 0.8"},
+    {:kino, "~> 0.14"}
   ],
   config: [
     nx: [

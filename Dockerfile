@@ -1,4 +1,4 @@
-FROM ghcr.io/livebook-dev/livebook:0.13.3
+FROM ghcr.io/livebook-dev/livebook:0.14.0
 
 RUN mix local.hex --force \
   && mix archive.install hex phx_new --force \
@@ -22,9 +22,9 @@ RUN apt-get upgrade -y \
 
 # For Docker
 RUN mkdir -p /etc/apt/keyrings \
-  && curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+  && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null \
   && apt-get update \
   && apt-get install -y docker.io \
@@ -70,7 +70,8 @@ RUN apt-get upgrade -y \
 # For OpenCV
 RUN apt-get upgrade -y \
   && apt-get update \
-  && apt-get install --no-install-recommends -y \
+  && DEBIAN_FRONTEND=noninteractive \
+    apt-get install --no-install-recommends -y \
     libopencv-dev \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*

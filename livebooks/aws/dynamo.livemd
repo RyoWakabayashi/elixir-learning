@@ -7,8 +7,8 @@ Mix.install([
   {:poison, "~> 5.0"},
   {:hackney, "~> 1.20"},
   {:sweet_xml, "~> 0.7"},
-  {:explorer, "~> 0.8"},
-  {:kino, "~> 0.13"}
+  {:explorer, "~> 0.9"},
+  {:kino, "~> 0.14"}
 ])
 ```
 

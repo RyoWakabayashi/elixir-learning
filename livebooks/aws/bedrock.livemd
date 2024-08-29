@@ -4,7 +4,7 @@
 Mix.install([
   {:aws, git: "https://github.com/aws-beam/aws-elixir/"},
   {:hackney, "~> 1.20"},
-  {:kino, "~> 0.13"}
+  {:kino, "~> 0.14"}
 ])
 ```
 

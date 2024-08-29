@@ -4,7 +4,7 @@
 Mix.install(
   [
     {:kino_bumblebee, "~> 0.4"},
-    {:exla, "~> 0.7"}
+    {:exla, "~> 0.8"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )

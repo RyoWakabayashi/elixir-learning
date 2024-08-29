@@ -3,8 +3,8 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.7"},
-    {:exla, "~> 0.7"}
+    {:nx, "~> 0.8"},
+    {:exla, "~> 0.8"}
   ],
   config: [
     nx: [
