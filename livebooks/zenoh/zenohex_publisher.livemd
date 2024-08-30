@@ -1,0 +1,26 @@
+# Zenohex publisher
+
+```elixir
+Mix.install([
+  {:zenohex, "~> 0.3"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## Publish
+
+```elixir
+{:ok, session} = Zenohex.open()
+{:ok, publisher} =
+  Zenohex.Session.declare_publisher(session, "key/expression")
+```
+
+```elixir
+input = Kino.Input.textarea("MESSAGE")
+```
+
+```elixir
+message = Kino.Input.read(input)
+
+Zenohex.Publisher.put(publisher, message)
+```

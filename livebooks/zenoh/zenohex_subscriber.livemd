@@ -1,0 +1,29 @@
+# Zenohex subscriber
+
+```elixir
+Mix.install([
+  {:zenohex, "~> 0.3"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## Subscribe
+
+```elixir
+{:ok, session} = Zenohex.open()
+{:ok, subscriber} =
+  Zenohex.Session.declare_subscriber(session, "key/expression")
+```
+
+```elixir
+frame = Kino.Frame.new()
+```
+
+```elixir
+case Zenohex.Subscriber.recv_timeout(subscriber, 10_000_000) do
+  {:error, :timeout} ->
+    nil
+  {:ok, msg} ->
+    Kino.Frame.append(frame, Kino.Markdown.new(msg.value))
+end
+```
