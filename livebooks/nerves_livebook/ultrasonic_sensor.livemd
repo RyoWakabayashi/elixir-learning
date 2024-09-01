@@ -85,3 +85,10 @@ Kino.VegaLite.clear(distance_plot)
   Process.sleep(100)
 end)
 ```
+
+## ピンを閉じる
+
+```elixir
+Circuits.GPIO.close(trig)
+Circuits.GPIO.close(echo)
+```
