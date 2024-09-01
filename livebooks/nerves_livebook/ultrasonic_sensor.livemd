@@ -1,0 +1,87 @@
+# Ultrasonic sensor
+
+## ピンを開く
+
+```elixir
+{:ok, trig} = Circuits.GPIO.open("GPIO23", :output)
+{:ok, echo} = Circuits.GPIO.open("GPIO24", :input)
+```
+
+## 距離測定モジュール
+
+```elixir
+defmodule UltrasonicSensor do
+  def distance(trig, echo) do
+    Circuits.GPIO.write(trig, 0)
+    Process.sleep(1)
+
+    # 1 msec の超音波を送信
+    Circuits.GPIO.write(trig, 1)
+    Process.sleep(1)
+    Circuits.GPIO.write(trig, 0)
+
+    # 最初は 0 の状態を確認
+    time_1 = wait_for(echo, 0)
+
+    # 1 になるまでの時間を取得
+    time_2 = wait_for(echo, 1)
+
+    during = Time.diff(time_2, time_1, :microsecond)
+
+    # 空気中の音速を使って距離(cm)に変換
+    during * 340 / 2 / 10000
+  end
+
+  defp wait_for(echo, value) do
+    1..10000
+    |> Enum.reduce_while(nil, fn _i, _acc ->
+      if Circuits.GPIO.read(echo) == value do
+        {:cont, Time.utc_now()}
+      else
+        {:halt, Time.utc_now()}
+      end
+    end)
+  end
+end
+```
+
+## 距離を一定時間連続計測
+
+```elixir
+1..100
+|> Enum.map(fn _ ->
+  UltrasonicSensor.distance(trig, echo) |> IO.inspect()
+
+  Process.sleep(100)
+end)
+```
+
+## 距離のグラフ化
+
+```elixir
+distance_plot =
+  VegaLite.new(width: 700)
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "index", type: :quantitative)
+  |> VegaLite.encode_field(:y, "distance", type: :quantitative)
+  |> Kino.VegaLite.new()
+```
+
+```elixir
+Kino.VegaLite.clear(distance_plot)
+
+1..300
+|> Enum.map(fn index ->
+  distance = UltrasonicSensor.distance(trig, echo)
+
+  IO.inspect(distance)
+
+  plot_data = %{
+    index: index,
+    distance: distance
+  }
+
+  Kino.VegaLite.push(distance_plot, plot_data)
+  Process.sleep(100)
+end)
+```
