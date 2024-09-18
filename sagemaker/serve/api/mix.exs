@@ -33,14 +33,16 @@ defmodule Api.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix, "~> 1.6.15"},
-      {:telemetry_metrics, "~> 0.6"},
-      {:telemetry_poller, "~> 1.0"},
-      {:jason, "~> 1.2"},
-      {:bumblebee, "~> 0.4"},
+      {:phoenix, "~> 1.7.14"},
+      {:phoenix_view, "~> 2.0"} ,
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_poller, "~> 1.1"},
+      {:jason, "~> 1.4"},
+      {:bumblebee, "~> 0.5"},
       {:stb_image, "~> 0.6"},
-      {:exla, "~> 0.4"},
-      {:plug_cowboy, "~> 2.5"}
+      {:exla, "~> 0.7"},
+      {:plug_cowboy, "~> 2.7"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 

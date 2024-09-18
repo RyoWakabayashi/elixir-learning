@@ -3,13 +3,15 @@ defmodule ApiWeb.PredictionController do
 
   alias ApiWeb.Serving
 
-  action_fallback ApiWeb.FallbackController
+  require Logger
 
   def index(conn, %{"image" => base64}) do
     predictions =
       base64
       |> Base.decode64!()
       |> predict()
+
+    Logger.info("Predictions: #{inspect(predictions)}")
 
     conn
     |> put_status(200)
@@ -20,6 +22,8 @@ defmodule ApiWeb.PredictionController do
     {:ok, binary, _} = Plug.Conn.read_body(conn)
 
     predictions = predict(binary)
+
+    Logger.info("Predictions: #{inspect(predictions)}")
 
     conn
     |> put_status(200)

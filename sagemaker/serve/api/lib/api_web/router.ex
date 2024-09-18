@@ -2,7 +2,7 @@ defmodule ApiWeb.Router do
   use ApiWeb, :router
 
   pipeline :api do
-    plug :accepts, ["json"]
+    plug :accepts, ["json", "jpg", "jpeg", "png"]
   end
 
   scope "/", ApiWeb do

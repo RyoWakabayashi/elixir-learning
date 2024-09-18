@@ -10,7 +10,7 @@ import Config
 # Configures the endpoint
 config :api, ApiWeb.Endpoint,
   http: [
-    protocol_options: [idle_timeout: 5_000_000_000],
+    protocol_options: [idle_timeout: 5_000_000_000]
   ],
   url: [host: "localhost"],
   render_errors: [view: ApiWeb.ErrorView, accepts: ~w(json), layout: false],

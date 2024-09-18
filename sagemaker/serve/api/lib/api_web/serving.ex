@@ -1,4 +1,8 @@
 defmodule ApiWeb.Serving do
+  @moduledoc """
+  Serving.
+  """
+
   use Agent
 
   @resnet_id "microsoft/resnet-50"
@@ -14,11 +18,14 @@ defmodule ApiWeb.Serving do
     resnet = Bumblebee.Vision.image_classification(model, featurizer)
 
     # Agent に入れておく
-    Agent.start_link(fn ->
-      %{
-        resnet: resnet,
-      }
-    end, name: __MODULE__)
+    Agent.start_link(
+      fn ->
+        %{
+          resnet: resnet
+        }
+      end,
+      name: __MODULE__
+    )
   end
 
   # 使用時に Agent から取り出す

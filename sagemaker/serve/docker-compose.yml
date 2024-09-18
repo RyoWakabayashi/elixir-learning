@@ -1,15 +1,13 @@
 ---
 
-version: '3.2'
 services:
   web:
     container_name: phoenix
     build: .
+    platform: linux/amd64
     ports:
-      - '8080:8080'
+      - '8082:8080'
     command: serve
-    environment:
-      - MIX_ENV=dev
     volumes:
       - ./tmp:/tmp
       - ./models:/opt/ml/model
