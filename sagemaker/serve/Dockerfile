@@ -15,8 +15,8 @@ RUN mix deps.get
 
 RUN mix compile.phoenix
 
-RUN chmod 777 -R /app/
 RUN chmod +x /app/serve
+RUN chmod -R 777 /app/_build
 
 ENV PATH="/app:${PATH}"
 

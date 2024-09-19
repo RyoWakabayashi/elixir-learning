@@ -11,7 +11,8 @@ Mix.install([
   {:stb_image, "~> 0.6"},
   {:hackney, "~> 1.20"},
   {:sweet_xml, "~> 0.7"},
-  {:kino, "~> 0.14"}
+  {:kino, "~> 0.14"},
+  {:flow, "~> 1.2"}
 ])
 ```
 
@@ -418,7 +419,8 @@ client
     "Body" => binary,
     "ContentType" => "image/jpeg",
     "Accept" => "application/json"
-  }
+  },
+  recv_timeout: 60_000
 )
 |> elem(1)
 |> Map.get("Body")
@@ -464,7 +466,8 @@ client
     "Body" => binary,
     "ContentType" => "image/jpeg",
     "Accept" => "application/json"
-  }
+  },
+  recv_timeout: 60_000
 )
 |> elem(1)
 |> Map.get("Body")
@@ -523,12 +526,21 @@ client
 ## ECR リポジトリー削除
 
 ```elixir
+image_digest_list =
+  client
+  |> AWS.ECR.list_images(%{
+    "repositoryName" => image
+  })
+  |> elem(1)
+  |> Map.get("imageIds")
+  |> Enum.map(&Map.take(&1,["imageDigest"]))
+```
+
+```elixir
 client
 |> AWS.ECR.batch_delete_image(%{
   "repositoryName" => image,
-  "imageIds" => [
-    %{"imageTag" => "latest"}
-  ]
+  "imageIds" => image_digest_list
 })
 ```
 

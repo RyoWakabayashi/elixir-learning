@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:aws, "~> 0.13"},
+  {:aws, "~> 1.0"},
   {:ex_aws, "~> 2.5"},
   {:ex_aws_sts, "~> 2.3"},
-  {:ex_aws_s3, "~> 2.4"},
+  {:ex_aws_s3, "~> 2.5"},
   {:req, "~> 0.5"},
   {:nx, "~> 0.8"},
   {:stb_image, "~> 0.6"},
@@ -486,12 +486,21 @@ client
 ## ECR リポジトリー削除
 
 ```elixir
+image_digest_list =
+  client
+  |> AWS.ECR.list_images(%{
+    "repositoryName" => image
+  })
+  |> elem(1)
+  |> Map.get("imageIds")
+  |> Enum.map(&Map.take(&1,["imageDigest"]))
+```
+
+```elixir
 client
 |> AWS.ECR.batch_delete_image(%{
   "repositoryName" => image,
-  "imageIds" => [
-    %{"imageTag" => "latest"}
-  ]
+  "imageIds" => image_digest_list
 })
 ```
 
