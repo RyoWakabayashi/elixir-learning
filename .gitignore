@@ -12,3 +12,6 @@ tmp
 *.data-*
 *.pt
 *.pth
+
+# macOS
+.DS_Store

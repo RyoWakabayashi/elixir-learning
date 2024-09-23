@@ -1,0 +1,308 @@
+# AI Gateway multiple providers
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.14"},
+  {:req, "~> 0.4"}
+])
+```
+
+## 認証情報の設定
+
+以下の値を Secrets に登録する
+
+* OPENAI_API_KEY: OpenAI の API キー
+* GEMINI_API_KEY: Google Gemini の API キー
+* CF_ACCOUNT_ID: Cloudfaler のアカウントID
+* WORKERS_AI_API_KEY: Workers AI の API キー
+
+## OpenAI API の直接呼出
+
+```elixir
+openai_api_key = System.get_env("LB_OPENAI_API_KEY")
+
+openai_base_url = "https://api.openai.com/v1/chat/completions"
+
+openai_model_id = "gpt-4o-mini"
+
+openai_headers = %{
+  "Content-Type" => "application/json",
+  "Authorization" => "Bearer #{openai_api_key}"
+}
+
+request_body = %{
+  model: openai_model_id,
+  messages: [
+    %{
+      role: "system",
+      content: "You are a helpful assistant."
+    },
+    %{
+      role: "user",
+      content: "あんパンとカレーパンはどちらが人気ですか"
+    }
+  ]
+}
+```
+
+```elixir
+response =
+  "#{openai_base_url}"
+  |> Req.post!(json: request_body, headers: openai_headers)
+  |> Map.get(:body)
+```
+
+```elixir
+response["choices"]
+|> Enum.at(0)
+|> Map.get("message")
+|> Map.get("content")
+|> Kino.Markdown.new()
+```
+
+## Google Gemini API の直接呼出
+
+```elixir
+gemini_api_key = System.get_env("LB_GEMINI_API_KEY")
+
+gemini_base_url = "https://generativelanguage.googleapis.com/v1beta/models"
+
+gemini_model_id = "gemini-1.5-flash-latest"
+
+gemini_headers = %{
+  "Content-Type" => "application/json"
+}
+
+request_body = %{
+  contents: [
+    %{
+      parts: [
+        %{
+          text: "日本で最も人気のあるパンは何ですか"
+        }
+      ]
+    }
+  ]
+}
+```
+
+```elixir
+response =
+  "#{gemini_base_url}/#{gemini_model_id}:generateContent?key=#{gemini_api_key}"
+  |> Req.post!(json: request_body, headers: gemini_headers)
+  |> Map.get(:body)
+```
+
+```elixir
+response["candidates"]
+|> Enum.at(0)
+|> Map.get("content")
+|> Map.get("parts")
+|> Enum.at(0)
+|> Map.get("text")
+|> Kino.Markdown.new()
+```
+
+## Workers AI の直接呼出
+
+```elixir
+cf_account_id = System.get_env("LB_CF_ACCOUNT_ID")
+
+workers_ai_api_key = System.get_env("LB_WORKERS_AI_API_KEY")
+
+workers_ai_base_url = "https://api.cloudflare.com/client/v4/"
+
+workers_ai_model_id = "llama-3.1-8b-instruct"
+
+workers_ai_headers = %{
+  "Content-Type" => "application/json",
+  "Authorization" => "Bearer #{workers_ai_api_key}"
+}
+
+request_body = %{
+  messages: [
+    %{
+      role: "system",
+      content: "あなたは優秀なAIアシスタントです。日本語で簡潔に質問に回答してください"
+    },
+    %{
+      role: "user",
+      content: "食パンの一番美味しいところはどこですか"
+    }
+  ]
+}
+```
+
+```elixir
+response =
+  "#{workers_ai_base_url}/accounts/#{cf_account_id}/ai/run/@cf/meta/#{workers_ai_model_id}"
+  |> Req.post!(json: request_body, headers: workers_ai_headers)
+  |> Map.get(:body)
+```
+
+## AI Gateway からの呼出
+
+```elixir
+cf_gateway_name_input = Kino.Input.text("CLOUDFLARE GATEWAY_NAME")
+```
+
+```elixir
+cf_gateway_name = Kino.Input.read(cf_gateway_name_input)
+cf_host = "gateway.ai.cloudflare.com"
+
+gw_url =
+  "https://#{cf_host}/v1/#{cf_account_id}/#{cf_gateway_name}"
+
+gw_headers = %{
+  "Content-Type" => "application/json"
+}
+
+question = "コロネはどこから食べるべきですか"
+```
+
+```elixir
+openai_request_body = %{
+  provider: "openai",
+  endpoint: "chat/completions",
+  headers: openai_headers,
+  query: %{
+    model: openai_model_id,
+    messages: [
+      %{role: "system", content: "You are a helpful assistant."},
+      %{role: "user", content: question}
+    ]
+  }
+}
+```
+
+```elixir
+gemini_request_body = %{
+  provider: "google-ai-studio",
+  endpoint: "v1beta/models/#{gemini_model_id}:generateContent?key=#{gemini_api_key}",
+  headers: gemini_headers,
+  query: %{
+    contents: [%{parts: [%{text: question}]}]
+  }
+}
+```
+
+```elixir
+workers_request_body = %{
+  provider: "workers-ai",
+  endpoint: "@cf/meta/#{workers_ai_model_id}",
+  headers: workers_ai_headers,
+  query: %{
+    messages: [
+      %{role: "system", content: "あなたは優秀なAIアシスタントです。日本語で簡潔に質問に回答してください"},
+      %{role: "user", content: question}
+    ]
+  }
+}
+```
+
+```elixir
+request_body = [
+  openai_request_body,
+  gemini_request_body,
+  workers_request_body
+]
+
+response =
+  gw_url
+  |> Req.post!(json: request_body, headers: gw_headers)
+  |> Map.get(:body)
+```
+
+```elixir
+request_body = [
+  gemini_request_body,
+  workers_request_body,
+  openai_request_body
+]
+
+response =
+  gw_url
+  |> Req.post!(json: request_body, headers: gw_headers)
+  |> Map.get(:body)
+```
+
+```elixir
+request_body = [
+  workers_request_body,
+  openai_request_body,
+  gemini_request_body
+]
+
+response =
+  gw_url
+  |> Req.post!(json: request_body, headers: gw_headers)
+  |> Map.get(:body)
+```
+
+## 認証エラーを発生させる
+
+```elixir
+# 認証キーをリクエストから外す
+request_body = [
+  %{
+    provider: "google-ai-studio",
+    endpoint: "v1beta/models/#{gemini_model_id}:generateContent",
+    headers: gemini_headers,
+    query: %{
+      contents: [%{parts: [%{text: question}]}]
+    }
+  },
+  workers_request_body,
+  openai_request_body
+]
+
+response =
+  gw_url
+  |> Req.post!(json: request_body, headers: gw_headers)
+  |> Map.get(:body)
+```
+
+## キャッシュ
+
+AI Gateway でキャッシュを有効にしてから2回実行する
+
+```elixir
+request_body = [
+  openai_request_body,
+  gemini_request_body,
+  workers_request_body
+]
+
+response =
+  gw_url
+  |> Req.post!(json: request_body, headers: gw_headers)
+  |> Map.get(:body)
+```
+
+## レート制限
+
+AI Gateway で1分間のレート制限を3回にしてから5回実行する
+
+```elixir
+1..5
+|> Enum.map(fn index ->
+  request_body = [
+    %{
+      provider: "openai",
+      endpoint: "chat/completions",
+      headers: openai_headers,
+      query: %{
+        model: openai_model_id,
+        messages: [
+          %{role: "system", content: "You are a helpful assistant."},
+          %{role: "user", content: "#{index}といえば、何を表す数字ですか"}
+        ]
+      }
+    }
+  ]
+
+  gw_url
+  |> Req.post!(json: request_body, headers: gw_headers)
+  |> Map.get(:body)
+end)
+```
