@@ -140,6 +140,11 @@ response =
   |> Map.get(:body)
 ```
 
+```elixir
+response["result"]["response"]
+|> Kino.Markdown.new()
+```
+
 ## AI Gateway からの呼出
 
 ```elixir
