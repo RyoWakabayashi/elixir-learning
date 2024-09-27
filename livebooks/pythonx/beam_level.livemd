@@ -1,0 +1,81 @@
+# Pythonx BEAM Level
+
+```elixir
+Mix.install([
+  {:pythonx, "~> 0.2"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## Initialize
+
+```elixir
+alias Pythonx.Beam
+```
+
+```elixir
+Pythonx.initialize_once()
+```
+
+```elixir
+globals = Beam.encode(%{x: 1})
+
+Pythonx.C.PyObject.print(globals.ref, :stdout, 0)
+
+Beam.decode(globals)
+```
+
+```elixir
+locals = Beam.encode(%{a: 1, b: 2})
+
+Pythonx.C.PyObject.print(locals.ref, :stdout, 0)
+
+Beam.decode(locals)
+```
+
+## Run Python code
+
+```elixir
+Beam.PyRun.string("c = a + b", Beam.py_file_input(), globals, locals)
+Beam.PyRun.string("l = [i ** 2 for i in range(10)]", Beam.py_file_input(), globals, locals)
+Beam.PyRun.string("""
+m = {"x": 99, "y": 100}
+m["x"] = m["x"] + 2
+""", Beam.py_file_input(), globals, locals)
+
+Pythonx.C.PyObject.print(locals.ref, :stdout, 0)
+
+Beam.decode(locals)
+```
+
+```elixir
+py_beam_pipe = fn locals, code ->
+  beam_locals = Beam.encode(locals)
+  Beam.PyRun.string(code, Beam.py_file_input(), Beam.encode(%{}), beam_locals)
+  Beam.decode(beam_locals)
+end
+```
+
+```elixir
+%{x: ["a", "b", "c"]}
+|> py_beam_pipe.("""
+y = {}
+for i, v in enumerate(x):
+  y[v] = i
+""")
+|> then(fn locals ->
+  Map.put(locals, "elixir", "hello")
+end)
+|> py_beam_pipe.("""
+if len(x) == 3:
+  x.sort(reverse=True)
+""")
+|> then(fn locals ->
+  locals
+  |> Map.put("y", Map.put(locals["y"], "x", 99))
+  |> Map.put("x", ["z" | locals["x"]])
+end)
+|> py_beam_pipe.("""
+python = "hello"
+""")
+```

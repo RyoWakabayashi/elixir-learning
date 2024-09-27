@@ -1,0 +1,137 @@
+# Pythonx Low-Level
+
+```elixir
+Mix.install([
+  {:pythonx, "~> 0.2"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## Initialize
+
+```elixir
+alias Pythonx.C
+alias Pythonx.C.PyDict
+alias Pythonx.C.PyErr
+alias Pythonx.C.PyFloat
+alias Pythonx.C.PyList
+alias Pythonx.C.PyLong
+alias Pythonx.C.PyObject
+alias Pythonx.C.PyRun
+alias Pythonx.C.PyTuple
+alias Pythonx.C.PyUnicode
+```
+
+```elixir
+Pythonx.initialize_once()
+```
+
+```elixir
+globals = PyDict.new()
+locals = PyDict.new()
+```
+
+## Local variables
+
+```elixir
+a = PyLong.from_long(1)
+PyDict.set_item_string(locals, "a", a)
+```
+
+```elixir
+PyDict.get_item_string(locals, "a") |> PyLong.as_long()
+```
+
+```elixir
+PyObject.print(a, :stdout, 0)
+```
+
+```elixir
+PyObject.print(locals, :stdout, 0)
+```
+
+```elixir
+PyDict.get_item_string(locals, "l")
+```
+
+```elixir
+b = PyLong.from_long(2)
+PyDict.set_item_string(locals, "b", b)
+
+PyObject.print(locals, :stdout, 0)
+```
+
+```elixir
+items = PyDict.items(locals)
+
+Enum.into(0..(PyList.size(items) - 1), %{}, fn index ->
+  items
+  |> PyList.get_item(index)
+  |> then(fn tuple ->
+    {
+      tuple |> PyTuple.get_item(0) |> PyUnicode.as_utf8(),
+      tuple |> PyTuple.get_item(1) |> PyLong.as_long()
+    }
+  end)
+end)
+```
+
+## Run Python code
+
+```elixir
+PyRun.string("c = a + b", C.py_file_input(), globals, locals)
+
+PyObject.print(locals, :stdout, 0)
+```
+
+```elixir
+PyDict.get_item_string(locals, "c") |> PyLong.as_long()
+```
+
+```elixir
+result = PyRun.string("n = m + 1", C.py_file_input(), globals, locals)
+
+case result do
+  %PyErr{} ->
+    PyUnicode.as_utf8(result.value)
+  _ ->
+    nil
+end
+```
+
+```elixir
+PyRun.string("d = a / b", C.py_file_input(), globals, locals)
+PyRun.string("e = 99 if a == 0 else -1", C.py_file_input(), globals, locals)
+PyRun.string("f = [i ** 2 for i in range(10)]", C.py_file_input(), globals, locals)
+
+PyObject.print(locals, :stdout, 0)
+```
+
+```elixir
+PyDict.get_item_string(locals, "d") |> PyFloat.as_double()
+```
+
+## Global variables
+
+```elixir
+globals = PyDict.new()
+locals = PyDict.new()
+
+PyDict.set_item_string(locals, "x", PyLong.from_long(1))
+PyDict.set_item_string(globals, "x", PyLong.from_long(1))
+PyDict.set_item_string(globals, "z", PyLong.from_long(99))
+
+PyObject.print(locals, :stdout, 0)
+PyObject.print(globals, :stdout, 0)
+```
+
+```elixir
+PyRun.string("""
+x = 2
+z = z + 1
+y = z + 1
+""", C.py_file_input(), globals, locals)
+
+PyObject.print(locals, :stdout, 0)
+PyObject.print(globals, :stdout, 0)
+```

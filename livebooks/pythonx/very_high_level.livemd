@@ -1,0 +1,72 @@
+# Pythonx Very High Level
+
+```elixir
+Mix.install([
+  {:pythonx, "~> 0.2"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## Initialize
+
+```elixir
+import Pythonx
+```
+
+```elixir
+Pythonx.initialize_once()
+```
+
+## Run Python code
+
+```elixir
+pyeval("""
+import sys
+
+platform = sys.platform
+
+l = [i ** 2 for i in range(3)]
+m = {'x': l[0], 'y': l[1]}
+""", return: [:platform, :l, :m])
+{platform, l, m}
+```
+
+```elixir
+x = 2
+y = -1
+pyinline("""
+z = []
+for i in [1, 2, 3, 4, 5]:
+  if i % x == 0:
+    z.append(y)
+  else:
+    z.append(i)
+
+w = {'x': x, 'y': y}
+""", return: [:z, :w])
+{z, w}
+```
+
+## Run Python scripts
+
+```elixir
+File.write!("/tmp/sample_script.py", """
+def main():
+  print("Hello, Python!")
+
+if __name__ == "__main__":
+  main()
+""")
+```
+
+```elixir
+python3! "/tmp/sample_script.py", into: []
+```
+
+```elixir
+System.cmd("ln", ["-sfn", "/usr/bin/python3", Pythonx.python3_executable()])
+```
+
+```elixir
+python3! "/tmp/sample_script.py", env: [{"PYTHONHOME", "/usr/"}], into: []
+```

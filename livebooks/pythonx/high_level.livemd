@@ -1,0 +1,65 @@
+# Pythonx High-Level
+
+```elixir
+Mix.install([
+  {:pythonx, "~> 0.2"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## Initialize
+
+```elixir
+alias Pythonx.State
+alias Pythonx.PyRun
+```
+
+```elixir
+Pythonx.initialize_once()
+```
+
+```elixir
+state = State.new(globals: %{x: 1}, locals: %{a: 1, b: 2})
+```
+
+## Run Python code
+
+```elixir
+{result, state} = PyRun.string("c = a + b", Pythonx.py_file_input(), state)
+```
+
+```elixir
+state.locals
+```
+
+```elixir
+py_run_pipe = fn locals, code ->
+  state = State.new(locals: locals)
+  {_, state} = PyRun.string(code, Pythonx.py_file_input(), state)
+  state.locals
+end
+```
+
+```elixir
+%{x: ["a", "b", "c"]}
+|> py_run_pipe.("""
+y = {}
+for i, v in enumerate(x):
+  y[v] = i
+""")
+|> then(fn locals ->
+  Map.put(locals, "elixir", "hello")
+end)
+|> py_run_pipe.("""
+if len(x) == 3:
+  x.sort(reverse=True)
+""")
+|> then(fn locals ->
+  locals
+  |> Map.put("y", Map.put(locals["y"], "x", 99))
+  |> Map.put("x", ["z" | locals["x"]])
+end)
+|> py_run_pipe.("""
+python = "hello"
+""")
+```
