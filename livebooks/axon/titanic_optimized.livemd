@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:exla, "~> 0.8"},
+  {:exla, "~> 0.9", override: true},
   {:axon, "~> 0.6", git: "https://github.com/elixir-nx/axon/"},
   {:kino, "~> 0.14"},
   {:kino_vega_lite, "~> 0.1"},

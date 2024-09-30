@@ -4,12 +4,12 @@
 Mix.install(
   [
     {:bumblebee, "~> 0.5"},
-    {:nx, "~> 0.8"},
-    {:exla, "~> 0.8"},
+    {:nx, "~> 0.9", override: true},
+    {:exla, "~> 0.9"},
     {:kino, "~> 0.14"}
   ],
   system_env: [
-    {"XLA_TARGET", "cuda120"},
+    {"XLA_TARGET", "cuda12"},
     {"EXLA_TARGET", "cuda"}
   ]
 )

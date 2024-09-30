@@ -1,7 +1,5 @@
 ---
 
-version: '3.2'
-
 services:
   livebook_with_db:
     build: .

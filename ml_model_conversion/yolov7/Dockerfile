@@ -12,6 +12,8 @@ RUN apt-get update \
                 wget \
                 python3.8 \
                 python3-pip \
+                python3-dev \
+                build-essential \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/* \
         && update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1

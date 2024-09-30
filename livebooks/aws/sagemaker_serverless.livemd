@@ -7,7 +7,7 @@ Mix.install([
   {:ex_aws_sts, "~> 2.3"},
   {:ex_aws_s3, "~> 2.5"},
   {:req, "~> 0.5"},
-  {:nx, "~> 0.8"},
+  {:nx, "~> 0.9"},
   {:stb_image, "~> 0.6"},
   {:hackney, "~> 1.20"},
   {:sweet_xml, "~> 0.7"},

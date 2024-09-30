@@ -3,8 +3,8 @@
 ```elixir
 Mix.install(
   [
-    {:nx, "~> 0.8"},
-    {:exla, "~> 0.8"},
+    {:nx, "~> 0.9", override: true},
+    {:exla, "~> 0.9"},
     {:axon_onnx, "~> 0.4", git: "https://github.com/mortont/axon_onnx/"},
     {:kino, "~> 0.14"}
   ],

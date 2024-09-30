@@ -3,8 +3,8 @@
 ```elixir
 Mix.install(
   [
-    {:kino_bumblebee, "~> 0.4"},
-    {:exla, "~> 0.8"}
+    {:kino_bumblebee, "~> 0.5"},
+    {:exla, "~> 0.9", override: true}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )

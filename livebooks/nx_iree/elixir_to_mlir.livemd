@@ -2,8 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:exla, "~> 0.8", github: "elixir-nx/nx", sparse: "exla"},
-  {:nx, "~> 0.8", github: "elixir-nx/nx", sparse: "nx", override: true},
+  {:exla, "~> 0.9", github: "elixir-nx/nx", sparse: "exla"},
+  {:nx, "~> 0.9", github: "elixir-nx/nx", sparse: "nx", override: true},
   {:nx_iree, "~> 0.1", git: "https://github.com/elixir-nx/nx_iree"},
   {:kino, "~> 0.14"},
   {:benchee, "~> 1.3"},

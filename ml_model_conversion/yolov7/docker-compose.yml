@@ -1,7 +1,5 @@
 ---
 
-version: "2.3"
-
 services:
   yolov7:
     container_name: yolov7
