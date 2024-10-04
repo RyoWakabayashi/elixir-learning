@@ -8,12 +8,7 @@ Mix.install(
     {:scholar, "~> 0.3"},
     {:exla, "~> 0.9"}
   ],
-  config: [
-    nx: [
-      default_backend: EXLA.Backend,
-      default_defn_options: [compiler: EXLA]
-    ]
-  ]
+  config: [nx: [default_backend: EXLA.Backend]]
 )
 ```
 

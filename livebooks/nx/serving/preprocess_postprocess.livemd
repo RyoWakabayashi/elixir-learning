@@ -7,11 +7,7 @@ Mix.install(
     {:exla, "~> 0.9"},
     {:kino, "~> 0.14"}
   ],
-  config: [
-    nx: [
-      default_backend: EXLA.Backend
-    ]
-  ]
+  config: [nx: [default_backend: EXLA.Backend]]
 )
 ```
 

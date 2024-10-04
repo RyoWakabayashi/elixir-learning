@@ -12,11 +12,7 @@ Mix.install(
     {:kino_maplibre, "~> 0.1"},
     {:kino_vega_lite, "~> 0.1"}
   ],
-  config: [
-    nx: [
-      default_backend: EXLA.Backend
-    ]
-  ]
+  config: [nx: [default_backend: EXLA.Backend]]
 )
 ```
 

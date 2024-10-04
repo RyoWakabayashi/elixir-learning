@@ -9,6 +9,7 @@ RUN apt-get update \
         && apt-get install --no-install-recommends --no-install-suggests -y \
                 libopencv-dev \
                 git \
+                gpg \
                 wget \
                 python3.8 \
                 python3-pip \
@@ -17,6 +18,17 @@ RUN apt-get update \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/* \
         && update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1
+
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null \
+        | gpg --dearmor - \
+        | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null \
+        && echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ focal main' | \
+                tee /etc/apt/sources.list.d/kitware.list >/dev/null \
+        && apt-get update \
+        && apt-get install --no-install-recommends --no-install-suggests -y \
+                cmake \
+        && apt-get clean \
+        && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
 
