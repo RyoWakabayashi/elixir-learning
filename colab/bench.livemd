@@ -11,7 +11,7 @@ Mix.install(
     {:kino, "~> 0.14"}
   ],
   system_env: [
-    {"XLA_TARGET", "cuda1212"},
+    {"XLA_TARGET", "cuda12"},
     {"EXLA_TARGET", "cuda"},
     {"LIBTORCH_TARGET", "cu121"},
     {"EVISION_ENABLE_CUDA", "true"},
