@@ -21,7 +21,11 @@ softmax = fn tensor ->
   )
 end
 
-input = Nx.tensor([1.0, 2.0, -1.0, -1.5])
+input =
+  {1000, 1000, 5}
+  |> Nx.iota(type: :f32, backend: Nx.BinaryBackend)
+  |> Nx.divide(1024 * 1024)
+
 args = [input]
 
 %{
@@ -37,17 +41,13 @@ dev =
   NxIREE.list_devices("metal")
   |> elem(1)
   |> hd()
-```
 
-```elixir
 flags = [
   "--iree-hal-target-backends=metal-spirv",
   "--iree-input-type=stablehlo_xla",
   "--iree-execution-model=async-internal"
 ]
-```
 
-```elixir
 module = NxIREE.compile(mlir_module, flags, output_container: output_container)
 ```
 
@@ -63,34 +63,6 @@ softmax.(input)
 
 ```elixir
 exla_input = Nx.backend_transfer(input, EXLA.Backend)
-```
-
-```elixir
-Benchee.run(%{
-  "nx" => fn -> softmax.(input) end,
-  "exla" => fn -> softmax.(exla_input) end,
-  "nx_iree" => fn -> NxIREE.call(module, [input], device: dev) end
-})
-```
-
-```elixir
-input =
-  1..100000
-  |> Enum.map(fn _ -> Statistics.Distributions.Normal.rand() end)
-  |> Nx.tensor()
-
-args = [input]
-
-%{
-  mlir_module: mlir_module,
-  output_container: output_container
-} = EXLA.to_mlir_module(softmax, args)
-
-Kino.Text.new(mlir_module)
-```
-
-```elixir
-module = NxIREE.compile(mlir_module, flags, output_container: output_container)
 ```
 
 ```elixir

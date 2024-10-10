@@ -6,7 +6,7 @@ Mix.install([
 ])
 ```
 
-## Section
+## デバイスの取得
 
 ```elixir
 NxIREE.list_drivers()
@@ -20,8 +20,9 @@ dev =
   |> hd()
 ```
 
+## 中間表現のコンパイル
+
 ```elixir
-# Obtained by using EXLA.to_mlir_module(fn a, b -> Nx.add(Nx.cos(a), Nx.sin(b)) end, [Nx.template({4}, :f32), Nx.template({4}, :s64)])
 mlir_module = """
 module {
   func.func public @main(%arg0: tensor<4xf32>, %arg1: tensor<4xi32>) -> tensor<4xf32> {
@@ -46,6 +47,8 @@ flags = [
 ```elixir
 module = NxIREE.compile(mlir_module, flags, output_container: Nx.template({4}, :f32))
 ```
+
+## 行列演算の実行
 
 ```elixir
 arg0 = Nx.tensor([1.0, 2.0, 3.0, 4.0])
