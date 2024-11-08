@@ -1,0 +1,170 @@
+# Backlog API
+
+```elixir
+Mix.install([
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## API 設定
+
+```elixir
+workspace_input = Kino.Input.text("WORKSPACE")
+api_key_input = Kino.Input.password("API_KEY")
+
+[workspace_input, api_key_input]
+|> Kino.Layout.grid(columns: 2)
+```
+
+```elixir
+workspace = Kino.Input.read(workspace_input)
+api_key = Kino.Input.read(api_key_input)
+
+endpoint = "https://#{workspace}.backlog.jp/api/v2"
+```
+
+## ユーザー情報取得
+
+```elixir
+user_info =
+  "#{endpoint}/users/myself?apiKey=#{api_key}"
+  |> Req.get!()
+  |> Map.get(:body)
+```
+
+```elixir
+# アイコン画像の取得
+"#{endpoint}/users/#{user_info["id"]}/icon?apiKey=#{api_key}"
+|> Req.get!()
+|> Map.get(:body)
+```
+
+## プロジェクトの取得
+
+```elixir
+project_key_input = Kino.Input.text("PROJECT KEY")
+```
+
+```elixir
+project_key = Kino.Input.read(project_key_input)
+
+project =
+  "#{endpoint}/projects/#{project_key}?apiKey=#{api_key}"
+  |> Req.get!()
+  |> Map.get(:body)
+```
+
+## 課題の取得
+
+```elixir
+issues =
+  "#{endpoint}/issues?apiKey=#{api_key}&projectId[]=#{project["id"]}"
+  |> Req.get!()
+  |> Map.get(:body)
+```
+
+```elixir
+issues
+|> hd()
+|> Map.get("description")
+|> Kino.Markdown.new()
+```
+
+## OpenAI API による課題の評価、コメント追加
+
+```elixir
+openai_api_key_input = Kino.Input.password("OpenAI API KEY")
+```
+
+```elixir
+openai_api_key = Kino.Input.read(openai_api_key_input)
+openai_base_url = "https://api.openai.com/v1/chat/completions"
+openai_model_id = "gpt-4o-mini"
+openai_headers = %{
+  "Content-Type" => "application/json",
+  "Authorization" => "Bearer #{openai_api_key}"
+}
+
+system_content = """
+あなたは優秀なプロジェクトマネージャーです。
+プロジェクトの課題がユーザーの入力として与えられるので、以下の観点で課題を評価してください。
+
+課題評価の観点
+- 明確さ（10点満点）
+- 簡潔さ（10点満点）
+- 整合性（10点満点）
+
+評価結果は各評価点の合計点と、それぞれの観点に対するコメント、総評を以下の形式で出力してください。
+
+## 評価結果の出力形式
+
+課題記述の評価
+
+- 明確さ（<点数>/10点）: <コメント>
+- 簡潔さ（<点数>/10点）: <コメント>
+- 整合性（<点数>/10点）: <コメント>
+
+総合 <点数> 点
+総評: <総評>
+"""
+
+user_content =
+  issues
+  |> hd()
+  |> Map.get("description")
+
+request_body = %{
+  model: openai_model_id,
+  messages: [
+    %{
+      role: "system",
+      content: system_content
+    },
+    %{
+      role: "user",
+      content: user_content
+    }
+  ]
+}
+
+openai_response =
+  "#{openai_base_url}"
+  |> Req.post!(json: request_body, headers: openai_headers)
+  |> Map.get(:body)
+```
+
+```elixir
+evaluation_message =
+  openai_response["choices"]
+  |> Enum.at(0)
+  |> Map.get("message")
+  |> Map.get("content")
+
+Kino.Markdown.new(evaluation_message)
+```
+
+```elixir
+issue_id =
+  issues
+  |> hd()
+  |> Map.get("id")
+
+issue_comment_headers = %{
+  "Content-Type" => "application/x-www-form-urlencoded"
+}
+
+encoded_comment = URI.encode(evaluation_message)
+
+comment_response =
+  "#{endpoint}/issues/#{issue_id}/comments?apiKey=#{api_key}&content=#{encoded_comment}"
+  |> Req.post!(headers: issue_comment_headers)
+```
+
+```elixir
+comment_response
+|> Map.get(:headers)
+|> Map.get("location")
+|> hd()
+|> Kino.Markdown.new()
+```

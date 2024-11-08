@@ -1,0 +1,125 @@
+<!-- livebook:{"app_settings":{"access_type":"public","output_type":"rich","slug":"backlog"}} -->
+
+# Backlog Webhook
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.14"},
+  {:req, "~> 0.5"},
+  {:plug, "~> 1.16"}
+])
+```
+
+## Application
+
+```elixir
+defmodule ApiRouter do
+  use Plug.Router
+
+  @openai_base_url "https://api.openai.com/v1/chat/completions"
+  @openai_model_id "gpt-4o-mini"
+
+  @system_content """
+  あなたは優秀なプロジェクトマネージャーです。
+  プロジェクトの課題がユーザーの入力として与えられるので、以下の観点で課題を評価してください。
+  
+  課題評価の観点
+  - 明確さ（10点満点）
+  - 簡潔さ（10点満点）
+  - 整合性（10点満点）
+  
+  評価結果は各評価点の合計点と、それぞれの観点に対するコメント、総評を以下の形式で出力してください。
+  
+  ## 評価結果の出力形式
+  
+  課題記述の評価
+  
+  - 明確さ（<点数>/10点）: <コメント>
+  - 簡潔さ（<点数>/10点）: <コメント>
+  - 整合性（<点数>/10点）: <コメント>
+  
+  総合 <点数> 点
+  総評: <総評>
+  """
+
+  @issue_comment_headers %{
+      "Content-Type" => "application/x-www-form-urlencoded"
+  }
+
+  plug(:match)
+  plug(Plug.Parsers, parsers: [:json], json_decoder: Jason)
+  plug(:dispatch)
+
+  post "/" do
+    process_webhook(conn.body_params)
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, ~s({"message": "ok"}))
+  end
+
+  match _ do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(404, ~s({"message": "not found"}))
+  end
+
+  defp process_webhook(webhook_payload) do
+    backlog_workspace = System.get_env("LB_BACKLOG_WORKSPACE")
+    backlog_api_key = System.get_env("LB_BACKLOG_API_KEY")
+    openai_api_key = System.get_env("LB_OPENAI_API_KEY")
+
+    endpoint = "https://#{backlog_workspace}.backlog.jp/api/v2"
+
+    openai_headers = %{
+      "Content-Type" => "application/json",
+      "Authorization" => "Bearer #{openai_api_key}"
+    }
+
+    %{
+      "id" => issue_id,
+      "description" => issue_description
+    } =
+      Map.get(webhook_payload, "content")
+
+    IO.inspect(issue_description)
+
+    request_body = %{
+      model: @openai_model_id,
+      messages: [
+        %{
+          role: "system",
+          content: @system_content
+        },
+        %{
+          role: "user",
+          content: issue_description
+        }
+      ]
+    }
+    
+    openai_response =
+      "#{@openai_base_url}"
+      |> Req.post!(json: request_body, headers: openai_headers)
+      |> Map.get(:body)
+
+    evaluation_message =
+      openai_response["choices"]
+      |> Enum.at(0)
+      |> Map.get("message")
+      |> Map.get("content")
+
+    IO.inspect(evaluation_message)
+
+    encoded_comment = URI.encode(evaluation_message)
+    
+    "#{endpoint}/issues/#{issue_id}/comments?apiKey=#{backlog_api_key}&content=#{encoded_comment}"
+    |> Req.post!(headers: @issue_comment_headers)
+    |> IO.inspect()
+  end
+end
+
+Kino.Proxy.listen(ApiRouter)
+```
+
+<!-- livebook:{"offset":3040,"stamp":{"token":"XCP.Z9SdyIs2MpfatSTPB5hxwoUibXXSxVShWxWS8FC5VTP_63feWhyqkHGkU-UR2_8n99hpmWyn_CuoDA7YigmQ7X5FOAnFfhqMWjgjdzWyRL4WiF-Xs8706kAIpFl8jnBS_RWOSBNUEshnntdh6XHe5byQRQ9_9T6gjFNncmL4Ivlv1LA","version":2}} -->
