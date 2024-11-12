@@ -1,0 +1,37 @@
+# KinoKroki
+
+```elixir
+Mix.install([
+  {:kino_kroki, "~> 0.1"}
+])
+```
+
+## 図の描画
+
+```elixir
+graph = """
+digraph G { bgcolor="purple:pink" label="agraph" fontcolor="white"
+fontname="Helvetica,Arial,sans-serif"
+node [fontname="Helvetica,Arial,sans-serif"]
+edge [fontname="Helvetica,Arial,sans-serif"]
+  subgraph cluster1 {fillcolor="blue:cyan" label="acluster" fontcolor="white" style="filled" gradientangle="270"
+        node [shape=box fillcolor="red:yellow" style="filled" gradientangle=90]
+        anode;
+    }
+
+}
+"""
+
+Kino.Kroki.new(graph, :graphviz)
+```
+
+## スマートセル
+
+<!-- livebook:{"attrs":"eyJkaWFncmFtIjoiYmxvY2tkaWFnIHtcbiAgS3Jva2kgLT4gZ2VuZXJhdGVzIC0+IFwiQmxvY2sgZGlhZ3JhbXNcIjtcbiAgS3Jva2kgLT4gaXMgLT4gXCJ2ZXJ5IGVhc3khXCI7XG5cbiAgS3Jva2kgW2NvbG9yID0gXCJncmVlbnllbGxvd1wiXTtcbiAgXCJCbG9jayBkaWFncmFtc1wiIFtjb2xvciA9IFwicGlua1wiXTtcbiAgXCJ2ZXJ5IGVhc3khXCIgW2NvbG9yID0gXCJvcmFuZ2VcIl07XG59IiwidHlwZSI6ImJsb2NrZGlhZyJ9","chunks":null,"kind":"Elixir.Kino.KrokiSmartcell","livebook_object":"smart_cell"} -->
+
+```elixir
+Kino.Kroki.new(
+  "blockdiag {\n  Kroki -> generates -> \"Block diagrams\";\n  Kroki -> is -> \"very easy!\";\n\n  Kroki [color = \"greenyellow\"];\n  \"Block diagrams\" [color = \"pink\"];\n  \"very easy!\" [color = \"orange\"];\n}",
+  "blockdiag"
+)
+```
