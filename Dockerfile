@@ -106,6 +106,17 @@ RUN apt-get upgrade -y \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
+# For Membrane
+RUN apt-get upgrade -y \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y \
+    clang-format \
+    libfdk-aac-dev \
+    libswresample-dev \
+    libmad0-dev \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
 ENV LIVEBOOK_HOME=/home/livebook
 
 COPY ./livebooks /home/livebook
