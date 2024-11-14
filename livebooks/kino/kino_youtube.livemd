@@ -1,0 +1,17 @@
+# KinoYouTube
+
+```elixir
+Mix.install([
+  {:kino_youtube, "~> 0.1"}
+])
+```
+
+## 動画表示
+
+```elixir
+KinoYouTube.new(
+  "https://www.youtube.com/watch?v=2BaHEk5zwTo",
+  start: 2,
+  controls: 1
+)
+```
