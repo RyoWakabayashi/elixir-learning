@@ -1,0 +1,53 @@
+# KinoLiveComponent
+
+```elixir
+Mix.install(
+  [
+    {:kino_live_component, "~> 0.0.3"}
+  ],
+  config: [
+    kino_live_component: [
+      endpoint: "http://localhost:9999/kino-live-component"
+    ]
+  ]
+)
+```
+
+## Phoenix.Component
+
+```elixir
+import Phoenix.Component, only: [sigil_H: 2]
+
+assigns = %{
+  content: "Hello, Phoenix component!"
+}
+
+~H"""
+<div class="p-3 bg-orange-500 text-white rounded-xl cursor-pointer">
+  <%= @content %>
+</div>
+"""
+|> KinoLiveComponent.component()
+```
+
+## Phoenix.LiveComponent
+
+```elixir
+defmodule MyLiveComponent do
+  use Phoenix.LiveComponent
+
+  def render(assigns) do
+    ~H"""
+    <div class="p-3 bg-red-200 text-black rounded-lg">
+      <%= @content %>
+    </div>
+    """
+  end
+end
+
+assigns = %{
+  content: "Hello, Phoenix live component!"
+}
+
+KinoLiveComponent.component(MyLiveComponent, assigns)
+```
