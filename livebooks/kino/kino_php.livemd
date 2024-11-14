@@ -1,0 +1,54 @@
+# KinoPHP
+
+```elixir
+Mix.install([
+  {:kino_php, "~> 0.2"}
+])
+```
+
+## PHP の実行
+
+```elixir
+"""
+<?php
+echo 'Hello, PHP!';
+"""
+|> KinoPHP.eval(fn output ->
+  output
+  |> Kino.Text.new()
+  |> Kino.render()
+end)
+
+Kino.nothing()
+```
+
+```elixir
+frame = Kino.Frame.new() |> Kino.render()
+
+"""
+<?php
+
+for ($i = 0; $i < 5; $i++) {
+
+  fwrite(STDOUT, "count $i \n");
+
+  sleep(1);
+}
+
+"""
+|> KinoPHP.eval(fn output ->
+  KinoPHP.append_to_frame(frame, output)
+end)
+
+Kino.nothing()
+```
+
+## Smart Cell
+
+<!-- livebook:{"attrs":"eyJzb3VyY2UiOiI8P3BocFxuZWNobyAnSGVsbG8sIExpdmVib29rISc7In0","chunks":null,"kind":"Elixir.KinoPHP.ScriptCell","livebook_object":"smart_cell"} -->
+
+```elixir
+frame = Kino.Frame.new() |> Kino.render()
+"<?php\necho 'Hello, Livebook!';" |> KinoPHP.eval(&KinoPHP.append_to_frame(frame, &1))
+Kino.nothing()
+```

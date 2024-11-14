@@ -117,6 +117,13 @@ RUN apt-get upgrade -y \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
+# For PHP
+RUN apt-get upgrade -y \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y php \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
 ENV LIVEBOOK_HOME=/home/livebook
 
 COPY ./livebooks /home/livebook
