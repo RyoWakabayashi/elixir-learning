@@ -1,0 +1,13 @@
+# KinoNiconico
+
+```elixir
+Mix.install([
+  {:kino_niconico, "~> 0.1"}
+])
+```
+
+## 動画表示
+
+```elixir
+KinoNiconico.new("sm43793031")
+```
