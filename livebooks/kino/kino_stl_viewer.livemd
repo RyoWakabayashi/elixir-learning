@@ -1,0 +1,21 @@
+# KinoStlViewer
+
+```elixir
+Mix.install([
+  {:kino_stl_viewer, "~> 0.1"},
+  {:req, "~> 0.5"}
+])
+```
+
+## Section
+
+```elixir
+viewer = KinoStlViewer.new()
+```
+
+```elixir
+"https://raw.githubusercontent.com/Buildbee/example-stl/main/binary_cube.stl"
+|> Req.get!()
+|> Map.get(:body)
+|> then(&KinoStlViewer.load(viewer, &1))
+```
