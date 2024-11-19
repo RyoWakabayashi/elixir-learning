@@ -1,0 +1,39 @@
+# Advent of Code 2015 Day 1 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxIiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "1", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+puzzle_input
+|> String.codepoints()
+|> Enum.with_index(1)
+|> Enum.reduce_while(0, fn {direction, index}, current ->
+  current =
+    case direction do
+      "(" -> current + 1
+      _ -> current - 1
+    end
+
+  if current < 0 do
+    {:halt, index}
+  else
+    {:cont, current}
+  end
+end)
+```
+
+<!-- livebook:{"offset":747,"stamp":{"token":"XCP.cjf_H7GevDxKR5c0qZZ4hc7XarwXZML-Gvg-TJ2twbtQratYbBI5vJetN5yLXFl-40MN4VxeGVV6K8BInoQIpU4iA6bkzwg62FcKENJGkuTwQA","version":2}} -->
