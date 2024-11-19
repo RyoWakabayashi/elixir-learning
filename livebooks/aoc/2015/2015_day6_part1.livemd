@@ -1,0 +1,54 @@
+# Advent of Code 2015 Day 6 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI2Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "6", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+Regex.named_captures(~r/(?<op>.+) (?<sx>\d+),(?<sy>\d+) through (?<ex>\d+),(?<ey>\d+)/, "turn on 0,0 through 999,999")
+```
+
+```elixir
+puzzle_input
+|> String.split("\n")
+|> Enum.reduce(%{},fn instruction, map ->
+  %{"op" => op, "sx" => sx, "sy" => sy, "ex" => ex, "ey" => ey} =
+    Regex.named_captures(
+      ~r/(?<op>.+) (?<sx>\d+),(?<sy>\d+) through (?<ex>\d+),(?<ey>\d+)/,
+      instruction
+    )
+
+  [sx, sy, ex, ey] = Enum.map([sx, sy, ex, ey], &String.to_integer(&1))
+
+  Enum.reduce(sx..ex, map, fn x, x_map ->
+    Enum.reduce(sy..ey, x_map, fn y, y_map ->
+      lit = Map.get(y_map, {x, y}, false)
+
+      new =
+        case op do
+          "turn on" -> true
+          "turn off" -> false
+          _ -> !lit
+        end
+
+      Map.put(y_map, {x, y}, new)
+    end)
+  end)
+end)
+|> Enum.count(fn {_, lit} -> lit end)
+```
+
+<!-- livebook:{"offset":1347,"stamp":{"token":"XCP.D5-MG3_lR8GDQjlXvsLcYAcP8KfxHPVdKfHuZ7-isMsLK1-Fky0dLb-BIMfIH-bPp_EakYEOAPMYzE81jiBsDgjEfmeG5nYFSAfjgAixI80TXg","version":2}} -->

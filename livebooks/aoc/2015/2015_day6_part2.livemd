@@ -1,0 +1,51 @@
+# Advent of Code 2015 Day 6 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI2Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "6", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+puzzle_input
+|> String.split("\n")
+|> Enum.reduce(%{},fn instruction, map ->
+  %{"op" => op, "sx" => sx, "sy" => sy, "ex" => ex, "ey" => ey} =
+    Regex.named_captures(
+      ~r/(?<op>.+) (?<sx>\d+),(?<sy>\d+) through (?<ex>\d+),(?<ey>\d+)/,
+      instruction
+    )
+
+  [sx, sy, ex, ey] = Enum.map([sx, sy, ex, ey], &String.to_integer(&1))
+
+  Enum.reduce(sx..ex, map, fn x, x_map ->
+    Enum.reduce(sy..ey, x_map, fn y, y_map ->
+      brightness = Map.get(y_map, {x, y}, 0)
+
+      brightness =
+        case op do
+          "turn on" -> brightness + 1
+          "turn off" -> max(0, brightness - 1)
+          _ -> brightness + 2
+        end
+
+      Map.put(y_map, {x, y}, brightness)
+    end)
+  end)
+end)
+|> Enum.map(fn {_, brightness} -> brightness end)
+|> Enum.sum()
+```
+
+<!-- livebook:{"offset":1228,"stamp":{"token":"XCP.pnvr9uIZsAJnHAj0FeUgoZ6QroBbAs5167oDq9gtASRvrceI6dPPrWV3pMcw85gHh7AnNxQDohRXTlC81LeC1-Xg6Sx4zd137HwxoNs96PImoA","version":2}} -->
