@@ -1,0 +1,38 @@
+# Advent of Code 2015 Day 2 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIyIiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "2", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+puzzle_input
+|> String.split("\n")
+|> Enum.map(fn row ->
+  [l, w, h] =
+    row
+    |> String.split("x")
+    |> Enum.map(&String.to_integer(&1))
+
+  {lw, wh, hl} = {l * w, w * h, h * l}
+
+  slack = Enum.min([lw, wh, hl])
+
+  2 * lw + 2 * wh + 2 * hl + slack
+end)
+|> Enum.sum()
+```
+
+<!-- livebook:{"offset":735,"stamp":{"token":"XCP.j04iioAwnbzHYHPXXF_niCPUQTTivo0U1FdElgEVTWU_u4GxABCrbeFLkIo3c7foVFpH3kyVfcSRYU3tctru8REhQV3kYYUuTki_Cia9WYxTeQ","version":2}} -->
