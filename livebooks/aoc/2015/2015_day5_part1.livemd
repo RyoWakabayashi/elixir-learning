@@ -1,0 +1,47 @@
+# Advent of Code 2015 Day 5 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI1Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "5", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+puzzle_input
+|> String.split("\n")
+|> Enum.count(fn word ->
+  has_three_vowels =
+    word
+    |> String.codepoints()
+    |> Enum.map(fn char ->
+      ["a", "e", "i", "o", "u"]
+      |> Enum.count(&(&1 == char))
+    end)
+    |> Enum.sum()
+    |> Kernel.>(2)
+
+  has_twice =
+    Regex.run(~r/(.)\1/, word)
+    |> then(&!is_nil(&1))
+
+  no_ng =
+    ["ab", "cd", "pq", "xy"]
+    |> Enum.count(fn ng -> String.contains?(word, ng) end)
+    |> Kernel.==(0)
+
+  (has_three_vowels and has_twice and no_ng)
+end)
+```
+
+<!-- livebook:{"offset":939,"stamp":{"token":"XCP.fYjibUpcFFY0yyF0Wb38OrY_K6C3s9yAnxHwpry5xXZkMuo2SffXbYOnXIZYNF-YpQAJhzYjMqyysghRU09TNTomZFT8VQBZFGRxyQh0Nd5vmw","version":2}} -->
