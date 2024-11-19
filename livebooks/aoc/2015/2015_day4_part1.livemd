@@ -1,0 +1,31 @@
+# Advent of Code 2015 Day 4 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI0Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "4", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+Enum.find(0..10000000, fn index ->
+  hash_head =
+    :crypto.hash(:md5, "#{puzzle_input}#{index}")
+    |> Base.encode16()
+    |> String.slice(0..4)
+
+  hash_head == "00000"
+end)
+```
+
+<!-- livebook:{"offset":713,"stamp":{"token":"XCP.jBOGgkuVUm833ymCyN2wuo1EROZOO3fIlIbgv770fAgUGOmG8pjsrzJvlsULvxw75TFj0yazwCN_CII0t28sjhQL_CxiidOMhFgFsY8ANfr2MA","version":2}} -->
