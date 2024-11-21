@@ -1,0 +1,131 @@
+# Advent of Code 2015 Day 7 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI3Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "7", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+import Bitwise
+```
+
+```elixir
+defmodule Solver do
+  import Bitwise
+
+  defp bit_not(input) do
+    <<output::integer-size(2)-unit(8)>> = <<(~~~input)::size(16)>>
+    output
+  end
+
+  defp parse_variable(nil, _), do: nil
+  defp parse_variable("", _), do: nil
+  defp parse_variable(variable, _) when is_integer(variable), do: variable
+  defp parse_variable(variable, dict) do
+    case Integer.parse(variable) do
+      {number, ""} -> number
+      _ -> Map.get(dict, variable, variable)
+    end
+  end
+
+  defp calc("", input_a, _) when is_integer(input_a), do: input_a
+  defp calc("NOT", _, input_b) when is_integer(input_b), do: bit_not(input_b)
+  defp calc("AND", input_a, input_b) when (is_integer(input_a) and is_integer(input_b)) do
+    input_a &&& input_b
+  end
+  defp calc("OR", input_a, input_b) when (is_integer(input_a) and is_integer(input_b)) do
+    input_a ||| input_b
+  end
+  defp calc("LSHIFT", input_a, input_b) when (is_integer(input_a) and is_integer(input_b)) do
+    input_a <<< input_b
+  end
+  defp calc("RSHIFT", input_a, input_b) when (is_integer(input_a) and is_integer(input_b)) do
+    input_a >>> input_b
+  end
+  defp calc(_, _, _), do: nil
+
+  defp solve(instruction, dict) do
+    %{
+      "input_a" => input_a,
+      "input_b" => input_b,
+      "op" => op,
+      "output" => output
+    } = instruction
+
+    input_a = parse_variable(input_a, dict)
+    input_b = parse_variable(input_b, dict)
+
+    result = calc(op, input_a, input_b)
+    solved = !is_nil(result)
+
+    instruction = Map.put(instruction, :solved, solved)
+    dict = if solved, do: Map.put(dict, output, result), else: dict
+
+    {instruction, dict}
+  end
+
+  def parse_instraction(row) do
+    Regex.named_captures(
+      ~r/(?<input_a>[a-z0-9]*) *(?<op>[A-Z]*) *(?<input_b>[a-z0-9]*) -> (?<output>.+)/,
+      row
+    )
+  end
+
+  def cyclic_solve(%{solved: true}, instructions, dict), do: {instructions, dict}
+  def cyclic_solve(new_instruction, instructions, dict) do
+    {new_instruction, dict} = solve(new_instruction, dict)
+
+    if new_instruction.solved do
+      {instructions, dict} =
+        instructions
+        |> Enum.reduce({[], dict}, fn sub_instruction, {acc_instructions, acc_dict} ->
+          cyclic_solve(sub_instruction, acc_instructions, acc_dict)
+        end)
+
+      {[new_instruction | instructions], dict}
+    else
+      {[new_instruction | instructions], dict}
+    end
+  end
+end
+```
+
+```elixir
+get_a = fn rows ->
+  rows
+  |> Enum.reduce({[], %{}}, fn row, {instructions, dict} ->
+    new_instruction = Solver.parse_instraction(row)
+    Solver.cyclic_solve(new_instruction, instructions, dict)
+  end)
+  |> elem(1)
+  |> Map.get("a")
+end
+```
+
+```elixir
+rows = String.split(puzzle_input, "\n")
+
+override_value = get_a.(rows)
+
+rows
+|> Enum.map(fn row ->
+  if String.ends_with?(row, "-> b") do
+    "#{override_value} -> b"
+  else
+    row
+  end
+end)
+|> get_a.()
+```
