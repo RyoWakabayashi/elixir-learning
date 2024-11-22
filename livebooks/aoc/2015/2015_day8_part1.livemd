@@ -1,0 +1,56 @@
+# Advent of Code 2015 Day 8 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI4Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "8", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+Code.eval_string("\"\"")
+```
+
+```elixir
+Code.eval_string("\"abc\"")
+```
+
+```elixir
+Code.eval_string("\"aaa\\\"aaa\"")
+```
+
+```elixir
+Code.eval_string("\"\\x27\"")
+```
+
+```elixir
+"\"\""
+|> Code.eval_string()
+|> elem(0)
+|> String.length()
+```
+
+```elixir
+puzzle_input
+|> String.split("\n")
+|> Enum.map(fn code ->
+  code_length =
+    code
+    |> Code.eval_string()
+    |> elem(0)
+    |> String.length()
+
+  String.length(code) - code_length
+end)
+|> Enum.sum()
+```
