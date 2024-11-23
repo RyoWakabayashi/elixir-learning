@@ -1,0 +1,129 @@
+# Advent of Code 2015 Day 9 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI5Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMTUifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "9", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+distances = %{
+  {:a, :b} => 464,
+  {:a, :c} => 518,
+  {:b, :c} => 141
+}
+```
+
+```elixir
+defmodule TSP do
+  def cities(distances) do
+    distances
+    |> Map.keys()
+    |> Enum.map(&Tuple.to_list(&1))
+    |> Enum.concat()
+    |> Enum.uniq()
+  end
+
+  def all_routes([]), do: [[]]
+  def all_routes(list) do
+    for elem <- list,
+        rest <- all_routes(list--[elem]) do
+      [elem | rest]
+    end
+  end
+
+  def drop_reversed(list) do
+    list
+    |> Enum.reduce([], fn new, acc ->
+      if Enum.member?(acc, Enum.reverse(new)) do
+        acc
+      else
+        [new | acc]
+      end
+    end)
+  end
+
+  def reverse_distances(distances) do
+    distances
+    |> Enum.into(%{}, fn {{from, to}, value} ->
+      {{to, from}, value}
+    end)
+  end
+
+  def get_min_distance(permutations, full_distances) do
+    permutations
+    |> Enum.map(fn permutation ->
+      next_permutation = tl(permutation) ++ [nil]
+    
+      Enum.zip(permutation, next_permutation)
+      |> Enum.map(fn {from, to} ->
+        if is_nil(to), do: 0, else: Map.get(full_distances, {from, to})
+      end)
+      |> Enum.sum()
+    end)
+    |> Enum.min()
+  end
+
+  def solve(distances) do
+    permutations =
+      distances
+      |> cities()
+      |> all_routes()
+      |> drop_reversed()
+
+    full_distances = Map.merge(distances, reverse_distances(distances))
+
+    get_min_distance(permutations, full_distances)
+  end
+end
+```
+
+```elixir
+TSP.cities(distances)
+```
+
+```elixir
+permutations =
+  distances
+  |> TSP.cities()
+  |> TSP.all_routes()
+  |> TSP.drop_reversed()
+```
+
+```elixir
+full_distances = Map.merge(distances, TSP.reverse_distances(distances))
+```
+
+```elixir
+TSP.solve(distances)
+```
+
+```elixir
+distances =
+  puzzle_input
+  |> String.split("\n")
+  |> Enum.into(%{}, fn row ->
+    Regex.named_captures(
+      ~r/(?<from>[a-zA-Z]+) to (?<to>[a-zA-Z]+) = (?<distance>[0-9]+)/,
+      row
+    )
+    |> then(fn %{"from" => from, "to" => to, "distance" => distance} ->
+      {{from, to}, String.to_integer(distance)}
+    end)
+  end)
+```
+
+```elixir
+TSP.solve(distances)
+```
