@@ -1,0 +1,51 @@
+# Advent of Code 2015 Day 12 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMiIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "12", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule SumIntegers do
+  def sum_integers(data) when is_integer(data), do: data
+
+  def sum_integers(data) when is_map(data) do
+    values = Map.values(data)
+
+    if Enum.find(values, fn value -> value == "red" end) do
+      0
+    else
+      values
+      |> Enum.map(&sum_integers/1)
+      |> Enum.sum()
+    end
+  end
+
+  def sum_integers(data) when is_list(data) do
+    data
+    |> Enum.map(&sum_integers/1)
+    |> Enum.sum()
+  end
+
+  def sum_integers(_data), do: 0
+end
+```
+
+```elixir
+puzzle_input
+|> String.split("\n")
+|> Enum.map(fn row -> Jason.decode!(row) end)
+|> SumIntegers.sum_integers()
+```
