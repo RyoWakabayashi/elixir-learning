@@ -1,0 +1,102 @@
+# Advent of Code 2015 Day 13 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMyIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "13", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+Regex.named_captures(
+  ~r/(?<to>[a-zA-Z]+) would (?<sign>(gain|lose)) (?<num>[0-9]+) happiness units by sitting next to (?<from>[a-zA-Z]+)/,
+  "Alice would gain 54 happiness units by sitting next to Bob."
+)
+```
+
+```elixir
+happiness_map =
+  puzzle_input
+  |> String.split("\n")
+  |> Enum.into(%{}, fn row ->
+    Regex.named_captures(
+      ~r/(?<to>[a-zA-Z]+) would (?<sign>(gain|lose)) (?<num>[0-9]+) happiness units by sitting next to (?<from>[a-zA-Z]+)/,
+      row
+    )
+    |> then(fn %{"from" => from, "to" => to, "num" => num, "sign" => sign} ->
+      num =
+        case sign do
+          "gain" -> String.to_integer(num)
+          _ -> -1 * String.to_integer(num)
+        end
+    
+      {{from, to}, num}
+    end)
+  end)
+```
+
+```elixir
+defmodule Permutations do
+  def get_guests(happiness_map) do
+    happiness_map
+    |> Map.keys()
+    |> Enum.map(&Tuple.to_list(&1))
+    |> Enum.concat()
+    |> Enum.uniq()
+  end
+
+  def all([]), do: [[]]
+  def all(list) do
+    for elem <- list,
+        rest <- all(list--[elem]) do
+      [elem | rest]
+    end
+  end
+end
+```
+
+```elixir
+guests = Permutations.get_guests(happiness_map)
+```
+
+```elixir
+guests
+|> Permutations.all()
+|> length()
+```
+
+```elixir
+permutations =
+  guests
+  |> tl()
+  |> Permutations.all()
+  |> Enum.map(&[hd(guests) | &1])
+```
+
+```elixir
+length(permutations)
+```
+
+```elixir
+permutations
+|> Enum.map(fn permutation ->
+  next_permutation = tl(permutation) ++ [hd(permutation)]
+
+  Enum.zip(permutation, next_permutation)
+  |> Enum.map(fn {from, to} ->
+    Map.get(happiness_map, {from, to}) + Map.get(happiness_map, {to, from})
+  end)
+  |> Enum.sum()
+end)
+|> Enum.max()
+```
