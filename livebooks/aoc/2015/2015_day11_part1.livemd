@@ -1,0 +1,221 @@
+# Advent of Code 2015 Day 11 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMSIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "11", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+has_straight_str = fn str ->
+  Regex.match?(
+    ~r/(?=abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz)/,
+    str
+  )
+end
+```
+
+```elixir
+has_straight_str.("abcd")
+```
+
+```elixir
+has_straight_str.("abdc")
+```
+
+```elixir
+has_no_iol = fn str ->
+  Regex.match?(~r/^[^iol]*$/, str)
+end
+```
+
+```elixir
+has_no_iol.("abcd")
+```
+
+```elixir
+has_no_iol.("abid")
+```
+
+```elixir
+has_double_double = fn str ->
+  Regex.match?(~r/(.)\1.*(.)\2/, str)
+end
+```
+
+```elixir
+has_double_double.("abcc")
+```
+
+```elixir
+has_double_double.("aabcc")
+```
+
+```elixir
+has_double_double.("ababbcc")
+```
+
+```elixir
+valid_password? = fn password ->
+  has_straight_str.(password) && has_no_iol.(password) && has_double_double.(password)
+end
+```
+
+```elixir
+valid_password?.("hijklmmn")
+```
+
+```elixir
+valid_password?.("abbceffg")
+```
+
+```elixir
+valid_password?.("abbcegjk")
+```
+
+```elixir
+valid_password?.("abcdffaa")
+```
+
+```elixir
+valid_password?.("ghjaabcc")
+```
+
+```elixir
+<<a_code>> = "a"
+a_code
+```
+
+```elixir
+to_alphabet_num = fn str ->
+  <<code>> = str
+  code - 97
+end
+```
+
+```elixir
+Enum.map(?a..?z, &<<&1>>)
+|> Enum.map(&to_alphabet_num.(&1))
+```
+
+```elixir
+from_alphabet_num = fn num ->
+  <<(num + 97)>>
+end
+```
+
+```elixir
+0..25
+|> Enum.map(&from_alphabet_num.(&1))
+```
+
+```elixir
+:binary.match("abc", "a")
+```
+
+```elixir
+:binary.match("abc", "x")
+```
+
+```elixir
+skip_iol = fn password ->
+  index_map =
+    ["i", "o", "l"]
+    |> Enum.reduce(%{}, fn char, index_map ->
+      case :binary.match(password, char) do
+        {index, _} -> Map.put(index_map, char, index)
+        _ -> index_map
+      end
+    end)
+
+  if index_map == %{} do
+    password
+  else
+    index_map
+    |> Enum.min_by(fn {_, index} -> index end)
+    |> then(fn {char, index} ->
+      password
+      |> String.codepoints()
+      |> Enum.with_index()
+      |> Enum.map(fn {code, code_index} ->
+        cond do
+          code_index == index ->
+            case char do
+              "i" -> "j"
+              "o" -> "p"
+              "l" -> "m"
+              _ -> code
+            end
+          code_index > index ->
+            "a"
+          true ->
+            code
+        end
+      end)
+      |> Enum.join()
+    end)
+  end
+end
+```
+
+```elixir
+skip_iol.("ghijklmn")
+```
+
+```elixir
+next_password = fn current ->
+  current
+  |> String.codepoints()
+  |> Enum.reverse()
+  |> Enum.with_index()
+  |> Enum.reduce(0, fn {str, digit}, num ->
+    num + to_alphabet_num.(str) * (26**digit)
+  end)
+  |> Kernel.+(1)
+  |> Integer.digits(26)
+  |> Enum.map(&from_alphabet_num.(&1))
+  |> Enum.join()
+  |> skip_iol.()
+end
+```
+
+```elixir
+next_password.("cba")
+```
+
+```elixir
+next_password.("ghijklmn")
+```
+
+```elixir
+find_new_password = fn current_password ->
+  0..10000000
+  |> Enum.reduce_while(current_password, fn _, password ->
+    new_password = next_password.(password)
+    if valid_password?.(new_password) do
+      {:halt, new_password}
+    else
+      {:cont, new_password}
+    end
+  end)
+end
+```
+
+```elixir
+find_new_password.("ghijklmn")
+```
+
+```elixir
+find_new_password.(puzzle_input)
+```
