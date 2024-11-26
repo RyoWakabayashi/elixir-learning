@@ -1,0 +1,118 @@
+# Advent of Code 2015 Day 15 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"},
+  {:nx, "~> 0.9.2"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxNSIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "15", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+Regex.named_captures(
+  ~r/(?<ingredient>[a-zA-Z]+): .+ (?<capacity>\-*\d+), .+ (?<durability>\-*\d+), .+ (?<flavor>\-*\d+), .+ (?<texture>\-*\d+), .+ (?<calories>\-*\d+)/,
+  "Butterscotch: capacity -1, durability -2, flavor 6, texture 3, calories 8"
+)
+```
+
+```elixir
+get_ingredients_tensor = fn rows ->
+  rows
+  |> Enum.map(fn row ->
+    Regex.named_captures(
+      ~r/(?<ingredient>[a-zA-Z]+): .+ (?<capacity>\-*\d+), .+ (?<durability>\-*\d+), .+ (?<flavor>\-*\d+), .+ (?<texture>\-*\d+), .+ (?<calories>\-*\d+)/,
+      row
+    )
+    |> then(fn %{"capacity" => capacity, "durability" => durability, "flavor" => flavor, "texture" => texture} ->
+      [
+        String.to_integer(capacity),
+        String.to_integer(durability),
+        String.to_integer(flavor),
+        String.to_integer(texture)
+      ]
+    end)
+  end)
+  |> Nx.tensor()
+end
+```
+
+```elixir
+ingredients =
+  [
+    "Butterscotch: capacity -1, durability -2, flavor 6, texture 3, calories 8",
+    "Cinnamon: capacity 2, durability 3, flavor -2, texture -1, calories 3"
+  ]
+  |> get_ingredients_tensor.()
+```
+
+```elixir
+nums = Nx.tensor([[44, 56]])
+```
+
+```elixir
+Nx.dot(nums, ingredients)
+```
+
+```elixir
+nums
+|> Nx.dot(ingredients)
+|> Nx.product(axes: [1])
+```
+
+```elixir
+ingredients =
+  puzzle_input
+  |> String.split("\n")
+  |> get_ingredients_tensor.()
+```
+
+```elixir
+all_combinations =
+  for sprinkles <- 0..100,
+      peanut_butter <- 0..100,
+      frosting <- 0..100,
+      sugar <- 0..100,
+      sprinkles + peanut_butter + frosting + sugar == 100 do
+    [sprinkles, peanut_butter, frosting, sugar]
+  end
+```
+
+```elixir
+all_combinations
+|> Nx.tensor()
+|> Nx.dot(ingredients)
+```
+
+```elixir
+all_combinations
+|> Nx.tensor()
+|> Nx.dot(ingredients)
+|> Nx.max(0)
+```
+
+```elixir
+all_combinations
+|> Nx.tensor()
+|> Nx.dot(ingredients)
+|> Nx.max(0)
+|> Nx.product(axes: [1])
+```
+
+```elixir
+all_combinations
+|> Nx.tensor()
+|> Nx.dot(ingredients)
+|> Nx.max(0)
+|> Nx.product(axes: [1])
+|> Nx.reduce_max()
+```
