@@ -30,11 +30,11 @@ req =
 calendar_df =
   req
   |> Req.get!(url: "https://qiita.com/advent-calendar/2022/elixir")
-  |> then(& &1.body["[data-js-react-on-rails-store=AppStoreWithReactOnRails]"].nodes())
+  |> then(& &1.body["[data-js-react-on-rails-store=AppStoreWithReactOnRails]"].nodes)
   |> Floki.text(js: true)
   |> Jason.decode!()
   |> get_in(["adventCalendars", "tableAdventCalendars"])
-  |> Enum.at(0)
+  |> hd()
   |> Map.fetch!("items")
   |> Enum.frequencies_by(&get_in(&1, ["user", "urlName"]))
   |> then(fn map ->

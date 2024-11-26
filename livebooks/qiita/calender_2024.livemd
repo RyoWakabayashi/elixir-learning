@@ -1,4 +1,4 @@
-# Qiita Advent Calendar 2023
+# Qiita Advent Calendar 2024
 
 ```elixir
 Mix.install([
@@ -29,7 +29,7 @@ req =
 ```elixir
 calendar_df =
   req
-  |> Req.get!(url: "https://qiita.com/advent-calendar/2023/elixir")
+  |> Req.get!(url: "https://qiita.com/advent-calendar/2024/elixir")
   |> then(& &1.body["[data-js-react-on-rails-store=AppStoreWithReactOnRails]"].nodes)
   |> Floki.text(js: true)
   |> Jason.decode!()
@@ -44,7 +44,6 @@ calendar_df =
     }
   end)
   |> DataFrame.new()
-  |> dbg()
 ```
 
 ## データテーブルの表示
