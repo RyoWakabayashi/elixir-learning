@@ -1,0 +1,13 @@
+# KinoSpeakerDeck
+
+```elixir
+Mix.install([
+  {:kino_speaker_deck, "~> 0.1"}
+])
+```
+
+## Display deck
+
+```elixir
+KinoSpeakerDeck.new("https://speakerdeck.com/ryowakabayashi/livebookde-wei-xing-detawoxi-u")
+```
