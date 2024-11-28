@@ -1,0 +1,35 @@
+# KinoFigma
+
+```elixir
+Mix.install([
+  {:kino_figma, "~> 0.1.0"}
+])
+```
+
+## Design file
+
+```elixir
+KinoFigma.design("Qb8fTiCItLCttOzhCE4VlF")
+```
+
+## Prototyping file
+
+```elixir
+KinoFigma.proto("RxXox8sDzJlWSkNnXeg6DL", height: 800)
+```
+
+## Jamboard file
+
+```elixir
+KinoFigma.board("1aqYFaDXk0v0NoUZ2xFK8n", height: 600)
+```
+
+## Slides file
+
+```elixir
+KinoFigma.slides("mP1Htie9FKfb8RfEYs9KlK", height: 600)
+```
+
+```elixir
+KinoFigma.deck("mP1Htie9FKfb8RfEYs9KlK", height: 600)
+```
