@@ -1,0 +1,13 @@
+# KinoCodePen
+
+```elixir
+Mix.install([
+  {:kino_code_pen, "~> 0.1"}
+])
+```
+
+## Display a pen
+
+```elixir
+KinoCodePen.new("ryowakabayashi", "ExdeaRL")
+```
