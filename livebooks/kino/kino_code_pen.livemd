@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:kino_code_pen, "~> 0.1"}
+  {:kino_code_pen, "~> 0.2"}
 ])
 ```
 
@@ -10,4 +10,8 @@ Mix.install([
 
 ```elixir
 KinoCodePen.new("ryowakabayashi", "ExdeaRL")
+```
+
+```elixir
+KinoCodePen.url("https://codepen.io/ryowakabayashi/pen/ExdeaRL")
 ```
