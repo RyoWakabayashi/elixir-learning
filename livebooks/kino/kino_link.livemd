@@ -1,0 +1,25 @@
+# KinoLink
+
+```elixir
+Mix.install([
+  {:kino_link, "~> 0.1"}
+])
+```
+
+## Display rich link
+
+```elixir
+KinoLink.new("https://livebook.dev/")
+```
+
+```elixir
+KinoLink.new("https://piyopiyoex.connpass.com/")
+```
+
+## Smart cell
+
+<!-- livebook:{"attrs":"eyJzb3VyY2UiOiJodHRwczovL3FpaXRhLmNvbS9SeW9XYWthYmF5YXNoaS9pdGVtcy8wNGJiNTBkNTdlMWYzNzU3YmIxMCJ9","chunks":null,"kind":"Elixir.KinoLink.LinkCell","livebook_object":"smart_cell"} -->
+
+```elixir
+KinoLink.new("https://qiita.com/RyoWakabayashi/items/04bb50d57e1f3757bb10")
+```
