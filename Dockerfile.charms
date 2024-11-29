@@ -1,0 +1,66 @@
+FROM ghcr.io/livebook-dev/livebook:0.14.5
+
+RUN mix local.hex --force \
+  && mix archive.install hex phx_new --force \
+  && mix local.rebar --force
+
+RUN apt-get upgrade -y \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y \
+    apt-transport-https \
+    build-essential \
+    ca-certificates \
+    curl \
+    erlang-dev \
+    gnupg2 \
+    lsb-release \
+    ninja-build \
+    python3-pip \
+    sudo \
+    unzip \
+    vim \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+## Mold
+RUN git clone --branch stable https://github.com/rui314/mold.git \
+  && cd mold \
+  && ./install-build-deps.sh \
+  && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=c++ -B build \
+  && cmake --build build -j$(nproc) \
+  && cmake --build build --target install
+
+# LLVM
+COPY llvm-requirements.txt .
+
+RUN python3 -m pip install --upgrade pip \
+  && python3 -m pip install -r llvm-requirements.txt
+
+RUN git clone --depth 1 https://github.com/llvm/llvm-project.git -b llvmorg-19.1.4
+
+RUN export LLVM_CONFIG_PATH=$(python3 -c 'import mlir;print(mlir.__path__[0])')/bin/llvm-config \
+  && cd llvm-project \
+  && cmake -B build -S llvm -G Ninja -DLLVM_ENABLE_PROJECTS=mlir \
+    -DLLVM_TARGETS_TO_BUILD="host" \
+    -DLLVM_ENABLE_ASSERTIONS=ON \
+    -DLLVM_ENABLE_OCAMLDOC=OFF \
+    -DLLVM_ENABLE_BINDINGS=OFF \
+    -DLLVM_USE_LINKER=mold \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_INSTALL_PREFIX=${HOME}/llvm-install \
+  && cmake --build build -t install
+
+ENV LLVM_CONFIG_PATH=${HOME}/llvm-install/bin/llvm-config
+
+# Zig
+RUN wget "https://ziglang.org/download/0.13.0/zig-linux-aarch64-0.13.0.tar.xz" -O "zig-linux.tar.xz" \
+  && tar Jxvf "zig-linux.tar.xz" -C /usr/local \
+  && mv /usr/local/zig-linux-aarch64-0.13.0 /usr/local/zig-linux \
+  && rm "zig-linux.tar.xz"
+ENV PATH=/usr/local/zig-linux:${PATH}
+
+ENV LIVEBOOK_HOME=/home/livebook
+
+COPY ./livebooks /home/livebook
+
+CMD ["/app/bin/livebook", "start"]

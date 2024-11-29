@@ -9,10 +9,10 @@ Elixir 学習用
 ```bash
 
 ```bash
-$ docker-compose up
+$ docker compose up --build
 ...
-Attaching to elixir-learning-livebook-1
-elixir-learning-livebook-1  | [Livebook] Application running at http://localhost:8080/?token=xxxxx
+Attaching to livebook
+livebook  | [Livebook] Application running at http://localhost:8080/?token=xxxxx
 ```
 
 表示される URL にアクセスする
@@ -25,6 +25,20 @@ $ docker compose -f docker-compose.with-db.yml up --build
 postgres_for_livebook  | 2023-10-30 11:47:54.930 UTC [1] LOG:  database system is ready to accept connections
 ...
 livebook_with_db       | [Livebook] Application running at http://localhost:8080/?token=xxxxx
+```
+
+表示される URL にアクセスする
+
+### Charms 用コンテナの起動
+
+[Charms](https://github.com/beaver-lodge/charms) を使用する場合、以下のコマンドでコンテナを起動する
+
+ただし、 Apple Sillicon 以外には対応していない
+
+```bash
+$ docker compose -f docker-compose.charms.yml up --build
+...
+livebook_charms  | [Livebook] Application running at http://localhost:8080/?token=xxxxx
 ```
 
 表示される URL にアクセスする

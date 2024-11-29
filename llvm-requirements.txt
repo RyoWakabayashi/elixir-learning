@@ -1,0 +1,2 @@
+mlir==20.0.0.2024112701+fad5ed6e
+--find-links https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest
