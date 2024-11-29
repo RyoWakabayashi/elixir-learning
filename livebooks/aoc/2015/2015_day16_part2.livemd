@@ -1,0 +1,76 @@
+# Advent of Code 2015 Day 16 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxNiIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "16", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+sue_list =
+  puzzle_input
+  |> String.split("\n")
+  |> Enum.with_index(1)
+  |> Enum.map(fn {row, index} ->
+    Regex.scan(~r/[a-z]+: [0-9]+/, row)
+    |> Enum.into(%{}, fn [item] ->
+      Regex.named_captures(~r/(?<name>[a-z]+): (?<number>[0-9]+)/, item)
+      |> then(fn %{"name" => name, "number" => number} ->
+       {String.to_atom(name), String.to_integer(number)}
+      end)
+    end)
+    |> Map.put(:index, index)
+  end)
+```
+
+```elixir
+mfscam =
+  %{
+    children: 3,
+    cats: 7,
+    samoyeds: 2,
+    pomeranians: 3,
+    akitas: 0,
+    vizslas: 0,
+    goldfish: 5,
+    trees: 3,
+    cars: 2,
+    perfumes: 1
+  }
+```
+
+```elixir
+sue_list
+|> Enum.find(fn sue ->
+  sue
+  |> Map.delete(:index)
+  |> Enum.filter(fn {key, _} ->
+    mfscam
+    |> Map.keys()
+    |> Enum.member?(key)
+  end)
+  |> Enum.all?(fn {key, value} ->
+    scam_value = Map.get(mfscam, key)
+    cond do
+      Enum.member?([:cats, :trees], key) ->
+        scam_value < value
+      Enum.member?([:pomeranians, :goldfish], key) ->
+        scam_value > value
+      true ->
+        scam_value == value
+    end
+  end)
+end)
+|> Map.get(:index)
+```
