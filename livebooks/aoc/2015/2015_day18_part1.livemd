@@ -1,0 +1,108 @@
+# Advent of Code 2015 Day 18 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"},
+  {:nx, "~> 0.9.2"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxOCIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "18", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+lights =
+  """
+  .#.#.#
+  ...##.
+  #....#
+  ..#...
+  #.#..#
+  ####..
+  """
+  |> String.trim()
+  |> String.split("\n")
+  |> Enum.map(fn row ->
+    row
+    |> String.codepoints()
+    |> Enum.map(fn light -> if light == "#", do: 1, else: 0 end)
+  end)
+  |> Nx.tensor()
+```
+
+```elixir
+pad_tensor = Nx.pad(lights, 0, [{1, 1, 0}, {1, 1, 0}])
+```
+
+```elixir
+around_on =
+  pad_tensor
+  |> Nx.window_sum({3, 3})
+  |> Nx.subtract(lights)
+```
+
+```elixir
+current_on_next_on =
+  Nx.multiply(
+    lights,
+    Nx.multiply(Nx.greater_equal(around_on, 2), Nx.less_equal(around_on, 3))
+  )
+```
+
+```elixir
+current_off_next_on =
+  Nx.multiply(
+    Nx.equal(lights, 0),
+    Nx.equal(around_on, 3)
+  )
+```
+
+```elixir
+next_on = Nx.add(current_on_next_on, current_off_next_on)
+```
+
+```elixir
+lights =
+  puzzle_input
+  |> String.split("\n")
+  |> Enum.map(fn row ->
+    row
+    |> String.codepoints()
+    |> Enum.map(fn light -> if light == "#", do: 1, else: 0 end)
+  end)
+  |> Nx.tensor()
+```
+
+```elixir
+1..100
+|> Enum.reduce(lights, fn _, acc_lights ->
+  around_on =
+    acc_lights
+    |> Nx.pad(0, [{1, 1, 0}, {1, 1, 0}])
+    |> Nx.window_sum({3, 3})
+    |> Nx.subtract(acc_lights)
+
+  current_on_next_on =
+    Nx.multiply(
+      acc_lights,
+      Nx.multiply(Nx.greater_equal(around_on, 2), Nx.less_equal(around_on, 3))
+    )
+
+  current_off_next_on =
+    Nx.multiply(
+      Nx.equal(acc_lights, 0),
+      Nx.equal(around_on, 3)
+    )
+
+  Nx.add(current_on_next_on, current_off_next_on)
+end)
+|> Nx.sum()
+```
