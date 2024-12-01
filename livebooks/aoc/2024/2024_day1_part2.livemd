@@ -1,0 +1,40 @@
+# Advent of Code 2024 Day 1 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxIiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjQifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "1", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+{left_list, right_list} =
+  puzzle_input
+  |> String.split("\n")
+  |> Enum.map(fn row ->
+    row
+    |> String.split(" ")
+    |> Enum.filter(&(&1 != ""))
+    |> Enum.map(&String.to_integer(&1))
+  end)
+  |> Enum.map(fn [a, b] -> {a, b} end)
+  |> Enum.unzip()
+```
+
+```elixir
+left_list
+|> Enum.map(fn left ->
+  left * Enum.count(right_list, fn right -> left == right end)
+end)
+|> Enum.sum()
+```
