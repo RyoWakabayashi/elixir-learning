@@ -1,24 +1,16 @@
 FROM ghcr.io/livebook-dev/livebook:0.14.5
 
-RUN mix local.hex --force \
-  && mix archive.install hex phx_new --force \
-  && mix local.rebar --force
-
 RUN apt-get upgrade -y \
   && apt-get update \
   && apt-get install --no-install-recommends -y \
-    apt-transport-https \
     build-essential \
     ca-certificates \
     curl \
     erlang-dev \
     gnupg2 \
-    lsb-release \
     ninja-build \
     python3-pip \
-    sudo \
-    unzip \
-    vim \
+    wget \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
