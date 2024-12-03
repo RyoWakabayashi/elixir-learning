@@ -1,0 +1,237 @@
+# Advent of Code 2023 Day 14 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxNCIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDIzIn0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "14", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+map =
+  """
+  O....#....
+  O.OO#....#
+  .....##...
+  OO.#O....O
+  .O.....O#.
+  O.#..O.#.#
+  ..O..#O..O
+  .......O..
+  #....###..
+  #OO..#....
+  """
+  |> String.trim()
+  |> String.split("\n")
+  |> Enum.map(fn row ->
+    String.codepoints(row)
+  end)
+```
+
+```elixir
+defmodule Rock do
+  def turn(map) do
+    map
+    |> Enum.zip()
+    |> Enum.map(fn col ->
+      Tuple.to_list(col)
+    end)
+    |> Enum.reverse()
+  end
+
+  def turn_back(map) do
+    map
+    |> Enum.zip()
+    |> Enum.map(fn col ->
+      col
+      |> Tuple.to_list()
+      |> Enum.reverse()
+    end)
+  end
+
+  def slide(map) do
+    Enum.map(map, fn row ->
+      slide(row, length(row) - 1)
+    end)
+  end
+  
+  def slide(row, 0), do: row
+  def slide(row, current_index) do
+    current_block = Enum.at(row, current_index)
+    next_block = Enum.at(row, current_index - 1)
+
+    case {current_block, next_block} do
+      {"O", "."} ->
+        row
+        |> List.update_at(current_index, fn _ -> "." end)
+        |> List.update_at(current_index - 1, fn _ -> "O" end)
+        |> slide(length(row) - 1)
+      _ ->
+        slide(row, current_index - 1)
+    end
+  end
+
+  def cycle(map) do
+    map
+    |> Rock.turn()
+    |> Rock.slide()
+    |> Rock.turn_back()
+    |> Rock.slide()
+    |> Rock.turn_back()
+    |> Rock.slide()
+    |> Rock.turn_back()
+    |> Rock.slide()
+    |> Rock.turn()
+    |> Rock.turn()
+  end
+
+  def sum_load(map) do
+    map
+    |> Enum.map(fn row ->
+      row
+      |> Enum.reverse()
+      |> Enum.with_index(1)
+      |> Enum.map(fn {mark, index} ->
+        case mark do
+          "O" -> index
+          _ -> 0
+        end
+      end)
+      |> Enum.sum()
+    end)
+    |> Enum.sum()
+  end
+end
+```
+
+```elixir
+map
+|> Rock.turn()
+|> Rock.slide()
+|> Rock.turn_back()
+```
+
+```elixir
+map
+|> Rock.turn()
+|> Rock.slide()
+|> Rock.turn_back()
+|> Rock.slide()
+```
+
+```elixir
+map
+|> Rock.turn()
+|> Rock.slide()
+|> Rock.turn_back()
+|> Rock.slide()
+|> Rock.turn_back()
+|> Rock.slide()
+|> Rock.turn()
+```
+
+```elixir
+map
+|> Rock.turn()
+|> Rock.slide()
+|> Rock.turn_back()
+|> Rock.slide()
+|> Rock.turn_back()
+|> Rock.slide()
+|> Rock.turn_back()
+|> Rock.slide()
+|> Rock.turn()
+|> Rock.turn()
+```
+
+```elixir
+Rock.cycle(map)
+```
+
+```elixir
+map
+|> Rock.cycle()
+|> Rock.cycle()
+```
+
+```elixir
+map
+|> Rock.cycle()
+|> Rock.cycle()
+|> Rock.cycle()
+```
+
+```elixir
+{loop_end, loop_start} =
+  1..1000000000
+  |> Enum.reduce_while({map, %{}}, fn index, {acc_map, memo} ->
+    acc_map = Rock.cycle(acc_map)
+
+    case Map.get(memo, acc_map) do
+      nil ->
+        {:cont, {acc_map, Map.put(memo, acc_map, index)}}
+      exists_index ->
+        {:halt, {index, exists_index}}
+    end
+  end)
+```
+
+```elixir
+same_loop = rem(1000000000 - loop_start, loop_end - loop_start) + loop_start
+```
+
+```elixir
+1..same_loop
+|> Enum.reduce(map, fn _, acc_map ->
+  Rock.cycle(acc_map)
+end)
+|> Rock.turn()
+|> Rock.sum_load()
+```
+
+```elixir
+map =
+  puzzle_input
+  |> String.split("\n")
+  |> Enum.map(fn row ->
+    String.codepoints(row)
+  end)
+```
+
+```elixir
+{loop_end, loop_start} =
+  1..1000000000
+  |> Enum.reduce_while({map, %{}}, fn index, {acc_map, memo} ->
+    acc_map = Rock.cycle(acc_map)
+
+    case Map.get(memo, acc_map) do
+      nil ->
+        {:cont, {acc_map, Map.put(memo, acc_map, index)}}
+      exists_index ->
+        {:halt, {index, exists_index}}
+    end
+  end)
+```
+
+```elixir
+same_loop = rem(1000000000 - loop_start, loop_end - loop_start) + loop_start
+```
+
+```elixir
+1..same_loop
+|> Enum.reduce(map, fn _, acc_map ->
+  Rock.cycle(acc_map)
+end)
+|> Rock.turn()
+|> Rock.sum_load()
+```
