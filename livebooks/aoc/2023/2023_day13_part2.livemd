@@ -1,0 +1,63 @@
+# Advent of Code 2023 Day 13 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"},
+  {:nx, "~> 0.9.2"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMyIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDIzIn0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2023", "13", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+blocks =
+  puzzle_input
+  |> String.split("\n\n")
+  |> Enum.map(fn block ->
+    block
+    |> String.split("\n")
+    |> Enum.map(fn row ->
+      String.codepoints(row)
+      |> Enum.map(fn tile -> if tile == "#", do: 1, else: 0 end)
+    end)
+    |> Nx.tensor()
+  end)
+```
+
+```elixir
+blocks
+|> Enum.map(fn block ->
+  0..1
+  |> Enum.map(fn axis ->
+    num = Nx.shape(block) |> elem(axis)
+
+    0..(num - 2)
+    |> Enum.find(fn index ->
+      range = min(index + 1, num - index - 1)
+
+      Nx.not_equal(
+        Nx.slice_along_axis(block, index - range + 1, range, axis: axis),
+        Nx.slice_along_axis(block, index + 1, range, axis: axis) |> Nx.reverse(axes: [axis])
+      )
+      |> Nx.sum()
+      |> Nx.to_number()
+      |> Kernel.==(1)
+    end)
+    |> then(fn index -> if is_nil(index), do: 0, else: index + 1 end)
+    |> then(fn num -> if axis == 0, do: num * 100, else: num end)
+  end)
+  |> Enum.sum()
+end)
+|> Enum.sum()
+```
+
+<!-- livebook:{"offset":1795,"stamp":{"token":"XCP.XyHFetiQTIQj53SfsgQdXs2ljdarRJXW7vGA0j5xfiyHn0BvHXyBwE4YkdbYFoeuF0fnEoHbqzB1rGTm77-EaCsmnK6lghIOQJbMcLleyWwvYQ","version":2}} -->
