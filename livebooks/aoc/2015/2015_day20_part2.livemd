@@ -1,0 +1,56 @@
+# Advent of Code 2015 Day 20 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIyMCIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "20", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+get_divisers = fn limit ->
+  divisors = Enum.into(1..limit, %{}, fn index -> {index, []} end)
+
+  Enum.reduce(1..limit, divisors, fn i, acc ->
+    Enum.reduce(i..limit//i, acc, fn j, acc_inner ->
+      Map.put(acc_inner, j, [i | Map.get(acc_inner, j)])
+    end)
+  end)
+end
+```
+
+```elixir
+get_divisers.(9)
+```
+
+```elixir
+target_number = String.to_integer(puzzle_input)
+```
+
+```elixir
+divisors_map = get_divisers.(1000000)
+```
+
+```elixir
+1..1000000
+|> Enum.find(fn house_number ->
+  divisors = Map.get(divisors_map, house_number)
+
+  divisors
+  |> Enum.filter(fn num -> div(house_number, num) <= 50 end)
+  |> Enum.sum()
+  |> Kernel.>=(target_number / 11)
+end)
+```
+
+<!-- livebook:{"offset":1123,"stamp":{"token":"XCP.nycMRErflVjv8x1dnWSCiLcYb1V54-6bmaitI79ja0hx9bgzlS4pl7igRgq7iuSkGmwlEED-V3p7WP1gezRr4XA6Mq61AZ_LwNvRg9ALkvwLBA","version":2}} -->
