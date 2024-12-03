@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:kino_aoc, "~> 0.1.5"}
+  {:kino_aoc, "~> 0.1"}
 ])
 ```
 
@@ -73,7 +73,7 @@ array_list =
   1 3 6 10 15 21
   10 13 16 21 30 45
   """
-  |> String.slice(0..-2)
+  |> String.slice(0..-2//1)
   |> Resolver.parse()
 ```
 

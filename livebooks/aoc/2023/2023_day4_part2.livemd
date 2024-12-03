@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:kino_aoc, "~> 0.1.5"}
+  {:kino_aoc, "~> 0.1"}
 ])
 ```
 
@@ -83,7 +83,7 @@ games =
   Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36
   Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11
   """
-  |> String.slice(0..-2)
+  |> String.slice(0..-2//1)
   |> Resolver.parse()
 ```
 

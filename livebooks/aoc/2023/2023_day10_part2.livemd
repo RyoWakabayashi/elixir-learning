@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:kino_aoc, "~> 0.1.5"}
+  {:kino_aoc, "~> 0.1"}
 ])
 ```
 
@@ -209,7 +209,7 @@ maze =
   .L-J.
   .....
   """
-  |> String.slice(0..-2)
+  |> String.slice(0..-2//1)
   |> Resolver.parse()
 ```
 
@@ -226,7 +226,7 @@ maze =
   |F--J
   LJ...
   """
-  |> String.slice(0..-2)
+  |> String.slice(0..-2//1)
   |> Resolver.parse()
 ```
 
@@ -247,7 +247,7 @@ maze =
   .L--J.L--J.
   ...........
   """
-  |> String.slice(0..-2)
+  |> String.slice(0..-2//1)
   |> Resolver.parse()
 ```
 
@@ -269,7 +269,7 @@ maze =
   ....FJL-7.||.||||...
   ....L---J.LJ.LJLJ...
   """
-  |> String.slice(0..-2)
+  |> String.slice(0..-2//1)
   |> Resolver.parse()
 ```
 
@@ -291,7 +291,7 @@ maze =
   L.L7LFJ|||||FJL7||LJ
   L7JLJL-JLJLJL--JLJ.L
   """
-  |> String.slice(0..-2)
+  |> String.slice(0..-2//1)
   |> Resolver.parse()
 ```
 

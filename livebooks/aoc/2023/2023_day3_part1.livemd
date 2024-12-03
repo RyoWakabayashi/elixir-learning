@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:kino_aoc, "~> 0.1.5"}
+  {:kino_aoc, "~> 0.1"}
 ])
 ```
 
@@ -91,7 +91,7 @@ end
   ...$.*....
   .664.598..
   """
-  |> String.slice(0..-2)
+  |> String.slice(0..-2//1)
   |> Resolver.parse()
 ```
 
