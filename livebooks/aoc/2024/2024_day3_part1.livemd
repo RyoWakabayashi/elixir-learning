@@ -1,0 +1,34 @@
+# Advent of Code 2024 Day 3 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIzIiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjQifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "3", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+Regex.scan(~r/mul\(\d+,\d+\)/, puzzle_input)
+```
+
+```elixir
+Regex.scan(~r/mul\(\d+,\d+\)/, puzzle_input)
+|> Enum.map(fn [mul] ->
+  Regex.scan(~r/\d+/, mul)
+  |> Enum.map(fn [str] ->
+    String.to_integer(str)
+  end)
+  |> Enum.product()
+end)
+|> Enum.sum()
+```
