@@ -124,6 +124,13 @@ RUN apt-get upgrade -y \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
+# Zig
+RUN wget "https://ziglang.org/download/0.13.0/zig-linux-aarch64-0.13.0.tar.xz" -O "zig-linux.tar.xz" \
+  && tar Jxvf "zig-linux.tar.xz" -C /usr/local \
+  && mv /usr/local/zig-linux-aarch64-0.13.0 /usr/local/zig-linux \
+  && rm "zig-linux.tar.xz"
+ENV PATH=/usr/local/zig-linux:${PATH}
+
 ENV LIVEBOOK_HOME=/home/livebook
 
 COPY ./livebooks /home/livebook
