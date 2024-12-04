@@ -1,0 +1,163 @@
+# Advent of Code 2024 Day 4 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI0Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjQifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "4", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+input =
+  """
+  MMMSXXMASM
+  MSAMXMSMSA
+  AMXSXMAAMM
+  MSAMASMSMX
+  XMASAMXAMM
+  XXAMMXXAMA
+  SMSMSASXSS
+  SAXAMASAAA
+  MAMMMXMMMM
+  MXMXAXMASX
+  """
+```
+
+```elixir
+turned_input =
+  input
+  |> String.trim()
+  |> String.split("\n")
+  |> Enum.with_index()
+  |> Enum.map(fn {row, index} ->
+    String.duplicate(".", index) <> row <> String.duplicate(".", String.length(row) - index - 1)
+  end)
+  |> Enum.map(&String.codepoints(&1))
+  |> Enum.zip()
+  |> Enum.map(fn col -> col |> Tuple.to_list() |> Enum.join() end)
+  |> Enum.join("\n")
+
+IO.puts(turned_input)
+```
+
+```elixir
+turned_input
+|> String.replace(~r/MAS/, "M+S")
+|> String.replace(~r/SAM/, "S+M")
+|> IO.puts()
+```
+
+```elixir
+output_a =
+  turned_input
+  |> String.replace(~r/MAS/, "M+S")
+  |> String.replace(~r/SAM/, "S+M")
+  |> String.split("\n")
+  |> Enum.map(&String.codepoints(&1))
+  |> Enum.zip()
+  |> Enum.map(fn col ->
+    col
+    |> Tuple.to_list()
+    |> Enum.join()
+    |> String.trim(".")
+    |> String.replace(~r/[A-Z]/, ".")
+  end)
+
+output_a
+|> Enum.join("\n")
+|> IO.puts()
+```
+
+```elixir
+turn = fn input, direction ->
+  input
+  |> String.trim()
+  |> String.split("\n")
+  |> Enum.with_index()
+  |> Enum.map(fn {row, index} ->
+    case direction do
+      :left ->
+        String.duplicate(".", index) <> row <> String.duplicate(".", String.length(row) - index - 1)
+      _ ->
+        String.duplicate(".", String.length(row) - index - 1) <> row <> String.duplicate(".", index)
+    end
+  end)
+  |> Enum.map(&String.codepoints(&1))
+  |> Enum.zip()
+  |> Enum.map(fn col -> col |> Tuple.to_list() |> Enum.join() end)
+  |> Enum.join("\n")
+end
+```
+
+```elixir
+replase_mas = fn turned_input ->
+  turned_input
+  |> String.replace(~r/MAS/, "M+S")
+  |> String.replace(~r/SAM/, "S+M")
+  |> String.split("\n")
+  |> Enum.map(&String.codepoints(&1))
+  |> Enum.zip()
+  |> Enum.map(fn col ->
+    col
+    |> Tuple.to_list()
+    |> Enum.join()
+    |> String.trim(".")
+    |> String.replace(~r/[A-Z]/, ".")
+  end)
+end
+```
+
+```elixir
+output_b =
+  input
+  |> turn.(:right)
+  |> replase_mas.()
+
+output_b
+|> Enum.join("\n")
+|> IO.puts()
+```
+
+```elixir
+Enum.zip(output_a, output_b)
+|> Enum.map(fn {row_a, row_b} ->
+  Enum.zip(
+    String.codepoints(row_a),
+    String.codepoints(row_b)
+  )
+  |> Enum.count(fn ab -> ab == {"+", "+"} end)
+end)
+|> Enum.sum()
+```
+
+```elixir
+output_a =
+  puzzle_input
+  |> turn.(:left)
+  |> replase_mas.()
+
+output_b =
+  puzzle_input
+  |> turn.(:right)
+  |> replase_mas.()
+
+Enum.zip(output_a, output_b)
+|> Enum.map(fn {row_a, row_b} ->
+  Enum.zip(
+    String.codepoints(row_a),
+    String.codepoints(row_b)
+  )
+  |> Enum.count(fn ab -> ab == {"+", "+"} end)
+end)
+|> Enum.sum()
+```
