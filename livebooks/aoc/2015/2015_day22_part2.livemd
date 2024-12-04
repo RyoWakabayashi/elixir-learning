@@ -1,0 +1,197 @@
+# Advent of Code 2015 Day 22 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIyMiIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "22", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+defmodule Spell do
+  defstruct name: nil, cost: 0, damage: 0, heal: 0, effect: nil
+end
+
+defmodule Effect do
+  defstruct name: nil, timer: 0, armor: 0, damage: 0, mana: 0
+end
+
+defmodule WizardSimulator do
+  @spells [
+    %Spell{name: :magic_missile, cost: 53, damage: 4},
+    %Spell{name: :drain, cost: 73, damage: 2, heal: 2},
+    %Spell{name: :shield, cost: 113, effect: %Effect{name: :shield, timer: 6, armor: 7}},
+    %Spell{name: :poison, cost: 173, effect: %Effect{name: :poison, timer: 6, damage: 3}},
+    %Spell{name: :recharge, cost: 229, effect: %Effect{name: :recharge, timer: 5, mana: 101}}
+  ]
+
+  def find_min_mana_to_win(player_hp, player_mana, boss_hp, boss_damage) do
+    initial_state = %{
+      player_hp: player_hp,
+      player_mana: player_mana,
+      player_armor: 0,
+      boss_hp: boss_hp,
+      boss_damage: boss_damage,
+      effects: %{},
+      mana_spent: 0,
+      turn: :player
+    }
+
+    play_game([initial_state], :infinity)
+  end
+
+  defp play_game([], min_mana_spent), do: min_mana_spent
+
+  defp play_game([state | rest], min_mana_spent) do
+    state =
+      if state.turn == :player do
+        %{state | player_hp: state.player_hp - 1}
+      else
+        state
+      end
+      |> apply_effects()
+
+    cond do
+      state.boss_hp <= 0 ->
+        min_mana_spent = min(state.mana_spent, min_mana_spent)
+        play_game(rest, min_mana_spent)
+
+      state.player_hp <= 0 ->
+        play_game(rest, min_mana_spent)
+
+      state.mana_spent >= min_mana_spent ->
+        play_game(rest, min_mana_spent)
+
+      state.turn == :player ->
+        available_spells = available_spells(state)
+
+        case available_spells do
+          [] ->
+            play_game(rest, min_mana_spent)
+
+          available_spells ->
+            available_spells
+            |> Enum.map(fn spell ->
+              cast_spell(state, spell)
+            end)
+            |> Kernel.++(rest)
+            |> play_game(min_mana_spent)
+        end
+
+      state.turn == :boss ->
+        state
+        |> boss_attack()
+        |> Map.put(:turn, :player)
+        |> then(fn state -> [state | rest] end)
+        |> play_game(min_mana_spent)
+    end
+  end
+
+  defp check_effects_timer(effects, effect, magic_name) do
+    effect = %{effect | timer: effect.timer - 1}
+
+    if effect.timer == 0 do
+      Map.delete(effects, magic_name)
+    else
+      Map.put(effects, magic_name, effect)
+    end
+  end
+
+  defp apply_effects(state) do
+    {effects, player_armor, player_mana, boss_hp} =
+      Enum.reduce(state.effects, {state.effects, 0, state.player_mana, state.boss_hp}, fn
+        {:shield, effect}, {effects, armor, mana, hp} ->
+          armor = armor + effect.armor
+          effects = check_effects_timer(effects, effect, :shield)
+
+          {effects, armor, mana, hp}
+
+        {:poison, effect}, {effects, armor, mana, hp} ->
+          hp = hp - effect.damage
+          effects = check_effects_timer(effects, effect, :poison)
+
+          {effects, armor, mana, hp}
+
+        {:recharge, effect}, {effects, armor, mana, hp} ->
+          mana = mana + effect.mana
+          effects = check_effects_timer(effects, effect, :recharge)
+
+          {effects, armor, mana, hp}
+      end)
+
+    %{
+      state
+      | effects: effects,
+        player_armor: player_armor,
+        player_mana: player_mana,
+        boss_hp: boss_hp
+    }
+  end
+
+  defp available_spells(state) do
+    @spells
+    |> Enum.filter(fn spell ->
+      spell.cost <= state.player_mana and
+        not Map.has_key?(state.effects, spell.effect && spell.effect.name)
+    end)
+  end
+
+  defp cast_spell(state, spell) do
+    state =
+      %{
+        state
+        | player_mana: state.player_mana - spell.cost,
+          mana_spent: state.mana_spent + spell.cost
+      }
+
+    state =
+      if spell.damage > 0 or spell.heal > 0 do
+        %{
+          state
+          | boss_hp: state.boss_hp - spell.damage,
+            player_hp: state.player_hp + spell.heal
+        }
+      else
+        state
+      end
+
+    if spell.effect do
+      %{state | effects: Map.put(state.effects, spell.effect.name, spell.effect)}
+    else
+      state
+    end
+    |> Map.put(:turn, :boss)
+  end
+
+  defp boss_attack(state) do
+    %{state | player_hp: state.player_hp - max(1, state.boss_damage - state.player_armor)}
+  end
+end
+```
+
+```elixir
+[boss_hp, boss_damage] =
+  Regex.scan(
+    ~r/\d+/,
+    puzzle_input
+  )
+|> Enum.map(fn [str] ->
+  String.to_integer(str)
+end)
+
+{boss_hp, boss_damage}
+```
+
+```elixir
+WizardSimulator.find_min_mana_to_win(50, 500, boss_hp, boss_damage)
+```
