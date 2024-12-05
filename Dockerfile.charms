@@ -3,24 +3,10 @@ FROM ghcr.io/livebook-dev/livebook:0.14.5
 RUN apt-get upgrade -y \
   && apt-get update \
   && apt-get install --no-install-recommends -y \
-    build-essential \
-    ca-certificates \
-    curl \
-    erlang-dev \
-    gnupg2 \
     ninja-build \
     python3-pip \
-    wget \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
-
-## Mold
-RUN git clone --branch stable https://github.com/rui314/mold.git \
-  && cd mold \
-  && ./install-build-deps.sh \
-  && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=c++ -B build \
-  && cmake --build build -j$(nproc) \
-  && cmake --build build --target install
 
 # LLVM
 COPY llvm-requirements.txt .
@@ -28,21 +14,7 @@ COPY llvm-requirements.txt .
 RUN python3 -m pip install --upgrade pip \
   && python3 -m pip install -r llvm-requirements.txt
 
-RUN git clone --depth 1 https://github.com/llvm/llvm-project.git -b llvmorg-19.1.4
-
-RUN export LLVM_CONFIG_PATH=$(python3 -c 'import mlir;print(mlir.__path__[0])')/bin/llvm-config \
-  && cd llvm-project \
-  && cmake -B build -S llvm -G Ninja -DLLVM_ENABLE_PROJECTS=mlir \
-    -DLLVM_TARGETS_TO_BUILD="host" \
-    -DLLVM_ENABLE_ASSERTIONS=ON \
-    -DLLVM_ENABLE_OCAMLDOC=OFF \
-    -DLLVM_ENABLE_BINDINGS=OFF \
-    -DLLVM_USE_LINKER=mold \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCMAKE_INSTALL_PREFIX=${HOME}/llvm-install \
-  && cmake --build build -t install
-
-ENV LLVM_CONFIG_PATH=${HOME}/llvm-install/bin/llvm-config
+ENV LLVM_CONFIG_PATH=/usr/local/lib/python3.10/dist-packages/mlir/bin/llvm-config
 
 # Zig
 RUN wget "https://ziglang.org/download/0.13.0/zig-linux-aarch64-0.13.0.tar.xz" -O "zig-linux.tar.xz" \
