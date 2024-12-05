@@ -1,0 +1,82 @@
+# Advent of Code 2015 Day 24 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIyNCIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "24", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+packages = Enum.to_list(1..5) ++ Enum.to_list(7..11)
+```
+
+```elixir
+target_weight = packages |> Enum.sum() |> div(3)
+```
+
+```elixir
+for num_a <- packages,
+    num_b <- packages,
+    num_a < num_b,
+    num_a + num_b == target_weight do
+  [num_a, num_b]
+end
+|> Enum.uniq()
+|> Enum.filter(&(&1 != []))
+|> Enum.map(&Enum.product(&1))
+|> Enum.min()
+```
+
+```elixir
+packages =
+  puzzle_input
+  |> String.split("\n")
+  |> Enum.map(&String.to_integer(&1))
+```
+
+```elixir
+target_weight = packages |> Enum.sum() |> div(3)
+```
+
+```elixir
+defmodule Combinations do
+  def all(_, 0), do: [[]]
+  def all([], _), do: []
+  def all([head | tail], n) when n > 0 do
+    with_head = for combo <- all(tail, n - 1), do: [head | combo]
+    without_head = all(tail, n)
+    with_head ++ without_head
+  end
+end
+```
+
+```elixir
+1..length(packages)
+|> Enum.reduce_while(nil, fn size, _ ->
+  packages
+  |> Combinations.all(size)
+  |> Enum.filter(fn combo ->
+    Enum.sum(combo) == target_weight
+  end)
+  |> case do
+    [] ->
+      {:cont, []}
+
+    valid_combinations ->
+      {:halt, valid_combinations}
+  end
+end)
+|> Enum.map(&Enum.product(&1))
+|> Enum.min()
+```
