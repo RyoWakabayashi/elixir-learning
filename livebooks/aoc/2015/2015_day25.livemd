@@ -1,0 +1,70 @@
+# Advent of Code 2015 Day 25
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIyNSIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDE1In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2015", "25", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+get_index = fn r, c ->
+  k = r + c - 1
+  div(k * (k - 1), 2) + c
+end
+```
+
+```elixir
+get_index.(3, 2)
+```
+
+```elixir
+defmodule WeatherMachine do
+  @initial 20_151_125
+  @modulo 33_554_393
+  @multiplier 252_533
+
+  def get(r, c) do
+    generate(get_index(r, c) - 1)
+  end
+
+  defp get_index(r, c) do
+    k = r + c - 1
+    div(k * (k - 1), 2) + c
+  end
+
+  defp generate(n) do
+    power = mod_exp(@multiplier, n, @modulo)
+    rem(@initial * power, @modulo)
+  end
+
+  defp mod_exp(_, 0, _), do: 1
+
+  defp mod_exp(base, exp, mod) do
+    if rem(exp, 2) == 0 do
+      half = mod_exp(base, div(exp, 2), mod)
+      rem(half * half, mod)
+    else
+      rem(base * mod_exp(base, exp - 1, mod), mod)
+    end
+  end
+end
+```
+
+```elixir
+WeatherMachine.get(3, 1)
+```
+
+```elixir
+WeatherMachine.get(2947, 3029)
+```
