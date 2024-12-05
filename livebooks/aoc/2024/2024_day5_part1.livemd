@@ -1,0 +1,125 @@
+# Advent of Code 2024 Day 5 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI1Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjQifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "5", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+parse_input = fn input ->
+  [rules, updates] =
+    input
+    |> String.split("\n\n")
+    |> Enum.map(&String.split(&1, "\n"))
+
+  rules =
+    rules
+    |> Enum.map(fn rule ->
+      rule
+      |> String.split("|")
+      |> Enum.map(&String.to_integer(&1))
+      |> List.to_tuple()
+    end)
+
+  updates =
+    updates
+    |> Enum.map(fn update ->
+      update
+      |> String.split(",")
+      |> Enum.map(&String.to_integer(&1))
+    end)
+  
+  {rules, updates}
+end
+```
+
+```elixir
+{rules, updates} =
+  """
+  47|53
+  97|13
+  97|61
+  97|47
+  75|29
+  61|13
+  75|53
+  29|13
+  97|29
+  53|29
+  61|53
+  97|53
+  61|29
+  47|13
+  75|47
+  97|75
+  47|61
+  75|61
+  47|29
+  75|13
+  53|13
+
+  75,47,61,53,29
+  97,61,53,29,13
+  75,29,13
+  75,97,47,61,53
+  61,13,29
+  97,13,75,29,47
+  """
+  |> String.trim()
+  |> parse_input.()
+```
+
+```elixir
+get_right_updates = fn updates, rules ->
+  updates
+  |> Enum.filter(fn update ->
+    rules
+    |> Enum.reduce_while(nil, fn {a, b}, _ ->
+      a_index = Enum.find_index(update, &(&1 ==a))
+      b_index = Enum.find_index(update, &(&1 ==b))
+
+      if is_nil(a_index) or is_nil(b_index) do
+        {:cont, true}
+      else
+        if a_index < b_index do
+          {:cont, true}
+        else
+          {:halt, false}
+        end
+      end
+    end)
+  end)
+end
+```
+
+```elixir
+updates
+|> get_right_updates.(rules)
+|> Enum.map(fn update ->
+  Enum.at(update, div(length(update), 2))
+end)
+|> Enum.sum()
+```
+
+```elixir
+{rules, updates} = parse_input.(puzzle_input)
+
+updates
+|> get_right_updates.(rules)
+|> Enum.map(fn update ->
+  Enum.at(update, div(length(update), 2))
+end)
+|> Enum.sum()
+```
