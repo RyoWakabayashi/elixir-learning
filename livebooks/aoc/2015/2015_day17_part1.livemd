@@ -27,16 +27,13 @@ containers =
 
 ```elixir
 defmodule Combinations do
-  def get(_, n) when n == 0, do: [[]]
-  def get([], _), do: []
-  def get([head | tail], n) do
-    with_head =
-      tail
-      |> get(n - 1)
-      |> Enum.map(fn combo -> [head | combo] end)
+  def all(_, 0), do: [[]]
+  def all([], _), do: []
+  def all(list, n) when length(list) == n, do: [list]
 
-    without_head = get(tail, n)
-
+  def all([head | tail], n) do
+    with_head = for combo <- all(tail, n - 1), do: [head | combo]
+    without_head = all(tail, n)
     with_head ++ without_head
   end
 end
@@ -46,7 +43,7 @@ end
 1..20
 |> Enum.map(fn length ->
   containers
-  |> Combinations.get(length)
+  |> Combinations.all(length)
   |> Enum.count(fn combination -> Enum.sum(combination) == 150 end)
 end)
 |> Enum.sum()

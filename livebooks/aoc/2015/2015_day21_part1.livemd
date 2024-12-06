@@ -117,7 +117,9 @@ Game.battle(player, boss)
 defmodule Combinations do
   def all(_, 0), do: [[]]
   def all([], _), do: []
-  def all([head | tail], n) when n > 0 do
+  def all(list, n) when length(list) == n, do: [list]
+
+  def all([head | tail], n) do
     with_head = for combo <- all(tail, n - 1), do: [head | combo]
     without_head = all(tail, n)
     with_head ++ without_head
