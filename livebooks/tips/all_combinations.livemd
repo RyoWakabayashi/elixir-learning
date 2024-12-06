@@ -1,0 +1,43 @@
+# All combinations
+
+## Combinations module
+
+This module generates all combinations for extracting a specified number of elements from an list without duplication.
+
+```elixir
+defmodule Combinations do
+  def all(list) do
+    1..length(list)
+    |> Enum.reduce([], fn n, acc ->
+      acc ++ all(list, n)
+    end)
+  end
+
+  def all(_, 0), do: [[]]
+  def all([], _), do: []
+
+  def all([head | tail], n) when n > 0 do
+    with_head = for combo <- all(tail, n - 1), do: [head | combo]
+    without_head = all(tail, n)
+    with_head ++ without_head
+  end
+end
+```
+
+## Usage example
+
+```elixir
+list = [1, 2, 3, 4]
+```
+
+```elixir
+Combinations.all(list, 2)
+```
+
+```elixir
+Combinations.all(list, 3)
+```
+
+```elixir
+Combinations.all(list)
+```
