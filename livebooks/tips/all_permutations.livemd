@@ -1,0 +1,42 @@
+# All permutations
+
+## Permutations module
+
+```elixir
+defmodule Permutations do
+  def all(list) do
+    1..length(list)
+    |> Enum.reduce([], fn n, acc ->
+      acc ++ all(list, n)
+    end)
+  end
+
+  def all(_, 0), do: [[]]
+  def all([], _), do: []
+
+  def all(list, n) do
+    for x <- list,
+        rest = list -- [x],
+        perm <- all(rest, n - 1),
+        do: [x | perm]
+  end
+end
+```
+
+## Usage example
+
+```elixir
+list = [1, 2, 3, 4]
+```
+
+```elixir
+Permutations.all(list, 2)
+```
+
+```elixir
+Permutations.all(list, 3)
+```
+
+```elixir
+Permutations.all(list)
+```
