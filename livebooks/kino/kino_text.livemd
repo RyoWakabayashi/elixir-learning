@@ -1,0 +1,37 @@
+# Kino.Text
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.14"}
+])
+```
+
+## Normal
+
+```elixir
+Kino.Text.new("...\n123\nabc")
+```
+
+## Terminal
+
+```elixir
+Kino.Text.new("...\n123\nabc", terminal: true)
+```
+
+## Chunk
+
+```elixir
+frame = Kino.Frame.new()
+```
+
+```elixir
+Kino.Frame.clear(frame)
+
+for word <- ["who", " let", " the", " dogs", " out"] do
+  text = Kino.Text.new(word, chunk: true)
+  Kino.Frame.append(frame, text)
+  Process.sleep(250)
+end
+
+Kino.nothing()
+```
