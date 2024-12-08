@@ -1,0 +1,135 @@
+# Advent of Code 2024 Day 7 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI3Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjQifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "7", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+sample_input =
+  """
+  190: 10 19
+  3267: 81 40 27
+  83: 17 5
+  156: 15 6
+  7290: 6 8 6 15
+  161011: 16 10 13
+  192: 17 8 14
+  21037: 9 7 18 13
+  292: 11 6 16 20
+  """
+  |> String.trim()
+```
+
+```elixir
+parse = fn input ->
+  input
+  |> String.split("\n")
+  |> Enum.map(fn row ->
+    [left, right] = String.split(row, ":")
+
+    {
+      String.to_integer(left),
+      right
+      |> String.trim()
+      |> String.split(" ")
+      |> Enum.map(&String.to_integer(&1))
+    }
+  end)
+end
+```
+
+```elixir
+equations = parse.(sample_input)
+```
+
+```elixir
+defmodule Combinations do
+  def all_with_repetition(_, 0), do: [[]]
+
+  def all_with_repetition(list, n) do
+    for x <- list,
+        tail <- all_with_repetition(list, n - 1) do
+      [x | tail]
+    end
+  end
+end
+```
+
+```elixir
+Combinations.all_with_repetition(["+", "*"], 3)
+```
+
+```elixir
+nums = [10, 19]
+
+["+", "*"]
+|> Combinations.all_with_repetition(length(nums) - 1)
+|> Enum.find(fn operations ->
+  [tl(nums), operations]
+  |> Enum.zip()
+  |> Enum.reduce(hd(nums), fn {num, op}, acc ->
+    Code.eval_string("#{acc} #{op} #{num}")
+    |> elem(0)
+  end)
+  |> then(fn result -> result == 190 end)
+end)
+```
+
+```elixir
+find_valid_operations = fn {left, right} ->
+  ["+", "*"]
+  |> Combinations.all_with_repetition(length(right) - 1)
+  |> Enum.find(fn operations ->
+    [tl(right), operations]
+    |> Enum.zip()
+    |> Enum.reduce(hd(right), fn {num, op}, acc ->
+      "#{acc} #{op} #{num}"
+      |> Code.eval_string()
+      |> elem(0)
+    end)
+    |> then(fn result -> result == left end)
+  end)
+end
+```
+
+```elixir
+find_valid_operations.({83, [17, 5]})
+```
+
+```elixir
+find_valid_operations.({3267, [81, 40, 27]})
+```
+
+```elixir
+equations
+|> Enum.reduce(0, fn {left, _} = equation, acc ->
+  case find_valid_operations.(equation) do
+    nil -> acc
+    _ -> left + acc
+  end
+end)
+```
+
+```elixir
+puzzle_input
+|> parse.()
+|> Enum.reduce(0, fn {left, _} = equation, acc ->
+  case find_valid_operations.(equation) do
+    nil -> acc
+    _ -> left + acc
+  end
+end)
+```
