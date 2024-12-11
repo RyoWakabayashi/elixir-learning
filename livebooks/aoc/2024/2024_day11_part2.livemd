@@ -1,0 +1,150 @@
+# Advent of Code 2024 Day 11 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMSIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "11", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+small_sample_input = "0 1 10 99 999"
+```
+
+```elixir
+stones =
+  small_sample_input
+  |> String.split(" ")
+  |> Enum.map(&String.to_integer(&1))
+```
+
+```elixir
+stone = 99
+
+digits = stone |> :math.log10() |> floor() |> Kernel.+(1)
+```
+
+```elixir
+half_power = :math.pow(10, div(digits, 2)) |> round()
+```
+
+```elixir
+{div(stone, half_power), rem(stone, half_power)}
+```
+
+```elixir
+defmodule BlinkCounter do
+  def start_link do
+    if :ets.info(:blink_count_cache) != :undefined do
+      :ets.delete(:blink_count_cache)
+    end
+
+    :ets.new(:blink_count_cache, [:named_table, :public, :set])
+    :ok
+  end
+
+  def blink(0), do: [1]
+  def blink(stone) do
+    digits = :math.log10(stone) |> floor() |> Kernel.+(1)
+    if rem(digits, 2) == 0 do
+      half_power = :math.pow(10, div(digits, 2)) |> round()
+      left = div(stone, half_power)
+      right = rem(stone, half_power)
+      [left, right]
+    else
+      [stone * 2024]
+    end
+  end
+
+  def count_expansions(_, 0) do
+    1
+  end
+
+  def count_expansions(stone, steps) when steps > 0 do
+    case :ets.lookup(:blink_count_cache, {stone, steps}) do
+      [{_, count}] ->
+        count
+
+      [] ->
+        result =
+          blink(stone)
+          |> Enum.reduce(0, fn next_stone, acc ->
+            acc + count_expansions(next_stone, steps - 1)
+          end)
+
+        :ets.insert(:blink_count_cache, {{stone, steps}, result})
+        result
+    end
+  end
+end
+```
+
+```elixir
+BlinkCounter.start_link()
+```
+
+```elixir
+1..6
+|> Enum.reduce([0], fn _, acc_stones ->
+  acc_stones
+  |> Enum.flat_map(fn stone ->
+    BlinkCounter.blink(stone)
+  end)
+  |> IO.inspect()
+end)
+|> length()
+```
+
+```elixir
+BlinkCounter.count_expansions(0, 6)
+```
+
+```elixir
+stones
+|> Enum.reduce(0, fn stone, acc ->
+  acc + BlinkCounter.count_expansions(stone, 1)
+end)
+```
+
+```elixir
+stones =
+  "125 17"
+  |> String.split(" ")
+  |> Enum.map(&String.to_integer(&1))
+```
+
+```elixir
+stones
+|> Enum.reduce(0, fn stone, acc ->
+  acc + BlinkCounter.count_expansions(stone, 6)
+end)
+```
+
+```elixir
+stones
+|> Enum.reduce(0, fn stone, acc ->
+  acc + BlinkCounter.count_expansions(stone, 25)
+end)
+```
+
+```elixir
+stones =
+  puzzle_input
+  |> String.split(" ")
+  |> Enum.map(&String.to_integer(&1))
+
+stones
+|> Enum.reduce(0, fn stone, acc ->
+  acc + BlinkCounter.count_expansions(stone, 75)
+end)
+```

@@ -1,0 +1,88 @@
+# Advent of Code 2024 Day 11 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMSIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "11", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+small_sample_input = "0 1 10 99 999"
+```
+
+```elixir
+stones =
+  small_sample_input
+  |> String.split(" ")
+  |> Enum.map(&String.to_integer(&1))
+```
+
+```elixir
+blink = fn stone ->
+  cond do
+    stone == 0 ->
+      [1]
+    Integer.digits(stone) |> length() |> rem(2) == 0 ->
+      digits = Integer.digits(stone)
+      half_size = digits |> length() |> div(2)
+      [
+        digits |> Enum.slice(0, half_size) |> Integer.undigits(),
+        digits |> Enum.slice(half_size, half_size) |> Integer.undigits(),
+      ]
+    true ->
+      [stone * 2024]
+  end
+end
+```
+
+```elixir
+Enum.flat_map(stones, fn stone -> blink.(stone) end)
+```
+
+```elixir
+stones =
+  "125 17"
+  |> String.split(" ")
+  |> Enum.map(&String.to_integer(&1))
+```
+
+```elixir
+1..6
+|> Enum.reduce(stones, fn _, acc_stones ->
+  Enum.flat_map(acc_stones, fn stone -> blink.(stone) end)
+  |> IO.inspect()
+end)
+|> length()
+```
+
+```elixir
+1..25
+|> Enum.reduce(stones, fn _, acc_stones ->
+  Enum.flat_map(acc_stones, fn stone -> blink.(stone) end)
+end)
+|> length()
+```
+
+```elixir
+stones =
+  puzzle_input
+  |> String.split(" ")
+  |> Enum.map(&String.to_integer(&1))
+
+1..25
+|> Enum.reduce(stones, fn _, acc_stones ->
+  Enum.flat_map(acc_stones, fn stone -> blink.(stone) end)
+end)
+|> length()
+```
