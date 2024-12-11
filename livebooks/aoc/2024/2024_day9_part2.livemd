@@ -1,0 +1,137 @@
+# Advent of Code 2024 Day 9 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI5Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjQifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "9", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+sample_input = "2333133121414131402"
+```
+
+```elixir
+get_blocks = fn input ->
+  input
+  |> String.codepoints()
+  |> Enum.with_index()
+  |> Enum.map(fn {num, index} ->
+    num = String.to_integer(num)
+
+    id =
+      case rem(index, 2) do
+        0 ->
+          div(index, 2)
+        _ ->
+          nil
+      end
+
+    {id, num}
+  end)
+end
+```
+
+```elixir
+blocks = get_blocks.(sample_input)
+```
+
+```elixir
+compact = fn blocks ->
+  0..(blocks |> length() |> div(2) |> Kernel.-(1))
+  |> Enum.reduce(blocks, fn index, acc_blocks ->
+    taregt_index = length(blocks) - 1 - index * 2
+    {target_id, target_num} = Enum.at(blocks, taregt_index)
+
+    acc_blocks
+    |> Enum.find_index(fn {id, num} ->
+      is_nil(id) && num >= target_num
+    end)
+    |> case do
+      nil ->
+        acc_blocks
+
+      target_blank_index ->
+        {_, num} = Enum.at(acc_blocks, target_blank_index)
+        taregt_index = Enum.find_index(acc_blocks, fn {id, _} -> id == target_id end)
+
+        if taregt_index > target_blank_index do
+          acc_blocks =
+            acc_blocks
+            |> List.update_at(target_blank_index, fn _ ->
+              {target_id, target_num}
+            end)
+            |> List.update_at(taregt_index, fn _ ->
+              {nil, target_num}
+            end)
+
+          if num == target_num do
+            acc_blocks
+          else
+            List.insert_at(acc_blocks, target_blank_index + 1, {nil, num - target_num})
+          end
+          |> Enum.reduce({[], nil}, fn {id, num} = new, {acc_acc_blocks, pre_block} ->
+            case {pre_block, id} do
+              {{nil, pre_num}, nil} ->
+                merged = {nil, num + pre_num}
+                {[merged | tl(acc_acc_blocks)], merged}
+              _ ->
+                {[new | acc_acc_blocks], new}
+            end
+          end)
+          |> elem(0)
+          |> Enum.reverse()
+        else
+          acc_blocks
+        end
+    end
+  end)
+end
+```
+
+```elixir
+compacted_blocks = compact.(blocks)
+```
+
+```elixir
+get_checksum = fn blocks ->
+  blocks
+  |> Enum.flat_map(fn {id, num} ->
+    List.duplicate(id, num)
+  end)
+  |> Enum.with_index()
+  |> Enum.map(fn {num, index} ->
+    case num do
+      nil -> 0
+      _ -> num * index
+    end
+  end)
+  |> Enum.sum()
+end
+```
+
+```elixir
+get_checksum.(compacted_blocks)
+```
+
+```elixir
+blocks = get_blocks.(puzzle_input)
+```
+
+```elixir
+compacted_blocks = compact.(blocks)
+```
+
+```elixir
+get_checksum.(compacted_blocks)
+```

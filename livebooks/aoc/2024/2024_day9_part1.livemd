@@ -1,0 +1,103 @@
+# Advent of Code 2024 Day 9 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiI5Iiwic2Vzc2lvbl9zZWNyZXQiOiJTRVNTSU9OIiwieWVhciI6IjIwMjQifQ","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "9", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+sample_input = "2333133121414131402"
+```
+
+```elixir
+get_blocks = fn input ->
+  input
+  |> String.codepoints()
+  |> Enum.with_index()
+  |> Enum.reduce({[], 0}, fn {num, index}, {acc_list, acc_num_blanck} ->
+    num = String.to_integer(num)
+
+    {id, num_blanck} =
+      case rem(index, 2) do
+        0 ->
+          {div(index, 2), 0}
+        _ ->
+          {nil, num}
+      end
+
+    {
+      acc_list ++ List.duplicate(id, num),
+      acc_num_blanck + num_blanck
+    }
+  end)
+end
+```
+
+```elixir
+{blocks, num_blank} = get_blocks.(sample_input)
+```
+
+```elixir
+compact = fn blocks, num_blank ->
+  1..num_blank
+  |> Enum.reduce_while(Enum.reverse(blocks), fn _, acc_blocks ->
+    case acc_blocks |> Enum.reverse() |> Enum.find_index(&(is_nil(&1))) do
+      nil ->
+        {:halt, acc_blocks}
+      index ->
+        blank_index = length(acc_blocks) - 1 - index
+  
+        {
+          :cont,
+          acc_blocks
+          |> List.update_at(blank_index, fn _ -> hd(acc_blocks) end)
+          |> tl()
+        }
+    end
+  end)
+  |> Enum.reverse()
+end
+```
+
+```elixir
+compacted_blocks = compact.(blocks, num_blank)
+```
+
+```elixir
+get_checksum = fn blocks ->
+  blocks
+  |> Enum.with_index()
+  |> Enum.map(fn {num, index} ->
+    num * index
+  end)
+  |> Enum.sum()
+end
+```
+
+```elixir
+get_checksum.(compacted_blocks)
+```
+
+```elixir
+{blocks, num_blank} = get_blocks.(puzzle_input)
+```
+
+```elixir
+compacted_blocks = compact.(blocks, num_blank)
+```
+
+```elixir
+get_checksum.(compacted_blocks)
+```
