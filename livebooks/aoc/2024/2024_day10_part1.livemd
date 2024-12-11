@@ -1,0 +1,124 @@
+# Advent of Code 2024 Day 10 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMCIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "10", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+small_sample_input =
+  """
+  0123
+  1234
+  8765
+  9876
+  """
+  |> String.trim()
+```
+
+```elixir
+defmodule Hiking do
+  @next_point [
+    {-1, 0},
+    {1, 0},
+    {0, -1},
+    {0, 1}
+  ]
+
+  def parse_map(input) do
+    input
+    |> String.split("\n")
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {row, row_index} ->
+      row
+      |> String.codepoints()
+      |> Enum.with_index()
+      |> Enum.map(fn {height, col_index} ->
+        {{row_index, col_index}, String.to_integer(height)}
+      end)
+    end)
+    |> Enum.into(%{})
+  end
+
+  def up(map, {cur_r, cur_c}, next_height) do
+    @next_point
+    |> Enum.map(fn {mov_r, move_c} ->
+      next_point = {cur_r + mov_r, cur_c + move_c}
+
+      case Map.get(map, next_point) do
+        ^next_height ->
+          if next_height == 9 do
+            [next_point]
+          else
+            up(map, next_point, next_height + 1)
+          end
+
+        _ ->
+          []
+      end
+    end)
+    |> List.flatten()
+    |> Enum.uniq()
+  end
+
+  def get_score(map) do
+    map
+    |> Enum.filter(fn {_, height} ->
+      height == 0
+    end)
+    |> Enum.map(fn {point, _} ->
+      map
+      |> Hiking.up(point, 1)
+      |> length()
+    end)
+    |> Enum.sum()
+  end
+end
+```
+
+```elixir
+small_map = Hiking.parse_map(small_sample_input)
+```
+
+```elixir
+Hiking.get_score(small_map)
+```
+
+```elixir
+large_sample_input =
+  """
+  89010123
+  78121874
+  87430965
+  96549874
+  45678903
+  32019012
+  01329801
+  10456732
+  """
+  |> String.trim()
+```
+
+```elixir
+large_sample_input
+|> Hiking.parse_map()
+|> Hiking.get_score()
+```
+
+```elixir
+puzzle_input
+|> Hiking.parse_map()
+|> Hiking.get_score()
+```
