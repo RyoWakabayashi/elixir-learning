@@ -1,0 +1,46 @@
+# KinoBenchee
+
+```elixir
+Mix.install([
+  {:kino_benchee, "~> 0.1"}
+])
+```
+
+## Benchmark
+
+```elixir
+defmodule Digits do
+  def count_by_integer_digits(n) do
+    n |> Integer.digits() |> length()
+  end
+
+  def count_by_common_logarithm(n) do
+    n |> :math.log10() |> floor() |> Kernel.+(1)
+  end
+end
+```
+
+```elixir
+Digits.count_by_integer_digits(123)
+```
+
+```elixir
+Digits.count_by_common_logarithm(123)
+```
+
+```elixir
+defmodule MyBenchmark do
+  def run() do
+    Benchee.run(
+      %{
+        "Integer.digits" => fn -> Digits.count_by_integer_digits(123456789) end,
+        ":math.log10" => fn -> Digits.count_by_common_logarithm(123456789) end
+      },
+      memory_time: 2,
+      reduction_time: 2
+    )
+  end
+end
+
+MyBenchmark.run()
+```
