@@ -1,0 +1,147 @@
+# Advent of Code 2024 Day 14 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxNCIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "14", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+sample_input =
+  """
+  p=0,4 v=3,-3
+  p=6,3 v=-1,-3
+  p=10,3 v=-1,2
+  p=2,0 v=2,-1
+  p=0,0 v=1,3
+  p=3,0 v=-2,-2
+  p=7,6 v=-1,-3
+  p=3,0 v=-1,-2
+  p=9,3 v=2,3
+  p=7,3 v=-1,2
+  p=2,4 v=2,-3
+  p=9,5 v=-3,-3
+  """
+  |> String.trim()
+```
+
+```elixir
+parse_robots = fn input ->
+  input
+  |> String.split("\n")
+  |> Enum.map(fn row ->
+    Regex.named_captures(
+      ~r/p=(?<px>\d+),(?<py>\d+) v=(?<vx>\-*\d+),(?<vy>\-*\d+)/,
+      row
+    )
+  end)
+  |> Enum.map(fn %{"px" => px, "py" => py, "vx" => vx, "vy" => vy} ->
+    %{
+      p: {String.to_integer(px), String.to_integer(py)},
+      v: {String.to_integer(vx), String.to_integer(vy)}
+    }
+  end)
+end
+```
+
+```elixir
+robots = parse_robots.(sample_input)
+```
+
+```elixir
+move = fn %{p: {px, py}, v: {vx, vy}}, {tx, ty}, step ->
+  {
+    (px + vx * step) |> rem(tx) |> Kernel.+(tx) |> rem(tx),
+    (py + vy * step) |> rem(ty) |> Kernel.+(ty) |> rem(ty)
+  }
+end
+```
+
+```elixir
+tiles = {11, 7}
+```
+
+```elixir
+0..5
+|> Enum.map(fn step ->
+  move.(%{p: {2, 4}, v: {2, -3}}, tiles, step)
+end)
+```
+
+```elixir
+get_quadrants = fn points, {tx, ty} ->
+  init_quadrants = %{
+    {0, 0} => 0,
+    {0, 1} => 0,
+    {1, 0} => 0,
+    {1, 1} => 0
+  }
+
+  bx = div(tx, 2)
+  by = div(ty, 2)
+
+  points
+  |> Enum.reduce(init_quadrants, fn {px, py}, acc_quadrants ->
+    {
+      cond do
+        px == bx -> nil
+        px < bx -> 0
+        true -> 1
+      end,
+      cond do
+        py == by -> nil
+        py < by -> 0
+        true -> 1
+      end
+    }
+    |> case do
+      {nil, _} ->
+        acc_quadrants
+
+      {_, nil} ->
+        acc_quadrants
+
+      key ->
+        Map.put(acc_quadrants, key, Map.get(acc_quadrants, key) + 1)
+    end
+  end)
+end
+```
+
+```elixir
+quadrants =
+  robots
+  |> Enum.map(fn robot ->
+    move.(robot, tiles, 100)
+  end)
+  |> get_quadrants.(tiles)
+```
+
+```elixir
+Enum.reduce(quadrants, 1, fn {_, num}, acc -> acc * num end)
+```
+
+```elixir
+tiles = {101, 103}
+```
+
+```elixir
+puzzle_input
+|> parse_robots.()
+|> Enum.map(fn robot ->
+  move.(robot, tiles, 100)
+end)
+|> get_quadrants.(tiles)
+|> Enum.reduce(1, fn {_, num}, acc -> acc * num end)
+```
