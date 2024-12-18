@@ -1,0 +1,103 @@
+# Advent of Code 2024 Day 13 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMyIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "13", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+sample_input =
+  """
+  Button A: X+94, Y+34
+  Button B: X+22, Y+67
+  Prize: X=8400, Y=5400
+  
+  Button A: X+26, Y+66
+  Button B: X+67, Y+21
+  Prize: X=12748, Y=12176
+  
+  Button A: X+17, Y+86
+  Button B: X+84, Y+37
+  Prize: X=7870, Y=6450
+  
+  Button A: X+69, Y+23
+  Button B: X+27, Y+71
+  Prize: X=18641, Y=10279
+  """
+  |> String.trim()
+```
+
+```elixir
+parse_machines = fn input ->
+  input
+  |> String.split("\n\n")
+  |> Enum.map(fn machine_rows ->
+    Regex.named_captures(
+      ~r/\+(?<ax>\d+).*\+(?<ay>\d+)\n.*\+(?<bx>\d+).*\+(?<by>\d+)\n.*=(?<px>\d+).*=(?<py>\d+)/,
+      machine_rows
+    )
+  end)
+  |> Enum.map(fn %{"ax" => ax, "ay" => ay, "bx" => bx, "by" => by, "px" => px, "py" => py} ->
+    %{
+      a: %{x: String.to_integer(ax), y: String.to_integer(ay)},
+      b: %{x: String.to_integer(bx), y: String.to_integer(by)},
+      prize: %{x: String.to_integer(px), y: String.to_integer(py)}
+    }
+  end)
+end
+```
+
+```elixir
+machines = parse_machines.(sample_input)
+```
+
+```elixir
+get_prize = fn %{a: %{x: ax, y: ay}, b: %{x: bx, y: by}, prize: %{x: px, y: py}} ->
+  for num_a <- 0..100,
+      num_b <- 0..100,
+      num_a * ax + num_b * bx == px,
+      num_a * ay + num_b * by == py do
+    {num_a, num_b}
+  end
+end
+```
+
+```elixir
+get_cost = fn machines ->
+  machines
+  |> Enum.map(fn machine ->
+    machine
+    |> get_prize.()
+    |> Enum.map(fn {num_a, num_b} ->
+      num_a * 3 + num_b
+    end)
+    |> case do
+      [] -> 0
+      costs -> Enum.min(costs)
+    end
+  end)
+  |> Enum.sum()
+end
+```
+
+```elixir
+get_cost.(machines)
+```
+
+```elixir
+puzzle_input
+|> parse_machines.()
+|> get_cost.()
+```

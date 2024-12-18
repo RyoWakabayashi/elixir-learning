@@ -1,0 +1,124 @@
+# Advent of Code 2024 Day 13 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"},
+  {:nx, "~> 0.9"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMyIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "13", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+sample_input =
+  """
+  Button A: X+94, Y+34
+  Button B: X+22, Y+67
+  Prize: X=8400, Y=5400
+  
+  Button A: X+26, Y+66
+  Button B: X+67, Y+21
+  Prize: X=12748, Y=12176
+  
+  Button A: X+17, Y+86
+  Button B: X+84, Y+37
+  Prize: X=7870, Y=6450
+  
+  Button A: X+69, Y+23
+  Button B: X+27, Y+71
+  Prize: X=18641, Y=10279
+  """
+  |> String.trim()
+```
+
+```elixir
+parse_machines = fn input ->
+  input
+  |> String.split("\n\n")
+  |> Enum.map(fn machine_rows ->
+    Regex.named_captures(
+      ~r/\+(?<ax>\d+).*\+(?<ay>\d+)\n.*\+(?<bx>\d+).*\+(?<by>\d+)\n.*=(?<px>\d+).*=(?<py>\d+)/,
+      machine_rows
+    )
+  end)
+  |> Enum.map(fn %{"ax" => ax, "ay" => ay, "bx" => bx, "by" => by, "px" => px, "py" => py} ->
+    %{
+      A: Nx.tensor([
+          [String.to_integer(ax), String.to_integer(bx)],
+          [String.to_integer(ay), String.to_integer(by)]
+      ], type: :f64),
+      b: Nx.tensor([
+        String.to_integer(px) + 10000000000000,
+        String.to_integer(py) + 10000000000000
+      ], type: :f64)
+    }
+  end)
+end
+```
+
+```elixir
+machines = parse_machines.(sample_input)
+```
+
+```elixir
+Nx.LinAlg.solve(
+  Nx.tensor([[26, 67], [66, 21]], type: :f64),
+  Nx.tensor([10000000012748, 10000000012176], type: :f64)
+)
+```
+
+```elixir
+Nx.LinAlg.solve(
+  Nx.tensor([[94, 22], [34, 67]], type: :f64),
+  Nx.tensor([10000000008400, 10000000005400], type: :f64)
+)
+```
+
+```elixir
+get_prize = fn %{A: a, b: b} ->
+  x = Nx.LinAlg.solve(a, b)
+
+  if x |> Nx.to_list() |> Enum.all?(&(round(&1 * 100) == round(&1) * 100)) do
+    x |> Nx.to_list() |> Enum.map(&round(&1))
+  else
+    [0, 0]
+  end
+end
+```
+
+```elixir
+Enum.map(machines, &get_prize.(&1))
+```
+
+```elixir
+get_cost = fn machines ->
+  machines
+  |> Enum.map(fn machine ->
+    machine
+    |> get_prize.()
+    |> then(fn [num_a, num_b] ->
+      num_a * 3 + num_b
+    end)
+  end)
+  |> Enum.sum()
+end
+```
+
+```elixir
+get_cost.(machines)
+```
+
+```elixir
+puzzle_input
+|> parse_machines.()
+|> get_cost.()
+```
