@@ -1,0 +1,343 @@
+# Advent of Code 2024 Day 12 Part 2
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMiIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "12", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+small_sample_input =
+  """
+  AAAA
+  BBCD
+  BBCC
+  EEEC
+  """
+  |> String.trim()
+```
+
+```elixir
+parse_map = fn input ->
+  input
+  |> String.split("\n")
+  |> Enum.with_index()
+  |> Enum.flat_map(fn {row, row_index} ->
+    row
+    |> String.codepoints()
+    |> Enum.with_index()
+    |> Enum.map(fn {plant, col_index} ->
+      {{row_index, col_index}, plant}
+    end)
+  end)
+  |> Enum.into(%{})
+end
+```
+
+```elixir
+map = parse_map.(small_sample_input)
+```
+
+```elixir
+defmodule Regions do
+  @next_points [
+    {:top, {-1, 0}},
+    {:bottom, {1, 0}},
+    {:left, {0, -1}},
+    {:right, {0, 1}}
+  ]
+
+  @corner_points %{
+    tl: {-1, -1},
+    tr: {-1, 1},
+    bl: {1, -1},
+    br: {1, 1}
+  }
+
+  @initial_region %{
+    price: 0,
+    num_corners: 0,
+    points: []
+  }
+
+  def get(map) do
+    map_with_corners =
+      map
+      |> get_points_corners()
+      |> get_num_corners()
+
+    map_with_corners
+    |> Enum.reduce(%{}, fn {_, %{plant: plant}} = area, acc_regions ->
+      region = connect_point(area, map_with_corners, acc_regions)
+      Map.put(acc_regions, plant, region)
+    end)
+  end
+
+  def get_points_corners(map) do
+    map
+    |> Enum.into(%{}, fn {point, plant} ->
+      {cur_r, cur_c} = point
+
+      directions =
+        @next_points
+        |> Enum.reduce([], fn {direction, {mov_r, move_c}}, acc_directions ->
+          next_point = {cur_r + mov_r, cur_c + move_c}
+
+          case Map.get(map, next_point) do
+            ^plant ->
+              [direction | acc_directions]
+
+            _ ->
+              acc_directions
+          end
+        end)
+
+      {
+        point,
+        %{
+          plant: plant,
+          corners: get_corners(directions),
+          not_corners: get_not_corners(directions)
+        }
+      }
+    end)
+  end
+
+  def get_corners(directions) do
+    [
+      {:tl, :top, :left},
+      {:tr, :top, :right},
+      {:bl, :bottom, :left},
+      {:br, :bottom, :right}
+    ]
+    |> Enum.filter(fn {_, vertical, horizontal} ->
+      if !Enum.member?(directions, vertical) and !Enum.member?(directions, horizontal) do
+        :tl
+      else
+        nil
+      end
+    end)
+    |> Enum.map(fn {corner, _, _} ->
+      corner
+    end)
+  end
+
+  def get_not_corners(directions) do
+    [
+      {:tl, :top, :left},
+      {:tr, :top, :right},
+      {:bl, :bottom, :left},
+      {:br, :bottom, :right}
+    ]
+    |> Enum.filter(fn {_, vertical, horizontal} ->
+      if Enum.member?(directions, vertical) and Enum.member?(directions, horizontal) do
+        :tl
+      else
+        nil
+      end
+    end)
+    |> Enum.map(fn {corner, _, _} ->
+      corner
+    end)
+  end
+
+  defp get_num_corners(map) do
+    map
+    |> Enum.into(%{}, fn {point, %{plant: plant, corners: corners, not_corners: not_corners}} ->
+      num_outside_corners = length(corners)
+      {cur_r, cur_c} = point
+
+      num_inside_corners =
+        not_corners
+        |> Enum.count(fn not_coner ->
+          {mov_r, move_c} = Map.get(@corner_points, not_coner)
+          corner_point = {cur_r + mov_r, cur_c + move_c}
+
+          case Map.get(map, corner_point) do
+            nil -> false
+            %{plant: target_plant} ->
+              plant != target_plant
+          end
+        end)
+
+      {
+        point,
+        %{
+          plant: plant,
+          num_corners: num_outside_corners + num_inside_corners
+        }
+      }
+    end)
+  end
+
+  defp connect_point(area, map, acc_regions) do
+    {point, %{plant: plant, num_corners: new_corners}} = area
+    {cur_r, cur_c} = point
+
+    new_points =
+      @next_points
+      |> Enum.reduce([], fn {_, {mov_r, move_c}}, acc_points ->
+        next_point = {cur_r + mov_r, cur_c + move_c}
+
+        case Map.get(map, next_point) do
+          nil ->
+            acc_points
+
+          next_area ->
+            if next_area.plant == plant do
+              [next_point | acc_points]
+            else
+              acc_points
+            end
+        end
+      end)
+
+    new_points = [point | new_points]
+
+    case Map.get(acc_regions, plant) do
+      nil ->
+        [
+          %{
+            price: 1,
+            num_corners: new_corners,
+            points: new_points
+          }
+        ]
+
+      sub_regions ->
+        connected_regions =
+          sub_regions
+          |> Enum.filter(fn %{points: points} ->
+            Enum.any?(new_points, fn point ->
+              Enum.member?(points, point)
+            end)
+          end)
+
+        not_connected_regions = sub_regions -- connected_regions
+
+        merged_region =
+          connected_regions
+          |> merge_sub_regions()
+          |> then(fn %{price: price, num_corners: num_corners, points: points} ->
+            %{
+              price: price + 1,
+              num_corners: num_corners + new_corners,
+              points: Enum.uniq(new_points ++ points)
+            }
+          end)
+
+        [merged_region | not_connected_regions]
+    end
+  end
+
+  defp merge_sub_regions(connected_regions) do
+    connected_regions
+    |> Enum.reduce(@initial_region, fn sub_region, acc_sub_region ->
+      %{
+        price: acc_sub_region.price + sub_region.price,
+        num_corners: acc_sub_region.num_corners + sub_region.num_corners,
+        points: acc_sub_region.points ++ sub_region.points
+      }
+    end)
+  end
+end
+```
+
+```elixir
+Regions.get_corners([:left])
+```
+
+```elixir
+Regions.get_not_corners([:top, :left])
+```
+
+```elixir
+regions = Regions.get(map)
+```
+
+```elixir
+sum_price = fn regions ->
+  regions
+  |> Enum.map(fn {_, sub_regions} ->
+    sub_regions
+    |> Enum.map(fn %{price: price, num_corners: num_corners} ->
+      price * num_corners
+    end)
+    |> Enum.sum()
+  end)
+  |> Enum.sum()
+end
+```
+
+```elixir
+sum_price.(regions)
+```
+
+```elixir
+"""
+EEEEE
+EXXXX
+EEEEE
+EXXXX
+EEEEE
+"""
+|> String.trim()
+|> parse_map.()
+|> Regions.get()
+|> IO.inspect()
+|> sum_price.()
+```
+
+```elixir
+"""
+AAAAAA
+AAABBA
+AAABBA
+ABBAAA
+ABBAAA
+AAAAAA
+"""
+|> String.trim()
+|> parse_map.()
+|> Regions.get()
+|> IO.inspect()
+|> sum_price.()
+```
+
+```elixir
+"""
+RRRRIICCFF
+RRRRIICCCF
+VVRRRCCFFF
+VVRCCCJFFF
+VVVVCJJCFE
+VVIVCCJJEE
+VVIIICJJEE
+MIIIIIJJEE
+MIIISIJEEE
+MMMISSJEEE
+"""
+|> String.trim()
+|> parse_map.()
+|> Regions.get()
+|> IO.inspect()
+|> sum_price.()
+```
+
+```elixir
+puzzle_input
+|> parse_map.()
+|> Regions.get()
+|> sum_price.()
+```

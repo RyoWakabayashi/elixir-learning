@@ -1,0 +1,190 @@
+# Advent of Code 2024 Day 12 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxMiIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "12", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+small_sample_input =
+  """
+  AAAA
+  BBCD
+  BBCC
+  EEEC
+  """
+  |> String.trim()
+```
+
+```elixir
+parse_map = fn input ->
+  input
+  |> String.split("\n")
+  |> Enum.with_index()
+  |> Enum.flat_map(fn {row, row_index} ->
+    row
+    |> String.codepoints()
+    |> Enum.with_index()
+    |> Enum.map(fn {plant, col_index} ->
+      {{row_index, col_index}, plant}
+    end)
+  end)
+  |> Enum.into(%{})
+end
+```
+
+```elixir
+map = parse_map.(small_sample_input)
+```
+
+```elixir
+defmodule Regions do
+  @next_points [
+    {-1, 0},
+    {1, 0},
+    {0, -1},
+    {0, 1}
+  ]
+
+  @initial_region %{
+    price: 0,
+    fences: 0,
+    points: []
+  }
+
+  def get(map) do
+    map
+    |> Enum.reduce(%{}, fn {point, plant}, acc_regions ->
+      region = connect_point(point, plant, map, acc_regions)
+      Map.put(acc_regions, plant, region)
+    end)
+  end
+
+  defp connect_point(point, plant, map, acc_regions) do
+    {cur_r, cur_c} = point
+
+    {num_fences, new_points} =
+      @next_points
+      |> Enum.reduce({0, []}, fn {mov_r, move_c}, {acc_fences, acc_points} ->
+        next_point = {cur_r + mov_r, cur_c + move_c}
+
+        case Map.get(map, next_point) do
+          ^plant ->
+            {acc_fences, [next_point | acc_points]}
+
+          _ ->
+            {acc_fences + 1, acc_points}
+        end
+      end)
+
+    new_points = [point | new_points]
+
+    case Map.get(acc_regions, plant) do
+      nil ->
+        [
+          %{
+            price: 1,
+            fences: num_fences,
+            points: new_points
+          }
+        ]
+
+      sub_regions ->
+        connected_regions =
+          sub_regions
+          |> Enum.filter(fn %{points: points} ->
+            Enum.any?(new_points, fn point ->
+              Enum.member?(points, point)
+            end)
+          end)
+
+        not_connected_regions = sub_regions -- connected_regions
+
+        merged_region =
+          connected_regions
+          |> merge_sub_regions()
+          |> then(fn %{price: price, fences: fences, points: points} ->
+            %{
+              price: price + 1,
+              fences: fences + num_fences,
+              points: Enum.uniq(new_points ++ points)
+            }
+          end)
+
+        [merged_region | not_connected_regions]
+    end
+  end
+
+  defp merge_sub_regions(connected_regions) do
+    connected_regions
+    |> Enum.reduce(@initial_region, fn sub_region, acc_sub_region ->
+      %{
+        price: acc_sub_region.price + sub_region.price,
+        fences: acc_sub_region.fences + sub_region.fences,
+        points: acc_sub_region.points ++ sub_region.points
+      }
+    end)
+  end
+end
+```
+
+```elixir
+regions = Regions.get(map)
+```
+
+```elixir
+sum_price = fn regions ->
+  regions
+  |> Enum.map(fn {_, sub_regions} ->
+    sub_regions
+    |> Enum.map(fn %{price: price, fences: fences} ->
+      price * fences
+    end)
+    |> Enum.sum()
+  end)
+  |> Enum.sum()
+end
+```
+
+```elixir
+sum_price.(regions)
+```
+
+```elixir
+"""
+RRRRIICCFF
+RRRRIICCCF
+VVRRRCCFFF
+VVRCCCJFFF
+VVVVCJJCFE
+VVIVCCJJEE
+VVIIICJJEE
+MIIIIIJJEE
+MIIISIJEEE
+MMMISSJEEE
+"""
+|> String.trim()
+|> parse_map.()
+|> Regions.get()
+|> IO.inspect()
+|> sum_price.()
+```
+
+```elixir
+puzzle_input
+|> parse_map.()
+|> Regions.get()
+|> sum_price.()
+```
