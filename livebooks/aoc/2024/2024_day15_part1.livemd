@@ -1,0 +1,277 @@
+# Advent of Code 2024 Day 15 Part 1
+
+```elixir
+Mix.install([
+  {:kino_aoc, "~> 0.1"}
+])
+```
+
+## Get Inputs
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJwdXp6bGVfaW5wdXQiLCJkYXkiOiIxNSIsInNlc3Npb25fc2VjcmV0IjoiU0VTU0lPTiIsInllYXIiOiIyMDI0In0","chunks":null,"kind":"Elixir.KinoAOC.HelperCell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, puzzle_input} =
+  KinoAOC.download_puzzle("2024", "15", System.fetch_env!("LB_SESSION"))
+```
+
+## My answer
+
+```elixir
+small_sample_input =
+  """
+  ########
+  #..O.O.#
+  ##@.O..#
+  #...O..#
+  #.#.O..#
+  #...O..#
+  #......#
+  ########
+  
+  <^^>>>vv<v>>v<<
+  """
+  |> String.trim()
+```
+
+```elixir
+parse_map = fn input ->
+  [map_rows, direction_rows] = String.split(input, "\n\n")
+
+  map =
+    map_rows
+    |> String.split("\n")
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {row, row_index} ->
+      row
+      |> String.codepoints()
+      |> Enum.with_index()
+      |> Enum.map(fn {mark, col_index} ->
+        {{col_index, row_index}, mark}
+      end)
+    end)
+    |> Enum.into(%{})
+
+  directions =
+    direction_rows
+    |> String.replace("\n", "")
+    |> String.codepoints()
+
+  {map, directions}
+end
+```
+
+```elixir
+{map, directions} = parse_map.(small_sample_input)
+```
+
+```elixir
+get_robot_point = fn map ->
+  map
+  |> Enum.find(fn {_, mark} -> mark == "@" end)
+  |> elem(0)
+end
+```
+
+```elixir
+robot_point = get_robot_point.(map)
+```
+
+```elixir
+defmodule Robot do
+  def move({map, robot_point}, direction) do
+    moving_points = search_end_point(robot_point, direction, map, [])
+    end_point_mark = moving_points |> hd |> elem(1)
+
+    case end_point_mark do
+      "#" ->
+        {map, robot_point}
+
+      "." ->
+        {
+          go_next(robot_point, moving_points, map),
+          get_next_point(robot_point, direction)
+        }
+    end
+  end
+
+  defp go_next(robot_point, moving_points, map) do
+    moving_points
+    |> Enum.reverse()
+    |> Enum.with_index()
+    |> Enum.reduce(map, fn {moving_point, index}, acc_map ->
+      mark =
+        case index do
+          0 -> "@"
+          _ -> "O"
+        end
+
+      Map.put(acc_map, elem(moving_point, 0), mark)
+    end)
+    |> Map.put(robot_point, ".")
+  end
+
+  def search_end_point(robot_point, direction, map, acc) do
+    next_point = get_next_point(robot_point, direction)
+
+    next_point_mark = Map.get(map, next_point)
+    next_acc = [{next_point, next_point_mark} | acc]
+
+    case next_point_mark do
+      nil -> acc
+      "#" -> next_acc
+      "." -> next_acc
+      "O" -> search_end_point(next_point, direction, map, next_acc)
+    end
+  end
+
+  defp get_next_point({px, py}, direction) do
+    case direction do
+      "^" -> {px, py - 1}
+      "v" -> {px, py + 1}
+      "<" -> {px - 1, py}
+      ">" -> {px + 1, py}
+    end
+  end
+
+  def get_map_size(map) do
+    {
+      map |> Enum.map(fn {{x, _}, _} -> x end) |> Enum.max() |> Kernel.+(1),
+      map |> Enum.map(fn {{_, y}, _} -> y end) |> Enum.max() |> Kernel.+(1)
+    }
+  end
+
+  def display_map(map, {tx, ty}) do
+    0..(ty - 1)
+    |> Enum.map(fn y ->
+      0..(tx - 1)
+      |> Enum.map(fn x ->
+        Map.get(map, {x, y})
+      end)
+      |> Enum.join()
+    end)
+    |> Enum.join("\n")
+  end
+end
+```
+
+```elixir
+map_size = Robot.get_map_size(map)
+```
+
+```elixir
+map
+|> Robot.display_map(map_size)
+|> Kino.Text.new(terminal: true)
+```
+
+```elixir
+Robot.search_end_point({2, 2}, "<", map, [])
+```
+
+```elixir
+Robot.search_end_point({3, 2}, ">", map, [])
+```
+
+```elixir
+{map, robot_point}
+|> Robot.move("^")
+|> elem(0)
+|> Robot.display_map(map_size)
+|> Kino.Text.new(terminal: true)
+```
+
+```elixir
+{moved_map, _} =
+  directions
+  |> Enum.reduce({map, robot_point}, fn direction, {acc_map, acc_robot_point} ->
+    {acc_map, acc_robot_point} = Robot.move({acc_map, acc_robot_point}, direction)
+
+    IO.puts(direction)
+    acc_map |> Robot.display_map(map_size) |> IO.puts()
+    IO.puts("")
+
+    {acc_map, acc_robot_point}
+  end)
+
+moved_map
+|> Robot.display_map(map_size)
+|> Kino.Text.new(terminal: true)
+```
+
+```elixir
+get_gps_coordinate = fn map ->
+  map
+  |> Enum.map(fn {{x, y}, mark} ->
+    case mark do
+      "O" -> x + y * 100
+      _ -> 0
+    end
+  end)
+  |> Enum.sum()
+end
+```
+
+```elixir
+get_gps_coordinate.(moved_map)
+```
+
+```elixir
+{map, directions} =
+  """
+  ##########
+  #..O..O.O#
+  #......O.#
+  #.OO..O.O#
+  #..O@..O.#
+  #O#..O...#
+  #O..O..O.#
+  #.OO.O.OO#
+  #....O...#
+  ##########
+  
+  <vv>^<v^>v>^vv^v>v<>v^v<v<^vv<<<^><<><>>v<vvv<>^v^>^<<<><<v<<<v^vv^v>^
+  vvv<<^>^v^^><<>>><>^<<><^vv^^<>vvv<>><^^v>^>vv<>v<<<<v<^v>^<^^>>>^<v<v
+  ><>vv>v^v^<>><>>>><^^>vv>v<^^^>>v^v^<^^>v^^>v^<^v>v<>>v^v^<v>v^^<^^vv<
+  <<v<^>>^^^^>>>v^<>vvv^><v<<<>^^^vv^<vvv>^>v<^^^^v<>^>vvvv><>>v^<<^^^^^
+  ^><^><>>><>^^<<^^v>>><^<v>^<vv>>v>>>^v><>^v><<<<v>>v<v<v>vvv>^<><<>^><
+  ^>><>^v<><^vvv<^^<><v<<<<<><^v<<<><<<^^<v<^^^><^>>^<v^><<<^>>^v<v^v<v^
+  >^>>^v>vv>^<<^v<>><<><<v<<v><>v<^vv<<<>^^v^>^^>>><<^v>>v^v><^^>>^<>vv^
+  <><^^>^^^<><vvvvv^v<v<<>^v<v>v<<^><<><<><<<^^<<<^<<>><<><^^^>^^<>^>v<>
+  ^^>vv<^v^v<vv>^<><v<^v>^^^>>>^^vvv^>vvv<>>>^<^>>>>>^<<^v>^vvv<>^<><<v>
+  v^^>>><<^^<>>^v^<v^vv<>v^<<>^<^v^v><^<<<><<^<v><v<>vv>>v><v^<vv<>v^<<^
+  """
+  |> String.trim()
+  |> parse_map.()
+
+robot_point = get_robot_point.(map)
+map_size = Robot.get_map_size(map)
+
+{moved_map, _} =
+  directions
+  |> Enum.reduce({map, robot_point}, fn direction, {acc_map, acc_robot_point} ->
+    Robot.move({acc_map, acc_robot_point}, direction)
+  end)
+
+moved_map
+|> Robot.display_map(map_size)
+|> Kino.Text.new(terminal: true)
+```
+
+```elixir
+get_gps_coordinate.(moved_map)
+```
+
+```elixir
+{map, directions} = parse_map.(puzzle_input)
+
+robot_point = get_robot_point.(map)
+map_size = Robot.get_map_size(map)
+
+directions
+|> Enum.reduce({map, robot_point}, fn direction, {acc_map, acc_robot_point} ->
+  Robot.move({acc_map, acc_robot_point}, direction)
+end)
+|> elem(0)
+|> get_gps_coordinate.()
+```
