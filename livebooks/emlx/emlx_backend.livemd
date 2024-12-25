@@ -1,0 +1,83 @@
+# Benchmark for Nx
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:torchx, "~> 0.9"},
+  {:emlx, github: "elixir-nx/emlx"},
+  {:kino_benchee, "~> 0.1"}
+])
+```
+
+## Generate each backend tensors
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: Nx.BinaryBackend)
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: EXLA.Backend)
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: Torchx.Backend)
+Nx.add(tensor, tensor)
+```
+
+```elixir
+tensor = Nx.tensor([1.0, 2.0, 3.0], backend: EMLX.Backend)
+Nx.add(tensor, tensor)
+```
+
+## Benchmark
+
+```elixir
+defmodule MyBenchmark do
+  def add(backend) do
+    tensor = Nx.iota({200, 200}, type: {:f, 64}, backend: backend)
+    Nx.add(tensor, tensor)
+  end
+
+  def dot(backend) do
+    tensor = Nx.iota({200, 200}, type: {:f, 64}, backend: backend)
+    Nx.dot(tensor, tensor)
+  end
+
+  def run_add() do
+    Benchee.run(
+      %{
+        "binary" => fn -> add(Nx.BinaryBackend) end,
+        "exla" => fn -> add(EXLA.Backend) end,
+        "torchx" => fn -> add(Torchx.Backend) end,
+        "emlx" => fn -> add(EMLX.Backend) end
+      },
+      memory_time: 2,
+      reduction_time: 2
+    )
+  end
+
+  def run_dot() do
+    Benchee.run(
+      %{
+        "binary" => fn -> dot(Nx.BinaryBackend) end,
+        "exla" => fn -> dot(EXLA.Backend) end,
+        "torchx" => fn -> dot(Torchx.Backend) end,
+        "emlx" => fn -> dot(EMLX.Backend) end
+      },
+      memory_time: 2,
+      reduction_time: 2
+    )
+  end
+end
+```
+
+```elixir
+MyBenchmark.run_add()
+```
+
+```elixir
+MyBenchmark.run_dot()
+```
