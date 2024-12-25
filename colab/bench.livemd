@@ -8,7 +8,7 @@ Mix.install(
     {:exla, "~> 0.9"},
     {:torchx, "~> 0.9"},
     {:evision, "~> 0.2"},
-    {:kino, "~> 0.14"}
+    {:kino_benchee, "~> 0.1"}
   ],
   system_env: [
     {"XLA_TARGET", "cuda12"},
@@ -52,18 +52,24 @@ Nx.add(tensor, tensor)
 ## Benchmark
 
 ```elixir
-bench = fn backend ->
-  tensor = Nx.iota({200, 200}, type: {:f, 64}, backend: backend)
-  Nx.add(tensor, tensor)
+defmodule MyBenchmark do
+  def add(backend) do
+    tensor = Nx.iota({200, 200}, type: {:f, 64}, backend: backend)
+    Nx.add(tensor, tensor)
+  end
+
+  def run() do
+    Benchee.run(%{
+      "binary" => fn -> add(Nx.BinaryBackend) end,
+      "exla" => fn -> add({EXLA.Backend, device_id: 0}) end,
+      "torchx_cpu" => fn -> add({Torchx.Backend, device: :cpu}) end,
+      "torchx" => fn -> add({Torchx.Backend, device: :cuda}) end,
+      "evision" => fn -> add(Evision.Backend) end
+    })
+  end
 end
 ```
 
 ```elixir
-Benchee.run(%{
-  "binary" => fn -> bench.(Nx.BinaryBackend) end,
-  "exla" => fn -> bench.({EXLA.Backend, device_id: 0}) end,
-  "torchx_cpu" => fn -> bench.({Torchx.Backend, device: :cpu}) end,
-  "torchx" => fn -> bench.({Torchx.Backend, device: :cuda}) end,
-  "evision" => fn -> bench.(Evision.Backend) end
-})
+MyBenchmark.run()
 ```
