@@ -1,0 +1,357 @@
+# Charms sort benchmark
+
+```elixir
+Mix.install([
+  {:charms, "~> 0.1.2", git: "https://github.com/beaver-lodge/charms"},
+  {:kino_benchee, "~> 0.1.0"}
+])
+```
+
+## Section
+
+```elixir
+arr = Enum.to_list(1..10000) |> Enum.shuffle()
+```
+
+```elixir
+defmodule SortUtil do
+  @moduledoc false
+  use Charms
+  alias Charms.{Pointer, Term}
+
+  defm copy_terms(env, movable_list_ptr :: Pointer.t(Term.t()), arr :: Pointer.t(Term.t())) do
+    head = Pointer.allocate(Term.t())
+    zero = const 0 :: i32()
+    i_ptr = Pointer.allocate(i32())
+    Pointer.store(zero, i_ptr)
+
+    while(
+      enif_get_list_cell(
+        env,
+        Pointer.load(movable_list_ptr),
+        head,
+        movable_list_ptr
+      ) > 0
+    ) do
+      head_val = Pointer.load(head)
+      i = Pointer.load(i_ptr)
+      ith_term_ptr = Pointer.element_ptr(arr, i)
+      Pointer.store(head_val, ith_term_ptr)
+      Pointer.store(i + 1, i_ptr)
+    end
+  end
+
+  defm merge(arr :: Pointer.t(Term.t()), l :: i32(), m :: i32(), r :: i32()) do
+    n1 = m - l + 1
+    n2 = r - m
+
+    left_temp = Pointer.allocate(Term.t(), n1)
+    right_temp = Pointer.allocate(Term.t(), n2)
+
+    for_loop {element, i} <- {Pointer.element_ptr(arr, l), n1} do
+      Pointer.store(element, Pointer.element_ptr(left_temp, i))
+    end
+
+    for_loop {element, j} <- {Pointer.element_ptr(arr, m + 1), n2} do
+      Pointer.store(element, Pointer.element_ptr(right_temp, j))
+    end
+
+    i_ptr = Pointer.allocate(i32())
+    j_ptr = Pointer.allocate(i32())
+    k_ptr = Pointer.allocate(i32())
+
+    zero = const 0 :: i32()
+    Pointer.store(zero, i_ptr)
+    Pointer.store(zero, j_ptr)
+    Pointer.store(l, k_ptr)
+
+    while Pointer.load(i32(), i_ptr) < n1 && Pointer.load(i32(), j_ptr) < n2 do
+      i = Pointer.load(i32(), i_ptr)
+      j = Pointer.load(i32(), j_ptr)
+      k = Pointer.load(i32(), k_ptr)
+
+      left_term = Pointer.load(Term.t(), Pointer.element_ptr(left_temp, i))
+      right_term = Pointer.load(Term.t(), Pointer.element_ptr(right_temp, j))
+
+      if enif_compare(left_term, right_term) <= 0 do
+        Pointer.store(
+          Pointer.load(Term.t(), Pointer.element_ptr(left_temp, i)),
+          Pointer.element_ptr(arr, k)
+        )
+
+        Pointer.store(i + 1, i_ptr)
+      else
+        Pointer.store(
+          Pointer.load(Term.t(), Pointer.element_ptr(right_temp, j)),
+          Pointer.element_ptr(arr, k)
+        )
+
+        Pointer.store(j + 1, j_ptr)
+      end
+
+      Pointer.store(k + 1, k_ptr)
+    end
+
+    while Pointer.load(i32(), i_ptr) < n1 do
+      i = Pointer.load(i32(), i_ptr)
+      k = Pointer.load(i32(), k_ptr)
+
+      Pointer.store(
+        Pointer.load(Term.t(), Pointer.element_ptr(left_temp, i)),
+        Pointer.element_ptr(arr, k)
+      )
+
+      Pointer.store(i + 1, i_ptr)
+      Pointer.store(k + 1, k_ptr)
+    end
+
+    while Pointer.load(i32(), j_ptr) < n2 do
+      j = Pointer.load(i32(), j_ptr)
+      k = Pointer.load(i32(), k_ptr)
+
+      Pointer.store(
+        Pointer.load(Term.t(), Pointer.element_ptr(right_temp, j)),
+        Pointer.element_ptr(arr, k)
+      )
+
+      Pointer.store(j + 1, j_ptr)
+      Pointer.store(k + 1, k_ptr)
+    end
+  end
+end
+```
+
+```elixir
+defmodule ENIFQuickSort do
+  @moduledoc false
+  use Charms
+  alias Charms.{Pointer, Term}
+
+  defm swap(a :: Pointer.t(Term.t()), b :: Pointer.t(Term.t())) do
+    val_a = Pointer.load(a)
+    val_b = Pointer.load(b)
+    Pointer.store(val_b, a)
+    Pointer.store(val_a, b)
+  end
+
+  defm partition(arr :: Pointer.t(Term.t()), low :: i32(), high :: i32()) :: i32() do
+    pivot_ptr = Pointer.element_ptr(arr, high)
+    pivot = Pointer.load(pivot_ptr)
+    i_ptr = Pointer.allocate(i32())
+    Pointer.store(low - 1, i_ptr)
+    start = Pointer.element_ptr(arr, low)
+
+    for_loop {element, j} <- {start, high - low} do
+      if enif_compare(element, pivot) < 0 do
+        i = Pointer.load(i_ptr) + 1
+        Pointer.store(i, i_ptr)
+        swap(Pointer.element_ptr(arr, i), Pointer.element_ptr(start, j))
+      end
+    end
+
+    i = Pointer.load(i_ptr)
+    swap(Pointer.element_ptr(arr, i + 1), Pointer.element_ptr(arr, high))
+    func.return(i + 1)
+  end
+
+  defm do_sort(arr :: Pointer.t(Term.t()), low :: i32(), high :: i32()) do
+    if low < high do
+      pi = partition(arr, low, high)
+      do_sort(arr, low, pi - 1)
+      do_sort(arr, pi + 1, high)
+    end
+  end
+
+  @err %ArgumentError{message: "list expected"}
+  defm sort(env, list) :: Term.t() do
+    len_ptr = Pointer.allocate(i32())
+
+    if enif_get_list_length(env, list, len_ptr) != 0 do
+      movable_list_ptr = Pointer.allocate(Term.t())
+      Pointer.store(list, movable_list_ptr)
+      len = Pointer.load(len_ptr)
+      arr = Pointer.allocate(Term.t(), len)
+      SortUtil.copy_terms(env, movable_list_ptr, arr)
+      zero = const 0 :: i32()
+      do_sort(arr, zero, len - 1)
+      enif_make_list_from_array(env, arr, len)
+    else
+      enif_raise_exception(env, @err)
+    end
+  end
+end
+```
+
+```elixir
+ENIFQuickSort.sort(arr)
+```
+
+```elixir
+defmodule ENIFMergeSort do
+  @moduledoc false
+  use Charms
+  alias Charms.{Pointer, Term}
+
+  defm do_sort(arr :: Pointer.t(Term.t()), l :: i32(), r :: i32()) do
+    if l < r do
+      two = const 2 :: i32()
+      m = value arith.divsi(l + r, two) :: i32()
+      do_sort(arr, l, m)
+      do_sort(arr, m + 1, r)
+      SortUtil.merge(arr, l, m, r)
+    end
+  end
+
+  @err %ArgumentError{message: "list expected"}
+  defm sort(env, list) :: Term.t() do
+    len_ptr = Pointer.allocate(i32())
+
+    if enif_get_list_length(env, list, len_ptr) != 0 do
+      movable_list_ptr = Pointer.allocate(Term.t())
+      Pointer.store(list, movable_list_ptr)
+      len = Pointer.load(i32(), len_ptr)
+      arr = Pointer.allocate(Term.t(), len)
+      SortUtil.copy_terms(env, movable_list_ptr, arr)
+      zero = const 0 :: i32()
+      do_sort(arr, zero, len - 1)
+      enif_make_list_from_array(env, arr, len)
+    else
+      enif_raise_exception(env, @err)
+    end
+  end
+end
+```
+
+```elixir
+ENIFMergeSort.sort(arr)
+```
+
+```elixir
+defmodule ENIFTimSort do
+  @moduledoc false
+  use Charms
+  alias Charms.{Pointer, Term}
+
+  defm insertion_sort(arr :: Pointer.t(Term.t()), left :: i32(), right :: i32()) do
+    start_i = left + 1
+    start = Pointer.element_ptr(arr, start_i)
+    n = right - start_i + 1
+
+    for_loop {temp, i} <- {start, n} do
+      i = value index.casts(i) :: i32()
+      i = i + start_i
+      j_ptr = Pointer.allocate(i32())
+      Pointer.store(i - 1, j_ptr)
+
+      while(
+        Pointer.load(i32(), j_ptr) >= left &&
+          Pointer.load(Pointer.element_ptr(arr, Pointer.load(i32(), j_ptr))) >
+            temp
+      ) do
+        j = Pointer.load(i32(), j_ptr)
+
+        Pointer.store(
+          Pointer.load(Pointer.element_ptr(arr, j)),
+          Pointer.element_ptr(arr, j + 1)
+        )
+
+        Pointer.store(j - 1, j_ptr)
+      end
+
+      j = Pointer.load(i32(), j_ptr)
+      Pointer.store(temp, Pointer.element_ptr(arr, j + 1))
+    end
+  end
+
+  defm tim_sort(arr :: Pointer.t(Term.t()), n :: i32()) do
+    run = const 32 :: i32()
+    i_ptr = Pointer.allocate(i32())
+    zero = const 0 :: i32()
+    Pointer.store(zero, i_ptr)
+
+    while Pointer.load(i32(), i_ptr) < n do
+      i = Pointer.load(i32(), i_ptr)
+      min = value arith.minsi(i + run - 1, n - 1) :: i32()
+      insertion_sort(arr, i, min)
+      Pointer.store(i + run, i_ptr)
+    end
+
+    size_ptr = Pointer.allocate(i32())
+    Pointer.store(run, size_ptr)
+
+    while Pointer.load(i32(), size_ptr) < n do
+      size = Pointer.load(i32(), size_ptr)
+
+      left_ptr = Pointer.allocate(i32())
+      Pointer.store(zero, left_ptr)
+
+      while Pointer.load(i32(), left_ptr) < n do
+        left = Pointer.load(i32(), left_ptr)
+        mid = left + size - 1
+        right = op arith.minsi(left + 2 * size - 1, n - 1) :: i32()
+        right = result_at(right, 0)
+
+        if mid < right do
+          SortUtil.merge(arr, left, mid, right)
+        end
+
+        Pointer.store(left + 2 * size, left_ptr)
+      end
+
+      Pointer.store(size * 2, size_ptr)
+    end
+  end
+
+  @err %ArgumentError{message: "list expected"}
+  defm sort(env, list) :: Term.t() do
+    len_ptr = Pointer.allocate(i32())
+
+    if enif_get_list_length(env, list, len_ptr) != 0 do
+      movable_list_ptr = Pointer.allocate(Term.t())
+      Pointer.store(list, movable_list_ptr)
+      len = Pointer.load(i32(), len_ptr)
+      arr = Pointer.allocate(Term.t(), len)
+      SortUtil.copy_terms(env, movable_list_ptr, arr)
+      tim_sort(arr, len)
+      enif_make_list_from_array(env, arr, len)
+    else
+      enif_raise_exception(env, @err)
+    end
+  end
+end
+```
+
+```elixir
+ENIFTimSort.sort(arr)
+```
+
+```elixir
+defmodule MyBenchmark do
+  def run(size) do
+    Benchee.run(
+      %{
+        "Enum.sort" => &Enum.sort/1,
+        "enif_quick_sort" => &ENIFQuickSort.sort(&1),
+        "enif_merge_sort" => &ENIFMergeSort.sort(&1),
+        "enif_tim_sort" => &ENIFTimSort.sort(&1)
+      },
+      inputs: %{
+        "array size #{size}" => size
+      },
+      before_scenario: fn i ->
+        Enum.to_list(1..i) |> Enum.shuffle()
+      end,
+      memory_time: 2,
+      reduction_time: 2
+    )
+  end
+end
+```
+
+```elixir
+[10, 100, 1000, 10000, 20000]
+|> Enum.map(fn size ->
+  MyBenchmark.run(size)
+end)
+|> Kino.Layout.grid()
+```
