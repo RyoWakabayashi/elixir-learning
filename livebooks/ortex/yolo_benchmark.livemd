@@ -1,0 +1,152 @@
+# YOLO benchmark
+
+```elixir
+Mix.install([
+  {:yolo, ">= 0.0.0"},
+  {:yolo_fast_nms, "~> 0.1"},
+  {:exla, "~> 0.9"},
+  {:emlx, github: "elixir-nx/emlx"},
+  {:evision, "~> 0.2"},
+  {:kino_benchee, "~> 0.1"}
+])
+```
+
+## Use YOLOv8x
+
+```elixir
+v8x_onnx_input = Kino.Input.file("YOLOv8x ONNX")
+v8x_classes_json_input = Kino.Input.file("YOLOv8x CLASSES JSON")
+
+Kino.Layout.grid([v8x_onnx_input, v8x_classes_json_input], columns: 2)
+```
+
+```elixir
+v8x_model = YOLO.load([
+  model_path: v8x_onnx_input |> Kino.Input.read() |> Map.get(:file_ref) |> Kino.Input.file_path(), 
+  classes_path: v8x_classes_json_input |> Kino.Input.read() |> Map.get(:file_ref) |> Kino.Input.file_path()
+])
+```
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :png)
+```
+
+```elixir
+mat =
+  image_input
+  |> Kino.Input.read()
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
+  |> File.read!()
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
+```
+
+```elixir
+objects =
+  v8x_model
+  |> YOLO.detect(mat, nms_fun: &YoloFastNMS.run/3)
+  |> YOLO.to_detected_objects(v8x_model.classes)
+```
+
+```elixir
+draw_objects = fn mat, objects ->
+  objects
+  |> Enum.reduce(mat, fn %{class: class, prob: prob, bbox: bbox, class_idx: class_idx}, drawed_mat ->
+    %{w: w, h: h, cx: cx, cy: cy} = bbox
+    left = cx - div(w, 2)
+    top = cy - div(h, 2)
+    right = left + w
+    bottom = top + h
+  
+    score = round(prob * 100) |> Integer.to_string()
+  
+    color = {
+      case rem(class_idx, 3) do
+        0 -> 0
+        1 -> 128
+        2 -> 255
+      end,
+      case rem(80 - class_idx, 4) do
+        0 -> 0
+        1 -> 30
+        2 -> 60
+        3 -> 90
+      end,
+      case rem(40 + class_idx, 5) do
+        0 -> 255
+        1 -> 196
+        2 -> 128
+        3 -> 64
+        4 -> 0
+      end
+    }
+  
+    text = class <> ":" <> score
+    font = Evision.Constant.cv_FONT_HERSHEY_SIMPLEX()
+    font_scale = 1
+    font_thickness = 2
+    {{tw, th}, _} = Evision.getTextSize(text, font, font_scale, font_thickness)
+  
+    drawed_mat
+    |> Evision.rectangle(
+      {left, top},
+      {right, bottom},
+      color,
+      thickness: 10
+    )
+    |> Evision.rectangle(
+      {left - 5, top - th - 10},
+      {left + tw + 5, top},
+      color,
+      thickness: -1
+    )
+    |> Evision.putText(
+      text,
+      {left, top - 5},
+      font,
+      font_scale,
+      {255, 255, 255},
+      thickness: font_thickness
+    )
+  end)
+end
+```
+
+```elixir
+draw_objects.(mat, objects)
+```
+
+```elixir
+defmodule MyBenchmark do
+  def detect(model, mat) do
+    model
+    |> YOLO.detect(mat, nms_fun: &YoloFastNMS.run/3)
+    |> YOLO.to_detected_objects(model.classes)
+  end
+
+  def run(model, mat) do
+    Benchee.run(
+      %{
+        "binary" => fn ->
+          Nx.default_backend(Nx.BinaryBackend)
+          detect(model, mat)
+        end,
+        "exla" => fn ->
+          Nx.default_backend(EXLA.Backend)
+          detect(model, mat)
+        end,
+        "emlx" => fn ->
+          Nx.default_backend(EMLX.Backend)
+          detect(model, mat)
+        end
+      },
+      memory_time: 2,
+      reduction_time: 2
+    )
+  end
+end
+```
+
+```elixir
+MyBenchmark.run(v8x_model, mat)
+```

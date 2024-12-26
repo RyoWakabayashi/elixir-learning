@@ -1,0 +1,10 @@
+---
+
+services:
+  yolov8:
+    container_name: yolov8
+    build:
+      context: .
+    tty: true
+    volumes:
+      - ./models:/tmp/models
