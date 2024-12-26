@@ -1,0 +1,151 @@
+# YOLO
+
+```elixir
+Mix.install(
+  [
+    {:yolo, ">= 0.0.0"},
+    {:yolo_fast_nms, "~> 0.1"},
+    {:exla, "~> 0.9.2"},
+    {:evision, "~> 0.2.0"},
+    {:kino, "~> 0.14.2"}
+  ],
+  config: [
+    nx: [default_backend: EXLA.Backend]
+  ],
+  system_env: [
+    {"XLA_TARGET", "cuda12"},
+    {"EXLA_TARGET", "cuda"},
+    {"EVISION_ENABLE_CUDA", "true"},
+    {"EVISION_ENABLE_CONTRIB", "true"},
+    {"EVISION_CUDA_VERSION", "12"},
+    {"EVISION_CUDNN_VERSION", "9"}
+  ]
+)
+```
+
+## Load YOLOv8 model
+
+```elixir
+model = YOLO.load([
+  model_path: "/content/yolo_elixir/models/yolov8n.onnx", 
+  classes_path: "/content/yolo_elixir/models/yolov8n_classes.json"
+])
+```
+
+## Load image
+
+```elixir
+image_input = Kino.Input.image("IMAGE", format: :png)
+```
+
+```elixir
+image =
+  image_input
+  |> Kino.Input.read()
+  |> Map.get(:file_ref)
+  |> Kino.Input.file_path()
+  |> File.read!()
+```
+
+```elixir
+mat = Evision.imdecode(image, Evision.Constant.cv_IMREAD_COLOR())
+```
+
+## Detect objects
+
+```elixir
+objects =
+  model
+  |> YOLO.detect(mat, nms_fun: &YoloFastNMS.run/3)
+  |> YOLO.to_detected_objects(model.classes)
+```
+
+## Draw objects
+
+```elixir
+draw_objects = fn mat, objects ->
+  objects
+  |> Enum.reduce(mat, fn %{class: class, prob: prob, bbox: bbox, class_idx: class_idx}, drawed_mat ->
+    %{w: w, h: h, cx: cx, cy: cy} = bbox
+    left = cx - div(w, 2)
+    top = cy - div(h, 2)
+    right = left + w
+    bottom = top + h
+  
+    score = round(prob * 100) |> Integer.to_string()
+  
+    color = {
+      case rem(class_idx, 3) do
+        0 -> 0
+        1 -> 128
+        2 -> 255
+      end,
+      case rem(80 - class_idx, 4) do
+        0 -> 0
+        1 -> 30
+        2 -> 60
+        3 -> 90
+      end,
+      case rem(40 + class_idx, 5) do
+        0 -> 255
+        1 -> 196
+        2 -> 128
+        3 -> 64
+        4 -> 0
+      end
+    }
+  
+    text = class <> ":" <> score
+    font = Evision.Constant.cv_FONT_HERSHEY_SIMPLEX()
+    font_scale = 1
+    font_thickness = 2
+    {{tw, th}, _} = Evision.getTextSize(text, font, font_scale, font_thickness)
+  
+    drawed_mat
+    |> Evision.rectangle(
+      {left, top},
+      {right, bottom},
+      color,
+      thickness: 10
+    )
+    |> Evision.rectangle(
+      {left - 5, top - th - 10},
+      {left + tw + 5, top},
+      color,
+      thickness: -1
+    )
+    |> Evision.putText(
+      text,
+      {left, top - 5},
+      font,
+      font_scale,
+      {255, 255, 255},
+      thickness: font_thickness
+    )
+  end)
+end
+```
+
+```elixir
+draw_objects.(mat, objects)
+```
+
+## Use YOLOv8x
+
+```elixir
+model = YOLO.load([
+  model_path: "/content/yolo_elixir/models/yolov8x.onnx", 
+  classes_path: "/content/yolo_elixir/models/yolov8x_classes.json"
+])
+```
+
+```elixir
+objects =
+  model
+  |> YOLO.detect(mat, nms_fun: &YoloFastNMS.run/3)
+  |> YOLO.to_detected_objects(model.classes)
+```
+
+```elixir
+draw_objects.(mat, objects)
+```
