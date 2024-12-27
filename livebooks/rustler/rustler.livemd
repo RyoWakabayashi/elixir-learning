@@ -1,0 +1,104 @@
+# Rustler
+
+```elixir
+Mix.install([
+  {:rustler, "~> 0.35.1"}
+])
+```
+
+## Generate Rust project
+
+```elixir
+File.cd("/tmp")
+```
+
+```elixir
+module = "LearnRustler.Nif"
+name = "learn_rustler_nif"
+```
+
+```elixir
+Mix.Tasks.Rustler.New.run(["--module", module, "--name", name])
+```
+
+```elixir
+native_path = Path.join([File.cwd!(), "native", name])
+src_path = Path.join([native_path, "src", "lib.rs"])
+```
+
+```elixir
+File.write!(src_path, """
+#[rustler::nif]
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[rustler::nif]
+fn multiply(a: i32, b: i32) -> i32 {
+    a * b
+}
+
+#[rustler::nif]
+fn sort(v: Vec<i32>) -> Vec<i32> {
+    let mut sorted = v;
+    sorted.sort();
+    sorted
+}
+
+#[rustler::nif]
+fn hello(name: &str) -> String {
+    format!("Hello, {}", name)
+}
+
+rustler::init!("Elixir.LearnRustler.Nif");
+""")
+```
+
+## Build Rust project
+
+```elixir
+System.cmd(
+  "cargo",
+  ["rustc", "--release"],
+  cd: native_path,
+  stderr_to_stdout: true,
+  into: IO.stream(:stdio, :line)
+)
+```
+
+```elixir
+lib_path = Path.join([native_path, "target", "release", "liblearn_rustler_nif"])
+```
+
+## Load NIF
+
+```elixir
+defmodule LearnRustler.Nif do
+  def load(path), do: :erlang.load_nif(path, 0)
+
+  def add(_a, _b), do: :erlang.nif_error(:nif_not_loaded)
+  def multiply(_a, _b), do: :erlang.nif_error(:nif_not_loaded)
+  def sort(_v), do: :erlang.nif_error(:nif_not_loaded)
+  def hello(_name), do: :erlang.nif_error(:nif_not_loaded)
+end
+```
+
+```elixir
+LearnRustler.Nif.load(lib_path)
+```
+
+```elixir
+LearnRustler.Nif.add(3, 4)
+```
+
+```elixir
+LearnRustler.Nif.multiply(3, 4)
+```
+
+```elixir
+LearnRustler.Nif.sort([8, 5, 6, 2])
+```
+
+```elixir
+LearnRustler.Nif.hello("Rust")
+```
