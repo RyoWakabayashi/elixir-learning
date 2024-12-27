@@ -1,0 +1,60 @@
+# Zigler
+
+```elixir
+Mix.install([
+  {:zigler, "~> 0.13.3"}
+])
+```
+
+## Zig module
+
+```elixir
+defmodule ExampleZig do
+  use Zig, otp_app: :zigler
+
+  ~Z"""
+  const std = @import("std");
+  const beam = @import("beam");
+
+  pub fn add(a: i32, b: i32) i32 {
+    return a + b;
+  }
+
+  pub fn multiply(a: i32, b: i32) i32 {
+      return a * b;
+  }
+
+  pub fn sort(slice: []i32) []i32 {
+    std.mem.sort(i32, slice, {}, comptime std.sort.asc(i32));
+    return slice;
+  }
+
+  pub fn hello(name: []const u8) ![]u8 {
+    const greeting = "Hello, ";
+    const total_len = greeting.len + name.len;
+    var buffer = try beam.allocator.alloc(u8, total_len);
+
+    @memcpy(buffer[0..greeting.len], greeting);
+    @memcpy(buffer[greeting.len..], name);
+
+    return buffer;
+  }
+  """
+end
+```
+
+```elixir
+ExampleZig.add(3, 4)
+```
+
+```elixir
+ExampleZig.multiply(3, 4)
+```
+
+```elixir
+ExampleZig.sort([8, 5, 6, 2])
+```
+
+```elixir
+ExampleZig.hello("Zig")
+```
