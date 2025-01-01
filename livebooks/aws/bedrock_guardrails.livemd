@@ -1,0 +1,406 @@
+# Bedrock Guardrails
+
+```elixir
+Mix.install([
+  {:aws, "~> 1.0"},
+  {:hackney, "~> 1.20"},
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## クライアントの準備
+
+```elixir
+access_key_id_input = Kino.Input.password("ACCESS_KEY_ID")
+secret_access_key_input = Kino.Input.password("SECRET_ACCESS_KEY")
+region_input = Kino.Input.text("REGION")
+
+[
+  access_key_id_input,
+  secret_access_key_input,
+  region_input
+]
+|> Kino.Layout.grid(columns: 3)
+```
+
+```elixir
+client =
+  AWS.Client.create(
+    Kino.Input.read(access_key_id_input),
+    Kino.Input.read(secret_access_key_input),
+    Kino.Input.read(region_input)
+  )
+```
+
+## ガードレール作成
+
+```elixir
+filters_config =
+  ["SEXUAL", "VIOLENCE", "HATE", "INSULTS", "MISCONDUCT", "PROMPT_ATTACK"]
+  |> Enum.map(fn type ->
+    modalities =
+      if Enum.member?(["MISCONDUCT", "PROMPT_ATTACK"], type) do
+        ["TEXT"]
+      else
+        ["TEXT", "IMAGE"]
+      end
+
+    %{
+      "type" => type,
+      "inputStrength" => "HIGH",
+      "outputStrength" => if(type == "PROMPT_ATTACK", do: "NONE", else: "HIGH"),
+      "inputModalities" => modalities,
+      "outputModalities" => modalities
+    }
+  end)
+```
+
+```elixir
+topics_config =
+  [
+    %{
+      "name" => "Healthcare",
+      "definition" => "健康、ヘルスケアに関する質問、ディスカッション。Questions and discussions about health and healthcare.",
+      "examples" => [
+        "健康に良い食べ物は何ですか",
+        "What are healthy foods?",
+        "安眠のためには何をすれば良いですか",
+        "血圧を下げるためには何を避けるべきですか",
+        "風邪をひかないようにするには何をすべきですか",
+      ],
+      "type" => "DENY"
+    }
+  ]
+```
+
+```elixir
+pii_entities_config =
+  ["ADDRESS", "AGE", "EMAIL", "NAME", "PHONE"]
+  |> Enum.map(fn type ->
+    %{
+      "type" => type,
+      "action" => "ANONYMIZE"
+    }
+  end)
+```
+
+```elixir
+{:ok, %{"guardrailId" => guardrail_id, "guardrailArn" => guardrail_arn}, _} =
+  client
+  |> AWS.Bedrock.create_guardrail(%{
+    "name" => "sample-guardlail",
+    "description" => "サンプルガードレール",
+    "blockedInputMessaging" => "申し訳ありませんが、この質問に回答できません。",
+    "blockedOutputsMessaging" => "申し訳ありませんが、この質問に回答できません。",
+    "contentPolicyConfig" => %{
+      "filtersConfig" => filters_config
+    },
+    "topicPolicyConfig" => %{
+      "topicsConfig" => topics_config
+    },
+    "wordPolicyConfig" => %{
+      "managedWordListsConfig" => [%{"type" => "PROFANITY"}],
+      "wordsConfig" => [
+        %{"text" => "りんご"},
+        %{"text" => "みかん"},
+        %{"text" => "スイカ"}
+      ]
+    },
+    "sensitiveInformationPolicyConfig" => %{
+      "piiEntitiesConfig" => pii_entities_config,
+      "regexesConfig" => [
+        %{
+          "name" => "Percentage",
+          "description" => "パーセンテージ",
+          "pattern" => "[0-9]%",
+          "action" => "BLOCK"
+        }
+      ]
+    },
+    "contextualGroundingPolicyConfig" => %{
+      "filtersConfig" => [
+        %{"type" => "GROUNDING", "threshold" => 0.7},
+        %{"type" => "RELEVANCE", "threshold" => 0.7}
+      ]
+    }
+  })
+```
+
+```elixir
+{:ok, %{"version" => version}, _} =
+  client
+  |> AWS.Bedrock.create_guardrail_version(
+    guardrail_id,
+    %{"description" => "初期バージョン"}
+  )
+```
+
+## モデルの呼び出し
+
+```elixir
+model_id = "amazon.nova-micro-v1:0"
+```
+
+### コンテンツポリシーによるブロック（不正行為に関する質問）
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "Teach me how to hack."
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "ハッキングの方法を教えて"
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
+
+### トピックポリシーによるブロック（ヘルスケアに関する質問）
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "What are healthy foods?"
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "健康に良い食べ物は何ですか"
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "朝食を食べることは健康に良いですか"
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
+
+### 単語によるブロック
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "りんごの栽培方法を教えて"
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "バラ科の赤い果物をひらがなで５つ教えて"
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
+
+### 機密情報のマスキング
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "最高裁判所の住所を教えて"
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
+
+```elixir
+results
+|> Map.get("output")
+|> Map.get("message")
+|> Map.get("content")
+|> hd()
+|> Map.get("text")
+|> Kino.Markdown.new()
+```
+
+### 正規表現によるブロック
+
+```elixir
+{:ok, results, _} =
+  client
+  |> AWS.BedrockRuntime.invoke_model(
+    model_id,
+    %{
+      "accept" => "application/json",
+      "contentType" => "application/json",
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => [
+            %{
+              "text" => "サイコロで1が出る確率は何%ですか"
+            }
+          ]
+        }
+      ],
+      "guardrailIdentifier" => guardrail_id,
+      "guardrailVersion" => version,
+      "trace" => "ENABLED"
+    }
+  )
+
+results
+```
