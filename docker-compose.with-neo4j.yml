@@ -1,0 +1,29 @@
+---
+
+services:
+  livebook_with_neo4j:
+    build: .
+    container_name: livebook_with_neo4j
+    ports:
+      - '8080:8080'
+      - '8081:8081'
+    volumes:
+      - ./tmp:/tmp
+
+  neo4j-for-livebook:
+    image: neo4j:community
+    container_name: neo4j-for-livebook
+    tty: true
+    ports:
+      - 7474:7474
+      - 7687:7687
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/logs:/logs
+      - ./neo4j/conf:/conf
+      - ./certs:/var/lib/neo4j/certificates/bolt
+    environment:
+      - NEO4J_AUTH=none
+    user: '1000'
+    group_add:
+      - '1000'

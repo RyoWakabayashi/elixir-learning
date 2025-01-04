@@ -15,3 +15,11 @@ tmp
 
 # macOS
 .DS_Store
+
+# logs
+*.log
+
+# neo4j
+neo4j/data/*
+neo4j/logs/*
+certs/*

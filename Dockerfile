@@ -131,6 +131,14 @@ RUN wget "https://ziglang.org/download/0.13.0/zig-linux-aarch64-0.13.0.tar.xz" -
   && rm "zig-linux.tar.xz"
 ENV PATH=/usr/local/zig-linux:${PATH}
 
+# Neo4j
+RUN curl -fsSL https://debian.neo4j.com/neotechnology.gpg.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/neo4j.gpg \
+  && echo 'deb https://debian.neo4j.com stable latest' | sudo tee -a /etc/apt/sources.list.d/neo4j.list \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y neo4j \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
 ENV LIVEBOOK_HOME=/home/livebook
 
 COPY ./livebooks /home/livebook

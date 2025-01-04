@@ -1,0 +1,190 @@
+# Boltx
+
+```elixir
+Mix.install([
+  {:boltx, "~> 0.0.6"}
+])
+```
+
+## Connect to Neo4j
+
+```elixir
+opts = [
+    hostname: "neo4j-for-livebook",
+    scheme: "bolt",
+    auth: [username: "neo4j", password: ""],
+    user_agent: "boltxTest/1",
+    pool_size: 15,
+    max_overflow: 3,
+    prefix: :default
+]
+
+{:ok, conn} = Boltx.start_link(opts)
+```
+
+```elixir
+conn
+|> Boltx.query!("return 1 as n")
+|> Boltx.Response.first()
+```
+
+## Create data
+
+```elixir
+query =
+  """
+  CREATE
+  (chocolateCake:Sweet {
+    name: "チョコレートケーキ",
+    category: "ケーキ",
+    brand: "スイーツベーカリー",
+    price: 450
+  }),
+  (strawberryCheesecake:Sweet {
+    name: "イチゴのチーズケーキ",
+    category: "ケーキ",
+    brand: "チーズハウス",
+    price: 520
+  }),
+  (applePie:Sweet {
+    name: "アップルパイ",
+    category: "パイ",
+    brand: "パイファクトリー",
+    price: 400
+  }),
+  (chocolateChipCookies:Sweet {
+    name: "チョコチップクッキー",
+    category: "クッキー",
+    brand: "クッキーランド",
+    price: 300
+  }),
+  (strawberryCandy:Sweet {
+    name: "ストロベリーキャンディー",
+    category: "キャンディー",
+    brand: "キャンディーガーデン",
+    price: 100
+  }),
+  (flour:Ingredient {
+    name: "小麦粉",
+    type: "粉類"
+  }),
+  (sugar:Ingredient {
+    name: "砂糖",
+    type: "粉類"
+  }),
+  (eggs:Ingredient {
+    name: "卵",
+    type: "液体"
+  }),
+  (butter:Ingredient {
+    name: "バター",
+    type: "乳製品"
+  }),
+  (chocolate:Ingredient {
+    name: "チョコレート",
+    type: "粉類"
+  }),
+  (milk:Ingredient {
+    name: "牛乳",
+    type: "乳製品"
+  }),
+  (strawberry:Ingredient {
+    name: "イチゴ",
+    type: "フルーツ"
+  }),
+  (apple:Ingredient {
+    name: "リンゴ",
+    type: "フルーツ"
+  }),
+  (chocolateCake)-[:CONTAINS]->(flour),
+  (chocolateCake)-[:CONTAINS]->(sugar),
+  (chocolateCake)-[:CONTAINS]->(eggs),
+  (chocolateCake)-[:CONTAINS]->(butter),
+  (chocolateCake)-[:CONTAINS]->(chocolate),
+  (strawberryCheesecake)-[:CONTAINS]->(flour),
+  (strawberryCheesecake)-[:CONTAINS]->(sugar),
+  (strawberryCheesecake)-[:CONTAINS]->(eggs),
+  (strawberryCheesecake)-[:CONTAINS]->(butter),
+  (strawberryCheesecake)-[:CONTAINS]->(milk),
+  (strawberryCheesecake)-[:CONTAINS]->(strawberry),
+  (applePie)-[:CONTAINS]->(flour),
+  (applePie)-[:CONTAINS]->(sugar),
+  (applePie)-[:CONTAINS]->(butter),
+  (applePie)-[:CONTAINS]->(apple),
+  (chocolateChipCookies)-[:CONTAINS]->(flour),
+  (chocolateChipCookies)-[:CONTAINS]->(sugar),
+  (chocolateChipCookies)-[:CONTAINS]->(butter),
+  (chocolateChipCookies)-[:CONTAINS]->(chocolate),
+  (strawberryCandy)-[:CONTAINS]->(sugar),
+  (strawberryCandy)-[:CONTAINS]->(strawberry)
+  """
+
+Boltx.transaction(conn, fn conn ->
+  Boltx.query!(conn, query)
+end)
+```
+
+```elixir
+conn
+|> Boltx.query!("MATCH (n) RETURN n")
+|> Map.get(:results)
+```
+
+## Create constraints
+
+```elixir
+Boltx.query!(conn, """
+CREATE CONSTRAINT FOR (s:Sweet) REQUIRE (s.name) IS UNIQUE
+""")
+```
+
+```elixir
+Boltx.query!(conn, """
+CREATE CONSTRAINT FOR (i:Ingredient) REQUIRE (i.name) IS UNIQUE
+""")
+```
+
+## Section
+
+```elixir
+Boltx.query!(conn, """
+CREATE INDEX FOR (s:Sweet) ON (s.price)
+""")
+```
+
+## Query
+
+```elixir
+Boltx.query!(conn, """
+MATCH (i:Ingredient {name: "チョコレート"})
+RETURN i.type
+""")
+```
+
+```elixir
+Boltx.query!(conn, """
+MATCH (s:Sweet) WHERE s.price > 400
+RETURN s.name AS お菓子名, s.price AS 価格
+""")
+```
+
+```elixir
+Boltx.query!(conn, """
+MATCH (s:Sweet)-[:CONTAINS]->(i:Ingredient {name: "チョコレート"})
+RETURN s.name AS お菓子名, s.brand AS ブランド
+""")
+```
+
+```elixir
+Boltx.query!(conn, """
+MATCH (s:Sweet)
+WHERE NOT (s)-[:CONTAINS]->(:Ingredient {type: "乳製品"})
+RETURN s.name AS 乳製品不使用のお菓子
+""")
+```
+
+## Delete data
+
+```elixir
+Boltx.query!(conn, "MATCH (n) DETACH DELETE n")
+```
