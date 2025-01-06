@@ -23,3 +23,6 @@ tmp
 neo4j/data/*
 neo4j/logs/*
 certs/*
+
+# FalkorDB
+falkor_db/data/*

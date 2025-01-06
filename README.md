@@ -29,6 +29,34 @@ livebook_with_db       | [Livebook] Application running at http://localhost:8080
 
 表示される URL にアクセスする
 
+### Livebook と Neo4j を同時に起動
+
+```bash
+$ docker compose -f docker-compose.with-neo4j.yml up --build
+...
+postgres_for_livebook  | 2023-10-30 11:47:54.930 UTC [1] LOG:  database system is ready to accept connections
+...
+livebook_with_db       | [Livebook] Application running at http://localhost:8080/?token=xxxxx
+```
+
+表示される URL にアクセスする
+
+Neo4j Browser には `http://localhost:7474` でアクセスできる
+
+### Livebook と FalkorDB を同時に起動
+
+```bash
+$ docker compose -f docker-compose.with-falkor-db.yml up --build
+...
+postgres_for_livebook  | 2023-10-30 11:47:54.930 UTC [1] LOG:  database system is ready to accept connections
+...
+livebook_with_db       | [Livebook] Application running at http://localhost:8080/?token=xxxxx
+```
+
+表示される URL にアクセスする
+
+FalkorDB Browser には `http://localhost:3000` でアクセスできる
+
 ### Charms 用コンテナの起動
 
 [Charms](https://github.com/beaver-lodge/charms) を使用する場合、以下のコマンドでコンテナを起動する

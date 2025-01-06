@@ -1,0 +1,253 @@
+# FalkorDB
+
+```elixir
+Mix.install([
+  {:redisgraph, "~> 0.1.0"},
+  {:kino, "~> 0.14.2"}
+])
+
+alias RedisGraph.{Node, Edge, Graph, QueryResult}
+```
+
+## Connect to FalkorDB
+
+```elixir
+{:ok, conn} = Redix.start_link("redis://falkor_db_for_livebook:6379")
+```
+
+## Create new Graph
+
+```elixir
+graph = Graph.new(%{name: "Sweets"})
+```
+
+## Add Nodes
+
+```elixir
+node = Node.new(%{
+  label: "Sweet",
+  properties: %{
+    name: "チョコレートケーキ",
+    category: "ケーキ",
+    brand: "スイーツベーカリー",
+    price: 450
+  }
+})
+```
+
+```elixir
+{graph, node} = Graph.add_node(graph, node)
+
+graph
+```
+
+```elixir
+nodes = %{"チョコレートケーキ" => node}
+
+{graph, nodes} =
+  [
+    %{
+      label: "Sweet",
+      properties: %{
+        name: "イチゴのチーズケーキ",
+        category: "ケーキ",
+        brand: "チーズハウス",
+        price: 520
+      }
+    },
+    %{
+      label: "Sweet",
+      properties: %{
+        name: "アップルパイ",
+        category: "パイ",
+        brand: "パイファクトリー",
+        price: 400
+      }
+    },
+    %{
+      label: "Sweet",
+      properties: %{
+        name: "チョコチップクッキー",
+        category: "クッキー",
+        brand: "クッキーランド",
+        price: 300
+      }
+    },
+    %{
+      label: "Sweet",
+      properties: %{
+        name: "ストロベリーキャンディー",
+        category: "キャンディー",
+        brand: "キャンディーガーデン",
+        price: 100
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "小麦粉",
+        type: "粉類"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "砂糖",
+        type: "粉類"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "卵",
+        type: "液体"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "バター",
+        type: "乳製品"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "チョコレート",
+        type: "粉類"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "牛乳",
+        type: "乳製品"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "イチゴ",
+        type: "フルーツ"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "リンゴ",
+        type: "フルーツ"
+      }
+    }
+  ]
+  |> Enum.reduce({graph, nodes}, fn entities, {acc_graph, acc_nodes} ->
+    {graph, node} = Graph.add_node(acc_graph, Node.new(entities))
+
+    nodes = Map.put(acc_nodes, entities.properties.name, node)
+
+    {graph, nodes}
+  end)
+```
+
+## Add edges
+
+```elixir
+edge = Edge.new(%{
+  src_node: Map.get(nodes, "チョコレートケーキ"),
+  dest_node: Map.get(nodes, "砂糖"),
+  relation: "CONTAINS"
+})
+```
+
+```elixir
+{:ok, graph} = Graph.add_edge(graph, edge)
+```
+
+```elixir
+graph =
+  [
+    {"チョコレートケーキ", "CONTAINS", "卵"},
+    {"チョコレートケーキ", "CONTAINS", "バター"},
+    {"チョコレートケーキ", "CONTAINS", "チョコレート"},
+    {"イチゴのチーズケーキ", "CONTAINS", "小麦粉"},
+    {"イチゴのチーズケーキ", "CONTAINS", "砂糖"},
+    {"イチゴのチーズケーキ", "CONTAINS", "卵"},
+    {"イチゴのチーズケーキ", "CONTAINS", "バター"},
+    {"イチゴのチーズケーキ", "CONTAINS", "牛乳"},
+    {"イチゴのチーズケーキ", "CONTAINS", "イチゴ"},
+    {"アップルパイ", "CONTAINS", "小麦粉"},
+    {"アップルパイ", "CONTAINS", "砂糖"},
+    {"アップルパイ", "CONTAINS", "バター"},
+    {"アップルパイ", "CONTAINS", "リンゴ"},
+    {"チョコチップクッキー", "CONTAINS", "小麦粉"},
+    {"チョコチップクッキー", "CONTAINS", "砂糖"},
+    {"チョコチップクッキー", "CONTAINS", "バター"},
+    {"チョコチップクッキー", "CONTAINS", "チョコレート"},
+    {"ストロベリーキャンディー", "CONTAINS", "砂糖"},
+    {"ストロベリーキャンディー", "CONTAINS", "イチゴ"}
+  ]
+  |> Enum.reduce(graph, fn {src_name, relation, dest_name}, acc_graph ->
+    {:ok, graph} = 
+      Graph.add_edge(
+        acc_graph,
+        Edge.new(%{
+          src_node: Map.get(nodes, src_name),
+          dest_node: Map.get(nodes, dest_name),
+          relation: relation
+        })
+      )
+  
+    graph
+  end)
+```
+
+## Commit
+
+```elixir
+{:ok, commit_result} = RedisGraph.commit(conn, graph)
+```
+
+## Query
+
+```elixir
+{:ok, query_result} = RedisGraph.query(conn, graph.name, """
+MATCH (n:Sweet)-[r:CONTAINS]->(m {name: "イチゴ"})
+RETURN n.name AS name, n.price AS price
+""")
+
+query_result
+```
+
+```elixir
+QueryResult.results_to_maps(query_result)
+```
+
+```elixir
+query_result
+|> QueryResult.pretty_print()
+|> Kino.Text.new(terminal: true)
+```
+
+```elixir
+query_result
+|> QueryResult.results_to_maps()
+|> Kino.DataTable.new()
+```
+
+```elixir
+# 乳製品不使用のお菓子
+{:ok, query_result} = RedisGraph.query(conn, graph.name, """
+MATCH (s:Sweet)
+WHERE NOT (s)-[:CONTAINS]->(:Ingredient {type: "乳製品"})
+RETURN s.name AS name
+""")
+
+query_result
+|> QueryResult.results_to_maps()
+|> Kino.DataTable.new()
+```
+
+## Delete all data
+
+```elixir
+RedisGraph.query(conn, graph.name, "MATCH (n) DETACH DELETE n")
+```
