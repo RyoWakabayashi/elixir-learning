@@ -1,0 +1,367 @@
+# Graph RAG
+
+```elixir
+Mix.install([
+  {:openai_ex, "~> 0.8.6"},
+  {:redisgraph, "~> 0.1.0"},
+  {:kino, "~> 0.14"},
+  {:req, "~> 0.5"}
+])
+
+alias OpenaiEx.Chat
+alias OpenaiEx.ChatMessage
+alias RedisGraph.{Node, Edge, Graph, QueryResult}
+```
+
+## Load documents
+
+青空文庫から楠山正雄さんの書いた「桃太郎」を転載したテキストを使用します
+
+転載元: https://www.aozora.gr.jp/cards/000329/files/18376_12100.html
+
+転載先: https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/bumblebee/colab/momotaro.txt
+
+```elixir
+%{body: text} =
+  Req.get!(
+    "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/bumblebee/colab/momotaro.txt"
+  )
+
+chunks =
+  text
+  |> String.split("\n\n")
+  |> Enum.slice(0, 4)
+```
+
+```elixir
+openai =
+  "LB_OPENAI_API_KEY"
+  |> System.fetch_env!()
+  |> OpenaiEx.new()
+
+model_id = "gpt-4o"
+```
+
+````elixir
+parse_document = fn document, openai, model_id, entities ->
+  system_message =
+    """
+    You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph. Your task is to identify the entities and relations requested with the user prompt from a given text. You must generate the output in a JSON format containing a list with JSON objects. Each object should have the keys: "head", "head_type", "relation", "tail", and "tail_type". The "head" key must contain the text of the extracted entity with one of the types from the provided list in the user prompt.
+    Attempt to extract as many entities and relations as you can. Maintain Entity Consistency: When extracting entities, it's vital to ensure consistency. If an entity, such as "John Doe", is mentioned multiple times in the text but is referred to by different names or pronouns (e.g., "Joe", "he"), always use the most complete identifier for that entity. The knowledge graph should be coherent and easily understandable, so maintaining consistency in entity references is crucial.
+    IMPORTANT NOTES:
+    - Don't add any explanation and text.
+    - Ensure that both "head_type" and "tail_type" are always in English.
+    """
+
+  system_message =
+    if Enum.empty?(entities) do
+      system_message
+    else
+      system_message <> """
+      Unify the “head” or “tail” values of similar entities to match the values of the existing entities.
+      #{Enum.join(entities, "\n")}
+      """
+    end
+
+  user_message =
+    """
+    Based on the following example, extract entities and relations from the provided text.
+    Below are a number of examples of text and their extracted entities and relationships.
+    [
+        {'text': 'Adam is a software engineer in Microsoft since 2009, and last year he got an award as the Best Talent', 'head': 'Adam', 'head_type': 'Person', 'relation': 'WORKS_FOR', 'tail': 'Microsoft', 'tail_type': 'Company'},
+        {'text': 'Adam is a software engineer in Microsoft since 2009, and last year he got an award as the Best Talent', 'head': 'Adam', 'head_type': 'Person', 'relation': 'HAS_AWARD', 'tail': 'Best Talent', 'tail_type': 'Award'},
+        {'text': 'Microsoft is a tech company that provide several products such as Microsoft Word', 'head': 'Microsoft Word', 'head_type': 'Product', 'relation': 'PRODUCED_BY', 'tail': 'Microsoft', 'tail_type': 'Company'},
+        {'text': 'Microsoft Word is a lightweight app that accessible offline', 'head': 'Microsoft Word', 'head_type': 'Product', 'relation': 'HAS_CHARACTERISTIC', 'tail': 'lightweight app', 'tail_type': 'Characteristic'},
+        {'text': 'Microsoft Word is a lightweight app that accessible offline', 'head': 'Microsoft Word', 'head_type': 'Product', 'relation': 'HAS_CHARACTERISTIC', 'tail': 'accessible offline', 'tail_type': 'Characteristic'}
+    ]
+    
+    For the following text, extract entities and relations as in the provided example.The output should be formatted as a JSON instance that conforms to the JSON schema below.
+    
+    As an example, for the schema {"properties": {"foo": {"title": "Foo", "description": "a list of strings", "type": "array", "items": {"type": "string"}}}, "required": ["foo"]}
+    the object {"foo": ["bar", "baz"]} is a well-formatted instance of the schema. The object {"properties": {"foo": ["bar", "baz"]}} is not well-formatted.
+    
+    Here is the output schema:
+    ```
+    {
+        "properties": {
+            "head": {"description": "extracted head entity like Microsoft, Apple, John. Must use human-readable unique identifier.", "title": "Head", "type": "string"},
+            "head_type": {"description": "type of the extracted head entity like Person, Company, etc", "title": "Head Type", "type": "string"},
+            "relation": {"description": "relation between the head and the tail entities", "title": "Relation", "type": "string"},
+            "tail": {"description": "extracted tail entity like Microsoft, Apple, John. Must use human-readable unique identifier.", "title": "Tail", "type": "string"},
+            "tail_type": {"description": "type of the extracted tail entity like Person, Company, etc", "title": "Tail Type", "type": "string"}
+        },
+        "required": ["head", "head_type", "relation", "tail", "tail_type"]
+    }
+    ```
+
+    Text: '#{document}'
+    """
+  
+  openai
+  |> Chat.Completions.create!(%{
+    model: model_id,
+    messages: [
+      ChatMessage.system(system_message),
+      ChatMessage.user(user_message)
+    ]
+  })
+  |> Map.get("choices")
+  |> Enum.at(0)
+  |> Map.get("message")
+  |> Map.get("content")
+  |> String.replace("```json", "")
+  |> String.replace("```", "")
+  |> Jason.decode!()
+end
+````
+
+```elixir
+chunks
+|> hd()
+|> parse_document.(openai, model_id, [])
+```
+
+```elixir
+{relations, all_entities} =
+  chunks
+  |> Enum.reduce({[], []}, fn chunk, {acc_relations, acc_entities} ->
+    relations = parse_document.(chunk, openai, model_id, acc_entities)
+
+    entities =
+      [
+        Enum.map(relations, &Map.get(&1, "head")),
+        Enum.map(relations, &Map.get(&1, "tail")),
+        acc_entities
+      ]
+      |> Enum.concat()
+      |> Enum.uniq()
+
+    {[relations | acc_relations], entities}
+  end)
+```
+
+```elixir
+graph = Graph.new(%{name: "桃太郎"})
+```
+
+```elixir
+nodes =
+  relations
+  |> Enum.flat_map(fn contnt ->
+    [
+      Enum.map(contnt, fn node ->
+        %{
+          label: [Map.get(node, "head_type")],
+          name: Map.get(node, "head")
+        }
+      end),
+      Enum.map(contnt, fn node ->
+        %{
+          label: [Map.get(node, "tail_type")],
+          name: Map.get(node, "tail")
+        }
+      end)
+    ]
+    |> Enum.concat()
+    |> Enum.uniq()
+  end)
+  |> Enum.uniq()
+  |> Enum.reduce(%{}, fn node, acc_nodes ->
+    case Map.get(acc_nodes, node.name) do
+      nil ->
+        Map.put(acc_nodes, node.name, node)
+
+      existing_node ->
+        merged_node =
+          Map.put(existing_node, :label, existing_node.label ++ node.label)
+
+        Map.put(acc_nodes, node.name, merged_node)
+    end
+  end)
+  |> Enum.map(fn {name, node} ->
+    Node.new(%{
+      label: Enum.join(node.label, ":"),
+      properties: %{
+        name: name
+      }
+    })
+  end)
+```
+
+```elixir
+{graph, nodes} =
+  nodes
+  |> Enum.reduce({graph, nodes}, fn node, {acc_graph, acc_nodes} ->
+    {acc_graph, node} = Graph.add_node(acc_graph, node)
+  
+    {acc_graph, [node | acc_nodes]}
+  end)
+```
+
+```elixir
+get_node = fn name, nodes ->
+  Enum.find(nodes, fn node -> node.properties.name == name end)
+end
+
+edges =
+  relations
+  |> Enum.flat_map(fn contnt ->
+    contnt
+    |> Enum.map(fn node ->
+      Edge.new(%{
+        src_node: node |> Map.get("head") |> get_node.(nodes),
+        dest_node: node |> Map.get("tail") |> get_node.(nodes),
+        relation: Map.get(node, "relation")
+      })
+    end)
+  end)
+  |> Enum.uniq()
+```
+
+```elixir
+graph =
+  edges
+  |> Enum.reduce(graph, fn edge, acc_graph ->
+    {:ok, acc_graph} = Graph.add_edge(acc_graph, edge)
+  
+    acc_graph
+  end)
+```
+
+```elixir
+{:ok, conn} = Redix.start_link("redis://falkor_db_for_livebook:6379")
+```
+
+```elixir
+{:ok, commit_result} = RedisGraph.commit(conn, graph)
+```
+
+## Question Answering
+
+```elixir
+question = "桃太郎の仲間は誰ですか"
+```
+
+```elixir
+get_question_entities = fn question, openai, model_id, graph_entities ->
+  openai
+  |> Chat.Completions.create!(%{
+    model: model_id,
+    messages: [
+      ChatMessage.system("""
+      You are extracting entities from the input text.
+      Step 1:
+      Extract entities from the text.
+      output format: entity,entity,entity
+
+      Step 2:
+      Unify entities similar to the following entity candidates to match the values of the entity candidates.
+      Exclude any entities that are not included in the entity candidates.
+      entity candidates: #{Enum.join(graph_entities, ",")}
+
+      IMPORTANT NOTES:
+      - Don't add any explanation and text.
+      - Output only Step 2 result. 
+      """),
+      ChatMessage.user("""
+      Please execute the process of extracting entities only from the text step by step.
+      text: #{question}
+      """)
+    ]
+  })
+  |> Map.get("choices")
+  |> Enum.at(0)
+  |> Map.get("message")
+  |> Map.get("content")
+  |> String.split(",")
+end
+```
+
+```elixir
+entities = get_question_entities.(question, openai, model_id, all_entities)
+```
+
+```elixir
+get_relations = fn entity, graph ->
+  query = """
+  MATCH (n {name: "#{entity}"})-[r]->(neighbor)
+  RETURN n.name + ' - ' + type(r) + ' -> ' + neighbor.name AS output
+  UNION ALL
+  MATCH (n {name: "#{entity}"})<-[r]-(neighbor)
+  RETURN n.name + ' - ' + type(r) + ' -> ' + neighbor.name AS output
+  """
+
+  {:ok, query_result} = RedisGraph.query(conn, graph.name, query)
+
+  query_result
+end
+```
+
+```elixir
+relations = entities |> hd() |> get_relations.(graph)
+```
+
+```elixir
+get_context = fn relations ->
+  relations.result_set
+  |> Enum.map(&(hd(&1)))
+  |> Enum.join("\n")
+end
+```
+
+```elixir
+context = get_context.(relations)
+
+Kino.Text.new(context)
+```
+
+```elixir
+answer = fn context, question, openai, model_id ->
+  openai
+  |> Chat.Completions.create!(%{
+    model: model_id,
+    messages: [
+      ChatMessage.system("Answer the question based only on the following context:\n#{context}"),
+      ChatMessage.user(question)
+    ]
+  })
+  |> Map.get("choices")
+  |> Enum.at(0)
+  |> Map.get("message")
+  |> Map.get("content")
+end
+```
+
+```elixir
+answer.(context, question, openai, model_id)
+```
+
+```elixir
+answer_with_graph_rag = fn question, openai, model_id, graph, all_entities ->
+  entities = get_question_entities.(question, openai, model_id, all_entities)
+
+  context =
+    entities
+    |> Enum.map(fn entity ->
+      entity
+      |> get_relations.(graph)
+      |> get_context.()
+    end)
+    |> Enum.filter(&(&1 != ""))
+    |> Enum.join("\n")
+
+  IO.puts(context)
+
+  answer.(context, question, openai, model_id)
+end
+```
+
+```elixir
+answer_with_graph_rag.("きびだんごを作ったのは誰ですか", openai, model_id, graph, all_entities)
+```
+
+```elixir
+answer_with_graph_rag.("黍団子を作ったのは誰ですか", openai, model_id, graph, all_entities)
+```
+
+<!-- livebook:{"offset":11033,"stamp":{"token":"XCP.IvCS61rB__mBT3UaukZvfVmiDmFZFbQH1Ed8qEXv7I4oaFi9ck00vVRssdHu2tfH7s92zUWxNGcIMvvt55iw9NMNxPsc7nUBrDZmczRXNCaTy3m-5TX7_d0","version":2}} -->
