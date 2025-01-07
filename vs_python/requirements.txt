@@ -3,6 +3,7 @@ jupyterlab==4.3.4
 langchain==0.3.14
 langchain-community==0.3.14
 langchain-experimental==0.3.4
+langchain-neo4j==0.2.0
 langchain-openai==0.2.14
 matplotlib==3.10.0
 neo4j==5.27.0
