@@ -1,0 +1,324 @@
+# Neo4j
+
+```elixir
+Mix.install([
+  {:boltx, "~> 0.0.6"},
+  {:kino, "~> 0.14.2"}
+])
+```
+
+## Connect to Neo4j
+
+```elixir
+opts = [
+    hostname: "neo4j-for-livebook",
+    scheme: "bolt",
+    auth: [username: "neo4j", password: ""],
+    user_agent: "boltxTest/1",
+    pool_size: 15,
+    max_overflow: 3,
+    prefix: :default
+]
+
+{:ok, conn} = Boltx.start_link(opts)
+```
+
+```elixir
+conn
+|> Boltx.query!("RETURN 1 AS number")
+|> Boltx.Response.first()
+```
+
+## Add nodes
+
+```elixir
+node =
+  conn
+  |> Boltx.query!("""
+  CREATE
+  (node:Sweet {
+    name: "チョコレートケーキ",
+    category: "ケーキ",
+    brand: "スイーツベーカリー",
+    price: 450
+  })
+  RETURN node
+  """)
+  |> Map.get(:results)
+  |> hd()
+```
+
+```elixir
+entities =
+  [
+    %{
+      label: "Sweet",
+      properties: %{
+        name: "イチゴのチーズケーキ",
+        category: "ケーキ",
+        brand: "チーズハウス",
+        price: 520
+      }
+    },
+    %{
+      label: "Sweet",
+      properties: %{
+        name: "アップルパイ",
+        category: "パイ",
+        brand: "パイファクトリー",
+        price: 400
+      }
+    },
+    %{
+      label: "Sweet",
+      properties: %{
+        name: "チョコチップクッキー",
+        category: "クッキー",
+        brand: "クッキーランド",
+        price: 300
+      }
+    },
+    %{
+      label: "Sweet",
+      properties: %{
+        name: "ストロベリーキャンディー",
+        category: "キャンディー",
+        brand: "キャンディーガーデン",
+        price: 100
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "小麦粉",
+        type: "粉類"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "砂糖",
+        type: "粉類"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "卵",
+        type: "液体"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "バター",
+        type: "乳製品"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "チョコレート",
+        type: "粉類"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "牛乳",
+        type: "乳製品"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "イチゴ",
+        type: "フルーツ"
+      }
+    },
+    %{
+      label: "Ingredient",
+      properties: %{
+        name: "リンゴ",
+        type: "フルーツ"
+      }
+    }
+  ]
+```
+
+```elixir
+Boltx.transaction(conn, fn conn ->
+  entities
+  |> Enum.each(fn entity ->
+    properties =
+      entity.properties
+      |> Enum.map(fn {key, value} -> "#{key}: \"#{value}\"" end)
+      |> Enum.join(",")
+
+    query =
+      """
+      CREATE
+      (node:#{entity.label} {
+        #{properties}
+      })
+      """
+
+    Boltx.query!(conn, query)
+  end)
+end)
+```
+
+## Create constraints
+
+```elixir
+Boltx.query!(conn, """
+CREATE CONSTRAINT FOR (s:Sweet) REQUIRE (s.name) IS UNIQUE
+""")
+```
+
+```elixir
+Boltx.query!(conn, """
+CREATE CONSTRAINT FOR (i:Ingredient) REQUIRE (i.name) IS UNIQUE
+""")
+```
+
+## Create index
+
+```elixir
+Boltx.query!(conn, """
+CREATE INDEX FOR (s:Sweet) ON (s.price)
+""")
+```
+
+## Add edges
+
+```elixir
+edge =
+  conn
+  |> Boltx.query!("""
+  MATCH (s:Sweet {name:"チョコレートケーキ"})
+  MATCH (i:Ingredient {name:"小麦粉"})
+  CREATE (s)-[r:CONTAINS]->(i)
+  RETURN r
+  """)
+  |> Map.get(:results)
+  |> hd()
+```
+
+```elixir
+relations =
+  [
+    {"チョコレートケーキ", "CONTAINS", "卵"},
+    {"チョコレートケーキ", "CONTAINS", "バター"},
+    {"チョコレートケーキ", "CONTAINS", "チョコレート"},
+    {"イチゴのチーズケーキ", "CONTAINS", "小麦粉"},
+    {"イチゴのチーズケーキ", "CONTAINS", "砂糖"},
+    {"イチゴのチーズケーキ", "CONTAINS", "卵"},
+    {"イチゴのチーズケーキ", "CONTAINS", "バター"},
+    {"イチゴのチーズケーキ", "CONTAINS", "牛乳"},
+    {"イチゴのチーズケーキ", "CONTAINS", "イチゴ"},
+    {"アップルパイ", "CONTAINS", "小麦粉"},
+    {"アップルパイ", "CONTAINS", "砂糖"},
+    {"アップルパイ", "CONTAINS", "バター"},
+    {"アップルパイ", "CONTAINS", "リンゴ"},
+    {"チョコチップクッキー", "CONTAINS", "小麦粉"},
+    {"チョコチップクッキー", "CONTAINS", "砂糖"},
+    {"チョコチップクッキー", "CONTAINS", "バター"},
+    {"チョコチップクッキー", "CONTAINS", "チョコレート"},
+    {"ストロベリーキャンディー", "CONTAINS", "砂糖"},
+    {"ストロベリーキャンディー", "CONTAINS", "イチゴ"}
+  ]
+```
+
+```elixir
+Boltx.transaction(conn, fn conn ->
+  relations
+  |> Enum.each(fn {src_name, relation, dest_name} ->
+    query =
+      """
+      MATCH (s:Sweet {name:"#{src_name}"})
+      MATCH (i:Ingredient {name:"#{dest_name}"})
+      CREATE (s)-[r:#{relation}]->(i)
+      """
+
+    Boltx.query!(conn, query)
+  end)
+end)
+```
+
+## Query
+
+```elixir
+conn
+|> Boltx.query!("""
+MATCH (i:Ingredient {name: "チョコレート"})
+RETURN i.type AS タイプ
+""")
+|> Map.get(:results)
+|> Kino.DataTable.new()
+```
+
+```elixir
+conn
+|> Boltx.query!("""
+MATCH (s:Sweet) WHERE s.price > 400
+RETURN s.name AS お菓子名, s.price AS 価格
+""")
+|> Map.get(:results)
+|> Kino.DataTable.new()
+```
+
+```elixir
+conn
+|> Boltx.query!("""
+MATCH (s:Sweet)-[:CONTAINS]->(i:Ingredient {name: "チョコレート"})
+RETURN s.name AS お菓子名, s.brand AS ブランド
+""")
+|> Map.get(:results)
+|> Kino.DataTable.new()
+```
+
+```elixir
+conn
+|> Boltx.query!("""
+MATCH (s:Sweet)
+WHERE NOT (s)-[:CONTAINS]->(:Ingredient {type: "乳製品"})
+RETURN s.name AS 乳製品不使用のお菓子
+""")
+|> Map.get(:results)
+|> Kino.DataTable.new()
+```
+
+## Delete data
+
+```elixir
+Boltx.query!(conn, "MATCH (n) DETACH DELETE n")
+```
+
+```elixir
+constraints =
+  conn
+  |> Boltx.query!("SHOW CONSTRAINTS YIELD name")
+  |> Map.get(:results)
+```
+
+```elixir
+constraints
+|> Enum.each(fn %{"name" => name} ->
+  Boltx.query!(conn, "DROP CONSTRAINT #{name}")
+end)
+```
+
+```elixir
+indexes =
+  conn
+  |> Boltx.query!("SHOW INDEXES YIELD name")
+  |> Map.get(:results)
+```
+
+```elixir
+indexes
+|> Enum.each(fn %{"name" => name} ->
+  Boltx.query!(conn, "DROP INDEX #{name}")
+end)
+```
