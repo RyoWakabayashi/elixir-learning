@@ -24,6 +24,10 @@ services:
       - ./certs:/var/lib/neo4j/certificates/bolt
     environment:
       - NEO4J_AUTH=none
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
     user: '1000'
     group_add:
       - '1000'
