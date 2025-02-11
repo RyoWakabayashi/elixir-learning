@@ -1,4 +1,4 @@
-FROM ghcr.io/livebook-dev/livebook:0.14.6
+FROM ghcr.io/livebook-dev/livebook:0.14.7
 
 RUN apt-get upgrade -y \
   && apt-get update \
