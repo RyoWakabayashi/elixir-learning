@@ -1,0 +1,22 @@
+---
+
+services:
+  livebook_with_ollama:
+    image: ghcr.io/livebook-dev/livebook:0.14.7
+    container_name: livebook_with_ollama
+    ports:
+      - '8080:8080'
+      - '8081:8081'
+    volumes:
+      - ./tmp:/tmp
+
+  ollama:
+    image: ollama/ollama:0.5.11
+    container_name: ollama_for_livebook
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  ollama:
