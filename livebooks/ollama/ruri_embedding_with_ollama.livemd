@@ -17,6 +17,10 @@ Mix.install(
 
 Ollama を起動していることを前提とします
 
+コンテナ起動定義はこちら
+
+https://github.com/RyoWakabayashi/elixir-learning/blob/main/docker-compose.with-ollama.yml
+
 ## モデルの用意
 
 ```elixir
