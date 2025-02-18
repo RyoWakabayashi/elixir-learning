@@ -1,0 +1,4 @@
+models/**/*.json
+models/*.md
+models/*.txt
+models/*.safetensors

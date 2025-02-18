@@ -1,0 +1,10 @@
+---
+
+services:
+  ruri:
+    container_name: ruri
+    build:
+      context: .
+    tty: true
+    volumes:
+      - ./models:/tmp/models
