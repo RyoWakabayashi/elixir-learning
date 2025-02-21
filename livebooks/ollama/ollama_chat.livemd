@@ -1,0 +1,97 @@
+# Chat with Ollama
+
+```elixir
+Mix.install([
+  {:ollama, "~> 0.8"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## 前提条件
+
+Ollama を起動していることを前提とします
+
+コンテナ起動定義はこちら
+
+https://github.com/RyoWakabayashi/elixir-learning/blob/main/docker-compose.with-ollama.yml
+
+## Ollama の準備
+
+```elixir
+client = Ollama.init(base_url: "http://ollama:11434/api", receive_timeout: 300_000)
+```
+
+```elixir
+Ollama.pull_model(client, name: "phi4")
+```
+
+```elixir
+Ollama.preload(client, model: "phi4")
+```
+
+## Ollama によるストリーミング応答
+
+```elixir
+answer_frame = Kino.Frame.new()
+```
+
+```elixir
+answer = fn input, frame ->
+  {:ok, stream} =
+    Ollama.completion(
+      client,
+      model: "phi4",
+      prompt: input,
+      stream: true
+    )
+
+  stream
+  |> Stream.transform("AI: ", fn chunk, acc ->
+    response = acc <> chunk["response"]
+
+    markdown = Kino.Markdown.new(response)
+    Kino.Frame.render(frame, markdown)
+
+    {[chunk["response"]], response}
+  end)
+  |> Enum.join()
+end
+```
+
+```elixir
+answer.("ドラえもんについて100文字程度で説明して", answer_frame)
+```
+
+## フォームの作成
+
+```elixir
+# 出力用フレーム
+output_frame = Kino.Frame.new()
+
+# ストリーミング用フレーム
+stream_frame = Kino.Frame.new()
+
+# 入力用フォーム
+input_form =
+  Kino.Control.form(
+    [
+      input_text: Kino.Input.textarea("メッセージ")
+    ],
+    submit: "送信"
+  )
+
+
+Kino.Frame.render(output_frame, Kino.Markdown.new(""))
+Kino.Frame.render(stream_frame, Kino.Markdown.new(""))
+
+# フォーム送信時の処理
+Kino.listen(input_form, fn %{data: %{input_text: input}} ->
+  Kino.Frame.append(output_frame, Kino.Markdown.new("あなた: " <> input))
+  full_response = answer.(input, stream_frame)
+  Kino.Frame.render(stream_frame, Kino.Markdown.new(""))
+  Kino.Frame.append(output_frame, Kino.Markdown.new("AI: " <> full_response))
+end)
+
+# 入出力を並べて表示
+Kino.Layout.grid([output_frame, stream_frame, input_form], columns: 1)
+```
