@@ -1,0 +1,225 @@
+# TiDB Ecto
+
+```elixir
+Mix.install([
+  {:ecto, "~> 3.12"},
+  {:ecto_sql, "~> 3.12"},
+  {:myxql, "~> 0.7"},
+  {:jason, "~> 1.4"},
+  {:kino, "~> 0.14"}
+])
+```
+
+## Connect to DB
+
+```elixir
+defmodule Repo do
+  use Ecto.Repo,
+    otp_app: :my_notebook,
+    adapter: Ecto.Adapters.MyXQL
+end
+```
+
+```elixir
+hostname_input = Kino.Input.text("HOSTNAME")
+username_input = Kino.Input.text("USERNAME")
+password_input = Kino.Input.password("PASSWORD")
+database_input = Kino.Input.text("DATABASE")
+
+Kino.Layout.grid(
+  [hostname_input, username_input, password_input, database_input],
+  columns: 4
+)
+```
+
+```elixir
+opts = [
+  hostname: Kino.Input.read(hostname_input),
+  port: 4000,
+  username: Kino.Input.read(username_input),
+  password: Kino.Input.read(password_input),
+  database: Kino.Input.read(database_input),
+  ssl: [cacertfile: "/etc/ssl/certs/ca-certificates.crt"]
+]
+
+Kino.start_child({Repo, opts})
+```
+
+## Migration
+
+```elixir
+defmodule Migrations.CreateTeamMemberTable do
+  use Ecto.Migration
+
+  def change do
+    create table(:team_member) do
+      add(:name, :string)
+      add(:age, :integer)
+      add(:weight, :float)
+      add(:has_license, :boolean)
+      add(:hash, :binary)
+      add(:embedding, :vector, size: 4)
+      add(:languages, :json)
+      add(:skil_level, :json)
+      add(:salary, :decimal)
+      add(:date_of_birth, :date)
+      add(:starting_time_of_work, :time)
+
+      timestamps()
+    end
+
+    flush()
+
+    execute """
+    ALTER TABLE team_member SET TIFLASH REPLICA 1
+    """
+
+    flush()
+
+    execute """
+    ALTER TABLE team_member
+    ADD VECTOR INDEX idx_team_member_embedding
+    ((VEC_COSINE_DISTANCE(embedding)));
+    """
+  end
+end
+```
+
+```elixir
+Ecto.Migrator.up(Repo, 1, Migrations.CreateTeamMemberTable)
+```
+
+## Execute query
+
+```elixir
+defmodule TeamMember do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  schema "team_member" do
+    field(:name, :string)
+    field(:age, :integer)
+    field(:weight, :float)
+    field(:has_license, :boolean)
+    field(:hash, :binary)
+    field(:embedding, :string)
+    field(:languages, {:array, :string})
+    field(:skil_level, {:map, :integer})
+    field(:salary, :decimal)
+    field(:date_of_birth, :date)
+    field(:starting_time_of_work, :time)
+
+    timestamps()
+  end
+
+  def changeset(team_member, attrs) do
+    team_member
+    |> cast(attrs, [
+      :name,
+      :age,
+      :weight,
+      :has_license,
+      :hash,
+      :embedding,
+      :languages,
+      :skil_level,
+      :salary,
+      :date_of_birth,
+      :starting_time_of_work
+    ])
+    |> validate_required([:name])
+  end
+end
+```
+
+### Insert
+
+```elixir
+%TeamMember{}
+|> TeamMember.changeset(%{
+  name: "Alice",
+  age: 20,
+  weight: 60.0,
+  has_license: true,
+  hash: <<0b11111111>>,
+  embedding: "[0.0, 0.1, 0.2, 0.3]",
+  languages: ["Japanese", "English"],
+  skil_level: %{frontend: 5, backend: 3},
+  salary: 1000_000,
+  date_of_birth: ~D[2000-01-01],
+  starting_time_of_work: ~T[08:30:00.0010]
+})
+|> Repo.insert()
+```
+
+```elixir
+now =
+  NaiveDateTime.utc_now()
+  |> NaiveDateTime.truncate(:second)
+
+entries =
+  [
+    %{name: "Bob", age: 20, embedding: "[0.0, 0.1, 0.2, 0.4]"},
+    %{name: "John", age: 30, embedding: "[0.1, 0.1, 0.3, 0.4]"},
+    %{name: "Ryo", age: 39, embedding: "[0.3, 0.4, 0.2, 0.1]"}
+  ]
+  |> Enum.map(fn attr ->
+    Map.merge(attr, %{
+      inserted_at: now,
+      updated_at: now
+    })
+  end)
+
+Repo.insert_all(TeamMember, entries)
+```
+
+### Select
+
+```elixir
+team_members = Repo.all(TeamMember)
+```
+
+```elixir
+Kino.DataTable.new(team_members)
+```
+
+```elixir
+import Ecto.Query
+```
+
+```elixir
+Repo.all(
+  from(tm in TeamMember,
+    select: %{
+      member_name: tm.name,
+      member_age: tm.age,
+      distance: fragment(
+        "VEC_COSINE_DISTANCE(?, ?) as distance", tm.embedding, "[0.0, 0.1, 0.2, 0.3]"
+      )
+    },
+    where: tm.age < 25,
+    order_by: fragment("distance")
+  )
+)
+```
+
+### Update
+
+```elixir
+TeamMember
+|> Repo.get_by!(name: "Bob")
+|> TeamMember.changeset(%{
+  age: 21,
+  weight: 62.0,
+  embedding: "[0.4, 0.3, 0.2, 0.1]"
+})
+|> Repo.update()
+```
+
+### Delete
+
+```elixir
+TeamMember
+|> Repo.get_by!(name: "Alice")
+|> Repo.delete()
+```
