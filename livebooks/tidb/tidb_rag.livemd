@@ -1,0 +1,216 @@
+# TiDB RAG with Ollama Ruri
+
+```elixir
+Mix.install([
+  {:myxql, "~> 0.7"},
+  {:kino_db, "~> 0.3"},
+  {:ollama, "~> 0.8"}
+])
+```
+
+## DB接続
+
+<!-- livebook:{"attrs":"eyJjYWNlcnRmaWxlIjoiL2V0Yy9zc2wvY2VydHMvY2EtY2VydGlmaWNhdGVzLmNydCIsImRhdGFiYXNlIjoidGVzdCIsImhvc3RuYW1lIjoiZ2F0ZXdheTAxLnVzLXdlc3QtMi5wcm9kLmF3cy50aWRiY2xvdWQuY29tIiwicGFzc3dvcmRfc2VjcmV0IjoiVElEQl9QQVNTV09SRCIsInBvcnQiOjQwMDAsInR5cGUiOiJteXNxbCIsInVzZV9pcHY2IjpmYWxzZSwidXNlX3NzbCI6dHJ1ZSwidXNlcm5hbWUiOiIzYWNIb3dzb3lvWGdHMWcucm9vdCIsInZhcmlhYmxlIjoiY29ubiJ9","chunks":null,"kind":"Elixir.KinoDB.ConnectionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+opts = [
+  hostname: "",
+  port: 4000,
+  username: "",
+  password: System.fetch_env!("LB_TIDB_PASSWORD"),
+  database: "test",
+  ssl: [cacertfile: "/etc/ssl/certs/ca-certificates.crt"]
+]
+
+{:ok, conn} = Kino.start_child({MyXQL, opts})
+```
+
+## テーブル作成
+
+<!-- livebook:{"attrs":"eyJjYWNoZV9xdWVyeSI6dHJ1ZSwiY29ubmVjdGlvbiI6eyJ0eXBlIjoibXlzcWwiLCJ2YXJpYWJsZSI6ImNvbm4ifSwiZGF0YV9mcmFtZV9hbGlhcyI6IkVsaXhpci5FeHBsb3Jlci5EYXRhRnJhbWUiLCJxdWVyeSI6IkRST1AgVEFCTEUgSUYgRVhJU1RTIHJhZ19pbmRleCIsInJlc3VsdF92YXJpYWJsZSI6InJlc3VsdCIsInRpbWVvdXQiOm51bGx9","chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result = MyXQL.query!(conn, ~S"DROP TABLE IF EXISTS rag_index", [])
+```
+
+<!-- livebook:{"attrs":"eyJjYWNoZV9xdWVyeSI6dHJ1ZSwiY29ubmVjdGlvbiI6eyJ0eXBlIjoibXlzcWwiLCJ2YXJpYWJsZSI6ImNvbm4ifSwiZGF0YV9mcmFtZV9hbGlhcyI6IkVsaXhpci5FeHBsb3Jlci5EYXRhRnJhbWUiLCJxdWVyeSI6IkNSRUFURSBUQUJMRSByYWdfaW5kZXggKFxuICB0ZXh0IFZBUkNIQVIoMTAwMCksXG4gIGVtYmVkZGluZyBWRUNUT1IoNzY4KSxcbiAgVkVDVE9SIElOREVYIGlkeF9lbWJlZGRpbmcgKChWRUNfQ09TSU5FX0RJU1RBTkNFKGVtYmVkZGluZykpKVxuKSIsInJlc3VsdF92YXJpYWJsZSI6InJlc3VsdDIiLCJ0aW1lb3V0IjoxODB9","chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result2 =
+  MyXQL.query!(
+    conn,
+    ~S"""
+    CREATE TABLE rag_index (
+      text VARCHAR(1000),
+      embedding VECTOR(768),
+      VECTOR INDEX idx_embedding ((VEC_COSINE_DISTANCE(embedding)))
+    )
+    """,
+    [],
+    timeout: 180_000
+  )
+```
+
+## チャットの実装
+
+```elixir
+client = Ollama.init(base_url: "http://ollama:11434/api", receive_timeout: 300_000)
+```
+
+```elixir
+Ollama.pull_model(client, name: "phi4")
+```
+
+```elixir
+Ollama.preload(client, model: "phi4")
+```
+
+```elixir
+answer = fn input, frame ->
+  {:ok, stream} =
+    Ollama.completion(
+      client,
+      model: "phi4",
+      prompt: input,
+      stream: true
+    )
+
+  stream
+  |> Stream.transform("AI: ", fn chunk, acc ->
+    response = acc <> chunk["response"]
+
+    markdown = Kino.Markdown.new(response)
+    Kino.Frame.render(frame, markdown)
+
+    {[chunk["response"]], response}
+  end)
+  |> Enum.join()
+end
+```
+
+```elixir
+answer_frame = Kino.Frame.new()
+```
+
+```elixir
+answer.("やせうまについて100文字程度で説明して", answer_frame)
+```
+
+## テキスト埋め込み
+
+```elixir
+Ollama.pull_model(client, name: "kun432/cl-nagoya-ruri-base")
+```
+
+```elixir
+string_inputs = [
+  "浦島太郎は日本の昔話の主人公で、亀を助けた礼として竜宮城に招かれます。帰郷時に渡された玉手箱を開けると老人になってしまう物語です。",
+  "豆腐小僧は江戸時代の草双紙や錦絵に登場する妖怪で、笠をかぶり盆に乗せた豆腐を持つ子供の姿をしています。特に悪さをせず、愛嬌のある存在として描かれています。",
+  "やせうまは大分県の郷土菓子で、茹でた小麦粉の生地にきな粉と砂糖をまぶしたものです。素朴な甘さともちもちした食感が特徴です。"
+]
+```
+
+```elixir
+embed = fn input ->
+  client
+  |> Ollama.embed(
+    model: "kun432/cl-nagoya-ruri-base",
+    input: input
+  )
+  |> elem(1)
+  |> Map.get("embeddings")
+  |> hd()
+end
+```
+
+```elixir
+embeddings = Enum.map(string_inputs, fn input -> embed.("文章: #{input}") end)
+```
+
+```elixir
+[string_inputs, embeddings]
+|> Enum.zip()
+|> Enum.map(fn {text, embedding} ->
+  MyXQL.query!(
+    conn,
+    ~S"""
+    INSERT INTO rag_index (text, embedding) VALUES (?, ?)
+    """,
+    [text, embedding]
+  )
+end)
+```
+
+<!-- livebook:{"attrs":"eyJjYWNoZV9xdWVyeSI6dHJ1ZSwiY29ubmVjdGlvbiI6eyJ0eXBlIjoibXlzcWwiLCJ2YXJpYWJsZSI6ImNvbm4ifSwiZGF0YV9mcmFtZV9hbGlhcyI6IkVsaXhpci5FeHBsb3Jlci5EYXRhRnJhbWUiLCJxdWVyeSI6IlNFTEVDVCAqIEZST00gcmFnX2luZGV4IiwicmVzdWx0X3ZhcmlhYmxlIjoicmVzdWx0MyIsInRpbWVvdXQiOm51bGx9","chunks":null,"kind":"Elixir.KinoDB.SQLCell","livebook_object":"smart_cell"} -->
+
+```elixir
+result3 = MyXQL.query!(conn, ~S"SELECT * FROM rag_index", [])
+```
+
+## テキスト検索
+
+```elixir
+search = fn query ->
+  embedding = embed.("クエリ: #{query}")
+
+  MyXQL.query!(
+    conn,
+    ~S"""
+    SELECT text FROM rag_index
+    ORDER BY VEC_COSINE_DISTANCE(embedding, ?)
+    LIMIT 1
+    """,
+    [embedding]
+  )
+end
+```
+
+```elixir
+search.("やせうまについて100文字程度で説明して")
+```
+
+## RAGチャットの実装
+
+```elixir
+rag = fn input, frame ->
+  context =
+    input
+    |> search.()
+    |> Map.get(:rows)
+    |> hd()
+    |> hd()
+
+  answer.("context: #{context}\n\ncontext に基づいて質問に答えてください\n\n#{input}", frame)
+end
+```
+
+```elixir
+# 出力用フレーム
+output_frame = Kino.Frame.new()
+
+# ストリーミング用フレーム
+stream_frame = Kino.Frame.new()
+
+# 入力用フォーム
+input_form =
+  Kino.Control.form(
+    [
+      input_text: Kino.Input.textarea("メッセージ")
+    ],
+    submit: "送信"
+  )
+
+Kino.Frame.render(output_frame, Kino.Markdown.new(""))
+Kino.Frame.render(stream_frame, Kino.Markdown.new(""))
+
+# フォーム送信時の処理
+Kino.listen(input_form, fn %{data: %{input_text: input}} ->
+  Kino.Frame.append(output_frame, Kino.Markdown.new("あなた: " <> input))
+  full_response = rag.(input, stream_frame)
+  Kino.Frame.render(stream_frame, Kino.Markdown.new(""))
+  Kino.Frame.append(output_frame, Kino.Markdown.new("AI: " <> full_response))
+end)
+
+# 入出力を並べて表示
+Kino.Layout.grid([output_frame, stream_frame, input_form], columns: 1)
+```
