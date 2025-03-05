@@ -1,4 +1,4 @@
-FROM ghcr.io/livebook-dev/livebook:0.14.7
+FROM ghcr.io/livebook-dev/livebook:0.15.2
 
 RUN mix local.hex --force \
   && mix archive.install hex phx_new --force \
