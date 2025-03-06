@@ -1,0 +1,81 @@
+# LangChain
+
+```elixir
+Mix.install([
+  {:langchain, "~> 0.3"},
+  {:kino, "~> 0.15"}
+])
+
+alias LangChain.Chains.LLMChain
+alias LangChain.ChatModels.ChatOllamaAI
+alias LangChain.Message
+alias LangChain.MessageDelta
+```
+
+## Chat with Ollama
+
+```elixir
+llm =
+  ChatOllamaAI.new!(%{
+    endpoint: "http://host.docker.internal:11434/api/chat",
+    model: "phi4"
+  })
+```
+
+```elixir
+{:ok, updated_chain} =
+  %{llm: llm}
+  |> LLMChain.new!()
+  |> LLMChain.add_message(Message.new_user!("こんにちは！"))
+  |> LLMChain.run()
+
+Kino.Markdown.new(updated_chain.last_message.content)
+```
+
+```elixir
+{:ok, updated_chain} =
+  %{llm: llm}
+  |> LLMChain.new!()
+  |> LLMChain.add_messages([
+    Message.new_system!("あなたは意地悪なアシスタントです。ユーザーを助けないでください"),
+    Message.new_user!("日本の首都はどこですか")
+  ])
+  |> LLMChain.run()
+
+Kino.Markdown.new(updated_chain.last_message.content)
+```
+
+```elixir
+handler = %{
+  on_llm_new_delta: fn _model, %MessageDelta{} = data ->
+    IO.write(data.content)
+  end,
+  on_message_processed: fn _chain, %Message{} = data ->
+    IO.puts("")
+    IO.puts("")
+    IO.inspect(data.content, label: "COMPLETED MESSAGE")
+  end
+}
+
+llm =
+  ChatOllamaAI.new!(%{
+    endpoint: "http://host.docker.internal:11434/api/chat",
+    model: "phi4",
+    stream: true
+  })
+```
+
+```elixir
+{:ok, updated_chain} =
+  %{llm: llm}
+  |> LLMChain.new!()
+  |> LLMChain.add_messages([
+    Message.new_system!("あなたは親切なアシスタントです"),
+    Message.new_user!("春の俳句を作ってください")
+  ])
+  # register the callbacks
+  |> LLMChain.add_callback(handler)
+  |> LLMChain.run()
+
+Kino.Markdown.new(updated_chain.last_message.content)
+```
