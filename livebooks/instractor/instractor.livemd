@@ -1,0 +1,77 @@
+# Instructor
+
+```elixir
+Mix.install([
+  {:instructor, "~> 0.1.0"}
+])
+```
+
+## Define schema
+
+```elixir
+defmodule Judgement do
+  use Ecto.Schema
+  use Instructor
+
+  @llm_doc """
+  ## Field Descriptions:
+  - class: 文章が肯定的か否定的か.
+  - reason: 判定した理由.
+  - score: 肯定的の度合いを示す 0.0 から 1.0 の値.
+  """
+  @primary_key false
+  embedded_schema do
+    field(:class, Ecto.Enum, values: [:positive, :negative])
+    field(:reason, :string)
+    field(:score, :float)
+  end
+
+  @impl true
+  def validate_changeset(changeset) do
+    changeset
+    |> Ecto.Changeset.validate_number(:score,
+      greater_than_or_equal_to: 0.0,
+      less_than_or_equal_to: 1.0
+    )
+  end
+end
+```
+
+## Judge with Ollama
+
+```elixir
+judge = fn text ->
+  Instructor.chat_completion(
+    [
+      model: "phi4",
+      mode: :json,
+      response_model: Judgement,
+      max_retries: 3,
+      messages: [
+        %{
+          role: "user",
+          content: """
+          文章が肯定的か否定的か判定してください
+  
+          <文章>
+            #{text}
+          </文章>
+          """
+        }
+      ]
+    ],
+    [ 
+      adapter: Instructor.Adapters.Ollama,
+      api_url: "http://host.docker.internal:11434"
+    ]
+  )
+end
+```
+
+```elixir
+judge.("出掛けるのも吝かではない")
+```
+
+```elixir
+judge.("あなたの希望には添えかねます")
+```
