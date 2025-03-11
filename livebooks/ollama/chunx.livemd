@@ -1,0 +1,83 @@
+# Chunx
+
+```elixir
+Mix.install([
+  {:chunx, github: "preciz/chunx"},
+  {:ollama, "~> 0.8"},
+  {:req, "~> 0.5"}
+])
+```
+
+## Prepare text
+
+```elixir
+%{body: text} =
+  Req.get!(
+    "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/bumblebee/colab/momotaro.txt"
+  )
+```
+
+## Prepare tokenizer
+
+```elixir
+{:ok, tokenizer} = Tokenizers.Tokenizer.from_file("/tmp/ruri_base/tokenizer.json")
+```
+
+## Token-based Chunking
+
+```elixir
+{:ok, token_chunks} = Chunx.Chunker.Token.chunk(text, tokenizer, chunk_size: 512)
+```
+
+## Word-based Chunking
+
+```elixir
+{:ok, word_chunks} = Chunx.Chunker.Word.chunk(text, tokenizer, chunk_size: 512)
+```
+
+## Sentence-based Chunking
+
+```elixir
+{:ok, sentence_chunks} =
+  Chunx.Chunker.Sentence.chunk(
+    text,
+    tokenizer,
+    delimiters: ~w(。 \\n)
+  )
+```
+
+## Semantic Chunking
+
+```elixir
+client = Ollama.init(base_url: "http://host.docker.internal:11434/api", receive_timeout: 300_000)
+```
+
+```elixir
+Ollama.pull_model(client, name: "kun432/cl-nagoya-ruri-base")
+```
+
+```elixir
+embedding_fn = fn texts ->
+  texts
+  |> Enum.map(fn text ->
+    client
+    |> Ollama.embed(
+      model: "kun432/cl-nagoya-ruri-base",
+      input: "文章: #{text}"
+    )
+    |> elem(1)
+    |> Map.get("embeddings")
+    |> hd()
+    |> Nx.tensor()
+  end)
+end
+```
+
+```elixir
+Chunx.Chunker.Semantic.chunk(
+  text,
+  tokenizer,
+  embedding_fn,
+  delimiters: ~w(。 \\n)
+)
+```
