@@ -2,7 +2,7 @@
 
 services:
   livebook_with_ollama:
-    image: ghcr.io/livebook-dev/livebook:0.14.7
+    image: ghcr.io/livebook-dev/livebook:0.15.3
     container_name: livebook_with_ollama
     ports:
       - '8080:8080'
