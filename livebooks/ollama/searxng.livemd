@@ -1,0 +1,197 @@
+# SearXNG
+
+```elixir
+Mix.install([
+  {:req, "~> 0.5"},
+  {:ollama, "~> 0.8"},
+  {:chunx, github: "preciz/chunx"},
+  {:hnswlib, "~> 0.1"},
+  {:kino, "~> 0.15"}
+])
+```
+
+## Search
+
+```elixir
+search = fn query ->
+  "http://searxng:8080/search"
+  |> Req.get!(params: [q: query, format: "json"])
+  |> Map.get(:body)
+end
+```
+
+```elixir
+results =
+  "やせうま"
+  |> search.()
+  |> Map.get("results")
+```
+
+```elixir
+documents =
+  results
+  |> Enum.filter(fn result ->
+    String.starts_with?(result["url"], "https")
+  end)
+  |> Enum.slice(0..9)
+  |> Enum.map(fn result ->
+    content =
+      result["url"]
+      |> URI.encode()
+      |> Req.get!()
+      |> Map.get(:body)
+      |> String.replace(~r/\n/, "🦛")
+      |> String.replace(~r/<script.*?\/script>/, "")
+      |> String.replace(~r/<style.*?\/style>/, "")
+      |> String.replace(~r/[\s]+/, "")
+      |> String.replace("&nbsp;", " ")
+      |> String.replace(~r/<br.*?>/, "\n")
+      |> String.replace(~r/<.*?>/, "\t")
+      |> String.replace("🦛", "\n")
+      |> String.replace(~r/[\r\n\t]+/, "\n")
+      |> String.trim()
+
+    %{
+      url: result["url"],
+      title: result["title"],
+      content: content
+    }
+  end)
+  |> Enum.filter(fn result ->
+    String.valid?(result.content)
+  end)
+  |> Enum.slice(0..4)
+```
+
+## Chunk
+
+```elixir
+{:ok, tokenizer} = Tokenizers.Tokenizer.from_file("/tmp/ruri_base/tokenizer.json")
+```
+
+```elixir
+client = Ollama.init(base_url: "http://host.docker.internal:11434/api", receive_timeout: 300_000)
+```
+
+```elixir
+Ollama.pull_model(client, name: "kun432/cl-nagoya-ruri-base")
+```
+
+```elixir
+embedding_fn = fn texts ->
+  texts
+  |> Enum.map(fn text ->
+    client
+    |> Ollama.embed(
+      model: "kun432/cl-nagoya-ruri-base",
+      input: "文章: #{text}"
+    )
+    |> elem(1)
+    |> Map.get("embeddings")
+    |> hd()
+    |> Nx.tensor()
+  end)
+end
+```
+
+```elixir
+chunks =
+  documents
+  |> Enum.map(fn document ->
+    {:ok, doc_chunks} =
+      document.content
+      |> Chunx.Chunker.Semantic.chunk(
+        tokenizer,
+        embedding_fn,
+        delimiters: ["。", ".", "!", "?", "\n"]
+      )
+
+    doc_chunks
+    |> Enum.map(fn chunk ->
+      chunk.sentences
+      |> Enum.filter(fn sentence -> String.length(sentence.text) > 2 end)
+      |> Enum.map(fn sentence ->
+        document
+        |> Map.put(:chunk, chunk.text)
+        |> Map.put(:sentence, sentence.text)
+        |> Map.put(:embedding, sentence.embedding)
+        |> Map.delete(:content)
+      end)
+    end)
+    |> Enum.concat()
+  end)
+  |> Enum.concat()
+```
+
+## Index
+
+```elixir
+{:ok, index} = HNSWLib.Index.new(:cosine, 768, 1_000_000)
+
+chunks
+|> Enum.each(fn chunk ->
+  HNSWLib.Index.add_items(index, chunk.embedding)
+end)
+```
+
+```elixir
+query = "やせうまの材料は何ですか"
+
+embeddings =
+  client
+  |> Ollama.embed(
+    model: "kun432/cl-nagoya-ruri-base",
+    input: "クエリ: #{query}"
+  )
+  |> elem(1)
+  |> Map.get("embeddings")
+  |> hd()
+  |> Nx.tensor()
+
+{:ok, labels, dist} = HNSWLib.Index.knn_query(index, embeddings, k: 10)
+```
+
+```elixir
+context =
+  labels
+  |> Nx.to_flat_list()
+  |> Enum.map(fn index ->
+    chunks
+    |> Enum.at(index)
+    |> Map.get(:chunk)
+  end)
+  |> Enum.join("\n\n")
+
+Kino.Markdown.new(context)
+```
+
+## Chat
+
+```elixir
+Ollama.pull_model(client, name: "hf.co/alfredplpl/gemma-2-2b-jpn-it-gguf")
+```
+
+```elixir
+Ollama.preload(client, model: "hf.co/alfredplpl/gemma-2-2b-jpn-it-gguf")
+```
+
+```elixir
+{:ok, %{"response" => response}} =
+  Ollama.completion(
+    client,
+    model: "hf.co/alfredplpl/gemma-2-2b-jpn-it-gguf",
+    prompt: """
+    質問に一般的な情報ではなく、コンテキスト情報のみに基づいて回答してください
+  
+    ## コンテキスト情報
+  
+    #{context}
+  
+    ## 質問
+  
+    #{query}
+    """
+  )
+
+Kino.Markdown.new(response)
+```

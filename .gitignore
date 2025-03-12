@@ -26,3 +26,7 @@ certs/*
 
 # FalkorDB
 falkor_db/data/*
+
+# SearxNG
+/**/searxng/*.yml
+/**/searxng/*.ini
