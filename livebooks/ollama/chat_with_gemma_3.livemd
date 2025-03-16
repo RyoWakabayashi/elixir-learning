@@ -1,0 +1,124 @@
+<!-- livebook:{"app_settings":{"access_type":"public","auto_shutdown_ms":5000,"multi_session":true,"output_type":"rich","slug":"chat"}} -->
+
+# Chat with Gemma 3
+
+```elixir
+Mix.install([
+  {:ollama, "~> 0.8"},
+  {:kino, "~> 0.15"}
+])
+```
+
+## Prepare Ollama client
+
+```elixir
+client = Ollama.init(base_url: "http://localhost:11434/api", receive_timeout: 300_000)
+```
+
+```elixir
+Ollama.pull_model(client, name: "gemma3:1b")
+```
+
+```elixir
+Ollama.preload(client, model: "gemma3:1b")
+```
+
+## Chat with Gemma 3
+
+```elixir
+messages = [
+  %{role: "system", content: "あなたは親切なアシスタントです"},
+  %{role: "user", content: "浦島太郎が助けたのは何ですか？"}
+]
+
+{:ok, %{"message" => message}} =
+  Ollama.chat(
+    client,
+    model: "gemma3:1b",
+    messages: messages
+  )
+```
+
+```elixir
+Kino.Markdown.new(message["content"])
+```
+
+## Stream response
+
+```elixir
+{:ok, stream} =
+  Ollama.chat(
+    client,
+    model: "gemma3:1b",
+    messages: messages,
+    stream: true
+  )
+
+stream
+|> Stream.map(fn chunk ->
+  IO.write(chunk["message"]["content"])
+end)
+|> Stream.run()
+```
+
+## Create a chat interface
+
+```elixir
+# 出力用フレーム
+output_frame = Kino.Frame.new()
+
+# ストリーミング用フレーム
+stream_frame = Kino.Frame.new()
+
+# 入力用フォーム
+input_form =
+  Kino.Control.form(
+    [
+      input_text: Kino.Input.textarea("メッセージ")
+    ],
+    submit: "送信"
+  )
+
+initial_messages = [
+  %{role: "system", content: "あなたは親切なアシスタントです"}
+]
+
+# フォーム送信時の処理
+Kino.listen(input_form, initial_messages, fn %{data: %{input_text: input}}, messages ->
+  messages = messages ++ [%{role: "user", content: input}]
+
+  Kino.Frame.append(output_frame, Kino.Markdown.new("ユーザー: " <> input))
+
+  {:ok, stream} =
+    Ollama.chat(
+      client,
+      model: "gemma3:1b",
+      messages: messages,
+      stream: true
+    )
+
+  full_response =
+    stream
+    |> Stream.transform("AI: ", fn chunk, acc ->
+      response = acc <> chunk["message"]["content"]
+
+      markdown = Kino.Markdown.new(response)
+      Kino.Frame.render(stream_frame, markdown)
+
+      {[chunk["message"]["content"]], response}
+    end)
+    |> Enum.join()
+
+  Kino.Frame.render(stream_frame, Kino.Markdown.new(""))
+  Kino.Frame.append(output_frame, Kino.Markdown.new("AI: " <> full_response))
+
+  {:cont, messages ++ [%{role: "assistant", content: full_response}]}
+end)
+
+# フレームを空にしておく
+Kino.Frame.render(output_frame, Kino.Markdown.new(""))
+Kino.Frame.render(stream_frame, Kino.Markdown.new(""))
+
+# 入出力を並べて表示
+Kino.Layout.grid([output_frame, stream_frame, input_form], columns: 1)
+```
