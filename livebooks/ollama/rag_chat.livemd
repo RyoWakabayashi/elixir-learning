@@ -1,0 +1,237 @@
+<!-- livebook:{"app_settings":{"access_type":"public","auto_shutdown_ms":5000,"multi_session":true,"output_type":"rich","slug":"rag"}} -->
+
+# RAG chat with Gemma 2
+
+```elixir
+Mix.install([
+  {:ollama, "~> 0.8"},
+  {:nx, "~> 0.9"},
+  {:hnswlib, "~> 0.1"},
+  {:kino, "~> 0.15"},
+  {:req, "~> 0.5"}
+])
+```
+
+## Prepare Ollama client
+
+```elixir
+client = Ollama.init(base_url: "http://localhost:11434/api", receive_timeout: 300_000)
+```
+
+```elixir
+Ollama.pull_model(client, name: "hf.co/alfredplpl/gemma-2-2b-jpn-it-gguf")
+```
+
+```elixir
+Ollama.preload(client, model: "hf.co/alfredplpl/gemma-2-2b-jpn-it-gguf")
+```
+
+## Chat without RAG
+
+```elixir
+messages = [
+  %{role: "system", content: "あなたは親切なアシスタントです"},
+  %{role: "user", content: "浦島太郎が助けたのは何ですか？"}
+]
+
+{:ok, %{"message" => %{"content" => content}}} =
+  Ollama.chat(
+    client,
+    model: "hf.co/alfredplpl/gemma-2-2b-jpn-it-gguf",
+    messages: messages
+  )
+
+Kino.Markdown.new(content)
+```
+
+## Registar documents
+
+```elixir
+Ollama.pull_model(client, name: "kun432/cl-nagoya-ruri-base")
+```
+
+```elixir
+urls = [
+  "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/bumblebee/colab/momotaro.txt",
+  "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/bumblebee/colab/kintaro.txt",
+  "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/bumblebee/colab/urashimataro.txt"
+]
+```
+
+```elixir
+embed = fn input ->
+  {:ok, %{"embeddings" => embeddings}} =
+    Ollama.embed(
+      client,
+      model: "kun432/cl-nagoya-ruri-base",
+      input: "文章: #{input}"
+    )
+
+  embeddings
+  |> hd()
+  |> Nx.tensor()
+end
+```
+
+```elixir
+documents =
+  Enum.map(urls, fn url ->
+    url
+    |> Req.get!()
+    |> Map.get(:body)
+  end)
+```
+
+```elixir
+chunked_documents =
+  documents
+  |> Enum.flat_map(fn document ->
+    document
+    |> String.split("\n\n")
+    |> Enum.flat_map(fn paragraph ->
+      paragraph
+      |> String.split("。")
+      |> Enum.map(fn sentence -> sentence <> "。" end)
+      |> Enum.reduce([""], fn sentence, acc ->
+        [last_chunk | others] = acc
+        if String.length(sentence <> last_chunk) > 256 do
+          [sentence | acc]
+        else
+          [last_chunk <> sentence | others]
+        end
+      end)
+      |> Enum.filter(fn chunk -> String.length(chunk) > 2 end)
+    end)
+  end)
+```
+
+```elixir
+all_embeddings = Enum.map(chunked_documents, &embed.(&1))
+```
+
+```elixir
+{:ok, index} = HNSWLib.Index.new(:cosine, 768, 1000)
+
+for embeddings <- all_embeddings do
+  HNSWLib.Index.add_items(index, embeddings)
+end
+
+HNSWLib.Index.get_current_count(index)
+```
+
+## Search documents
+
+```elixir
+search = fn query, documents ->
+  {:ok, %{"embeddings" => embeddings}} =
+    Ollama.embed(
+      client,
+      model: "kun432/cl-nagoya-ruri-base",
+      input: "クエリ: #{query}"
+    )
+
+  query_embeddings =
+    embeddings
+    |> hd()
+    |> Nx.tensor()
+
+  {:ok, labels, _dist} = HNSWLib.Index.knn_query(index, query_embeddings, k: 5)
+
+  labels
+  |> Nx.to_flat_list()
+  |> Enum.map(&Enum.at(documents, &1))
+end
+```
+
+```elixir
+search.("桃太郎に登場する動物は？", chunked_documents)
+```
+
+```elixir
+search.("浦島太郎が助けたのは何ですか？", chunked_documents)
+```
+
+## RAG chat
+
+```elixir
+# 出力用フレーム
+output_frame = Kino.Frame.new()
+
+# ストリーミング用フレーム
+stream_frame = Kino.Frame.new()
+
+# 入力用フォーム
+input_form =
+  Kino.Control.form(
+    [
+      input_text: Kino.Input.textarea("メッセージ")
+    ],
+    submit: "送信"
+  )
+
+initial_messages = [
+  %{
+    role: "system",
+    content: """
+    あなたは親切なアシスタントです
+    コンテキスト情報に基づいてユーザーの質問に答えてください
+
+    ## 重要な注意点
+    - 一般的な情報ではなく、コンテキスト情報のみに基づいて回答してください
+    """
+  }
+]
+
+# フォーム送信時の処理
+Kino.listen(input_form, initial_messages, fn %{data: %{input_text: input}}, messages ->
+  Kino.Frame.append(output_frame, Kino.Markdown.new("ユーザー: " <> input))
+
+  contexts =
+    input
+    |> search.(chunked_documents)
+    |> Enum.join("\n")
+
+  content =
+    """
+    ## コンテキスト情報
+    #{contexts}
+
+    ## ユーザーの質問
+    #{input}
+    """
+
+  messages = messages ++ [%{role: "user", content: content}]
+
+  {:ok, stream} =
+    Ollama.chat(
+      client,
+      model: "hf.co/alfredplpl/gemma-2-2b-jpn-it-gguf",
+      messages: messages,
+      stream: true
+    )
+
+  full_response =
+    stream
+    |> Stream.transform("AI: ", fn chunk, acc ->
+      response = acc <> chunk["message"]["content"]
+
+      markdown = Kino.Markdown.new(response)
+      Kino.Frame.render(stream_frame, markdown)
+
+      {[chunk["message"]["content"]], response}
+    end)
+    |> Enum.join()
+
+  Kino.Frame.render(stream_frame, Kino.Markdown.new(""))
+  Kino.Frame.append(output_frame, Kino.Markdown.new("AI: " <> full_response))
+
+  {:cont, messages ++ [%{role: "assistant", content: full_response}]}
+end)
+
+# フレームを空にしておく
+Kino.Frame.render(output_frame, Kino.Markdown.new(""))
+Kino.Frame.render(stream_frame, Kino.Markdown.new(""))
+
+# 入出力を並べて表示
+Kino.Layout.grid([output_frame, stream_frame, input_form], columns: 1)
+```
