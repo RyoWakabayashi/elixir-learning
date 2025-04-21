@@ -4,7 +4,7 @@
 Mix.install([
   {:exla, "~> 0.9", override: true},
   {:axon, "~> 0.6", git: "https://github.com/elixir-nx/axon/"},
-  {:kino, "~> 0.14"},
+  {:kino, "~> 0.15"},
   {:kino_vega_lite, "~> 0.1"},
   {:explorer, "~> 0.9"},
   {:table_rex, "~> 4.0", override: true}

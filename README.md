@@ -17,7 +17,20 @@ livebook  | [Livebook] Application running at http://localhost:8080/?token=xxxxx
 
 表示される URL にアクセスする
 
-### Livebook と PostgreSQL を同時に起動
+### Livebook と PostgreSQL 、 SQL Server を同時に起動
+
+Apple Silicon の場合、 SQL Server を使用するために Rosetta を使用する必要がある
+
+```bash
+/usr/sbin/softwareupdate --install-rosetta --agree-to-license
+```
+
+Rancher Desktop の設定
+
+- `Preferences` > `Virtual Machine` > `Emulation` を `VZ` に設定する
+- `Preferences` > `Virtual Machine` > `Volumes` を `virtiofs` に設定する
+
+コンテナを起動する
 
 ```bash
 $ docker compose -f docker-compose.with-db.yml up --build

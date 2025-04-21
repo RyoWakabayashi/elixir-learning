@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:kino, "~> 0.14"},
+  {:kino, "~> 0.15"},
   {:multipart, "~> 0.4"},
   {:req, "~> 0.4"},
   {:vice, "~> 0.1"}

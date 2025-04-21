@@ -2,8 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:kino_curl, "~> 0.1"},
-  {:ex_curl, "~> 0.3", override: true}
+  {:kino_curl, "~> 0.2"},
+  {:ex_curl, "~> 0.3"}
 ])
 ```
 
@@ -12,31 +12,23 @@ Mix.install([
 <!-- livebook:{"attrs":"eyJjb21tYW5kIjoiY3VybCAtWCBHRVQgXCJodHRwczovL2h0dHBiaW4ub3JnL2dldD9sYW5nPWVsaXhpclwiIiwicGFyc2VkX2NvbW1hbmQiOiJ7XCJtZXRob2RcIjpcIkdFVFwiLFwiaGVhZGVyXCI6e30sXCJ1cmxcIjpcImh0dHBzOi8vaHR0cGJpbi5vcmcvZ2V0P2xhbmc9ZWxpeGlyXCJ9In0","chunks":null,"kind":"Elixir.KinoCurl.Cell","livebook_object":"smart_cell"} -->
 
 ```elixir
-response = ExCurl.get!("https://httpbin.org/get?lang=elixir")
+response = ExCurl.get!("https://hex.pm")
 ```
 
 ## POST
 
-<!-- livebook:{"attrs":"eyJjb21tYW5kIjoiY3VybCAtWCBQT1NUIC0tZGF0YSAne1wibGFuZ1wiOiBcImVsaXhpclwifScgLUggJ0NvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vanNvbicgXCJodHRwczovL2h0dHBiaW4ub3JnL3Bvc3RcIiIsInBhcnNlZF9jb21tYW5kIjoie1wibWV0aG9kXCI6XCJQT1NUXCIsXCJoZWFkZXJcIjp7XCJDb250ZW50LVR5cGVcIjpcImFwcGxpY2F0aW9uL2pzb25cIn0sXCJib2R5XCI6XCJ7XFxcImxhbmdcXFwiOiBcXFwiZWxpeGlyXFxcIn1cIixcInVybFwiOlwiaHR0cHM6Ly9odHRwYmluLm9yZy9wb3N0XCJ9In0","chunks":null,"kind":"Elixir.KinoCurl.Cell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":"eyJjb21tYW5kIjoiY3VybCAtWCBQT1NUIC0tanNvbiAne1wibGFuZ1wiOiBcImVsaXhpclwifScgXCJodHRwczovL2h0dHBiaW4ub3JnL3Bvc3RcIiIsInBhcnNlZF9jb21tYW5kIjoie1wibWV0aG9kXCI6XCJQT1NUXCIsXCJoZWFkZXJcIjp7fSxcInVybFwiOlwiaHR0cHM6Ly9odHRwYmluLm9yZy9wb3N0XCJ9In0","chunks":null,"kind":"Elixir.KinoCurl.Cell","livebook_object":"smart_cell"} -->
 
 ```elixir
-response =
-  ExCurl.post!("https://httpbin.org/post",
-    body: "{\"lang\": \"elixir\"}",
-    headers: %{"Content-Type" => "application/json"}
-  )
+response = ExCurl.post!("https://httpbin.org/post")
 ```
 
 ## PUT
 
-<!-- livebook:{"attrs":"eyJjb21tYW5kIjoiY3VybCAtWCBQVVQgLS1kYXRhICd7XCJsYW5nXCI6IFwiZWxpeGlyXCJ9JyAtLWhlYWRlciAnQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uJyBcImh0dHBzOi8vaHR0cGJpbi5vcmcvcHV0XCIiLCJwYXJzZWRfY29tbWFuZCI6IntcIm1ldGhvZFwiOlwiUFVUXCIsXCJoZWFkZXJcIjp7XCJDb250ZW50LVR5cGVcIjpcImFwcGxpY2F0aW9uL2pzb25cIn0sXCJib2R5XCI6XCJ7XFxcImxhbmdcXFwiOiBcXFwiZWxpeGlyXFxcIn1cIixcInVybFwiOlwiaHR0cHM6Ly9odHRwYmluLm9yZy9wdXRcIn0ifQ","chunks":null,"kind":"Elixir.KinoCurl.Cell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":"eyJjb21tYW5kIjoiY3VybCAtWCBQVVQgLS1qc29uICd7XCJsYW5nXCI6IFwiZWxpeGlyXCJ9JyBcImh0dHBzOi8vaHR0cGJpbi5vcmcvcHV0XCIiLCJwYXJzZWRfY29tbWFuZCI6IntcIm1ldGhvZFwiOlwiUFVUXCIsXCJoZWFkZXJcIjp7fSxcInVybFwiOlwiaHR0cHM6Ly9odHRwYmluLm9yZy9wdXRcIn0ifQ","chunks":null,"kind":"Elixir.KinoCurl.Cell","livebook_object":"smart_cell"} -->
 
 ```elixir
-response =
-  ExCurl.put!("https://httpbin.org/put",
-    body: "{\"lang\": \"elixir\"}",
-    headers: %{"Content-Type" => "application/json"}
-  )
+response = ExCurl.put!("https://httpbin.org/put")
 ```
 
 ## PATCH
@@ -44,11 +36,7 @@ response =
 <!-- livebook:{"attrs":"eyJjb21tYW5kIjoiY3VybCAtWCBQQVRDSCAtZCAnbGFuZz1lbGl4aXInIFwiaHR0cHM6Ly9odHRwYmluLm9yZy9wYXRjaFwiIiwicGFyc2VkX2NvbW1hbmQiOiJ7XCJtZXRob2RcIjpcIlBBVENIXCIsXCJoZWFkZXJcIjp7XCJDb250ZW50LVR5cGVcIjpcImFwcGxpY2F0aW9uL3gtd3d3LWZvcm0tdXJsZW5jb2RlZFwifSxcImJvZHlcIjpcImxhbmc9ZWxpeGlyXCIsXCJ1cmxcIjpcImh0dHBzOi8vaHR0cGJpbi5vcmcvcGF0Y2hcIn0ifQ","chunks":null,"kind":"Elixir.KinoCurl.Cell","livebook_object":"smart_cell"} -->
 
 ```elixir
-response =
-  ExCurl.patch!("https://httpbin.org/patch",
-    body: "lang=elixir",
-    headers: %{"Content-Type" => "application/x-www-form-urlencoded"}
-  )
+response = ExCurl.get!("https://hex.pm")
 ```
 
 ## DELETE
@@ -56,5 +44,5 @@ response =
 <!-- livebook:{"attrs":"eyJjb21tYW5kIjoiY3VybCAtWCBERUxFVEUgXCJodHRwczovL2h0dHBiaW4ub3JnL2RlbGV0ZVwiIiwicGFyc2VkX2NvbW1hbmQiOiJ7XCJtZXRob2RcIjpcIkRFTEVURVwiLFwiaGVhZGVyXCI6e30sXCJ1cmxcIjpcImh0dHBzOi8vaHR0cGJpbi5vcmcvZGVsZXRlXCJ9In0","chunks":null,"kind":"Elixir.KinoCurl.Cell","livebook_object":"smart_cell"} -->
 
 ```elixir
-response = ExCurl.delete!("https://httpbin.org/delete")
+response = ExCurl.get!("https://hex.pm")
 ```

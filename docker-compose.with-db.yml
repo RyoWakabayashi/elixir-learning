@@ -32,8 +32,9 @@ services:
       - postgres_for_livebook:/var/lib/postgresql/data
 
   sql_server:
-    image: mcr.microsoft.com/mssql/server:2019-latest
+    image: mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04
     container_name: sql_server_for_livebook
+    platform: linux/amd64
     ports:
       - '1433:1433'
     environment:

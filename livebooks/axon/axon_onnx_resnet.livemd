@@ -7,7 +7,7 @@ Mix.install(
     {:axon_onnx, "~> 0.4", git: "https://github.com/mortont/axon_onnx/"},
     {:stb_image, "~> 0.6"},
     {:req, "~> 0.5"},
-    {:kino, "~> 0.14"}
+    {:kino, "~> 0.15"}
   ],
   config: [nx: [default_backend: EXLA.Backend]]
 )

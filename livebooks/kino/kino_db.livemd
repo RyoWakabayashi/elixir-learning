@@ -2,8 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:kino_db, "~> 0.2"},
-  {:postgrex, "~> 0.17"}
+  {:kino_db, "~> 0.3"},
+  {:postgrex, "~> 0.20"}
 ])
 ```
 

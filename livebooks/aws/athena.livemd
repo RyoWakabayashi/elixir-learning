@@ -6,7 +6,7 @@ Mix.install([
   {:uuid, "~> 1.1"},
   {:hackney, "~> 1.20"},
   {:explorer, "~> 0.9"},
-  {:kino, "~> 0.14"}
+  {:kino, "~> 0.15"}
 ])
 ```
 

@@ -11,7 +11,7 @@ Mix.install([
   {:stb_image, "~> 0.6"},
   {:hackney, "~> 1.20"},
   {:sweet_xml, "~> 0.7"},
-  {:kino, "~> 0.14"},
+  {:kino, "~> 0.15"},
   {:flow, "~> 1.2"}
 ])
 ```

@@ -4,7 +4,7 @@
 Mix.install([
   {:geo, "~> 3.6"},
   {:jason, "~> 1.4"},
-  {:kino, "~> 0.14"},
+  {:kino, "~> 0.15"},
   {:kino_maplibre, "~> 0.1"}
 ])
 ```

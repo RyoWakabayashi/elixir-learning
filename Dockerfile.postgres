@@ -1,7 +1,7 @@
-FROM postgres:15.3-bullseye
+FROM postgres:16.8-bullseye
 
 # hadolint ignore=DL3008
 RUN apt-get update \
-    && apt-get install --no-install-recommends --no-install-suggests -y postgresql-15-pgvector \
+    && apt-get install --no-install-recommends --no-install-suggests -y postgresql-16-pgvector \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

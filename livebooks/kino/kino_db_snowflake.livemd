@@ -2,9 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:kino_db, "~> 0.2"},
+  {:kino_db, "~> 0.3"},
   {:kino_explorer, "~> 0.1"},
-  {:adbc, "~> 0.2"}
+  {:adbc, "~> 0.7"}
 ])
 ```
 
