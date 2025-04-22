@@ -5,14 +5,18 @@ RUN apt-get upgrade -y \
   && apt-get install --no-install-recommends -y \
     ninja-build \
     python3-pip \
+    python3.12-venv \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
 # LLVM
 COPY llvm-requirements.txt .
 
-RUN python3 -m pip install --upgrade pip \
-  && python3 -m pip install -r llvm-requirements.txt
+RUN python3 -m venv --system-site-packages --clear --prompt 'charms' \
+    --upgrade-deps $(pwd)/.venv \
+  && . .venv/bin/activate \
+  && pip install --upgrade pip \
+  && pip install -r llvm-requirements.txt
 
 ENV LLVM_CONFIG_PATH=/usr/local/lib/python3.10/dist-packages/mlir/bin/llvm-config
 

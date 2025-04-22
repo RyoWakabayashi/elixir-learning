@@ -11,7 +11,7 @@ services:
       - ./tmp:/tmp
 
   ollama:
-    image: ollama/ollama:0.5.11
+    image: ollama/ollama:0.6.6
     container_name: ollama_for_livebook
     ports:
       - '11434:11434'
