@@ -1,0 +1,269 @@
+# VOICEVOX MCP Server
+
+```elixir
+Mix.install([
+  {:mcp_sse, "~> 0.1.6"},
+  {:kino, "~> 0.15.3"},
+  {:jason, "~> 1.4"},
+  {:plug, "~> 1.17"},
+  {:bandit, "~> 1.6"},
+  {:req, "~> 0.5.10"}
+])
+```
+
+## Router
+
+```elixir
+defmodule MyRouter do
+  use Plug.Router
+
+  plug Plug.Parsers,
+    parsers: [:urlencoded, :json],
+    pass: ["text/*"],
+    json_decoder: JSON
+
+  plug :match
+  plug :ensure_session_id
+  plug :dispatch
+
+  # Middleware to ensure session ID exists
+  def ensure_session_id(conn, _opts) do
+    case get_session_id(conn) do
+      nil ->
+        # Generate a new session ID if none exists
+        session_id = generate_session_id()
+        %{conn | query_params: Map.put(conn.query_params, "sessionId", session_id)}
+      _session_id ->
+        conn
+    end
+  end
+
+  # Helper to get session ID from query params
+  defp get_session_id(conn) do
+    conn.query_params["sessionId"]
+  end
+
+  # Generate a unique session ID
+  defp generate_session_id do
+    Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+  end
+
+  forward "/sse", to: SSE.ConnectionPlug
+  forward "/message", to: SSE.ConnectionPlug
+
+  match _ do
+    send_resp(conn, 404, "Not found")
+  end
+end
+```
+
+## MCP Server
+
+```elixir
+defmodule VoicevoxMCPServer do
+  @moduledoc """
+  Hex Server implementation and definitions of tools
+  - list_hex_packages
+  """
+  use MCPServer
+  require Logger
+
+  @protocol_version "2024-11-05"
+  @voicevox_api_url "http://localhost:50021"
+
+  @impl true
+  @spec handle_ping(any()) :: {:ok, %{id: any(), jsonrpc: <<_::24>>, method: <<_::32>>}}
+  def handle_ping(request_id) do
+    {:ok,
+     %{
+       jsonrpc: "2.0",
+       id: request_id,
+       result: %{}
+     }}
+  end
+
+  @impl true
+  def handle_initialize(request_id, params) do
+    # Log client connection
+    client_name = get_in(params, ["client_info", "name"]) || "Unknown Client"
+    client_version = get_in(params, ["client_info", "version"]) || "Unknown Version"
+
+    Logger.info("Client connected: #{client_name} v#{client_version}")
+
+    case validate_protocol_version(params["protocolVersion"]) do
+      :ok ->
+        # Return server capabilities
+        {:ok,
+         %{
+           jsonrpc: "2.0",
+           id: request_id,
+           result: %{
+             protocolVersion: @protocol_version,
+             serverInfo: %{
+               name: "VoiceVoxMcpServer",
+               version: "0.1.0"
+             },
+             capabilities: %{
+               tools: %{
+                 listChanged: true
+               }
+             }
+           }
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @impl true
+  def handle_list_tools(request_id, _params) do
+    {:ok,
+     %{
+       jsonrpc: "2.0",
+       id: request_id,
+       result: %{
+         tools: [
+           %{
+             name: "speak",
+             description: "Create an audio file and obtain the audio file path",
+             inputSchema: %{
+               type: "object",
+               properties: %{
+                 words: %{
+                   type: "string",
+                   description: "The words to speak"
+                 }
+               }
+             },
+             outputSchema: %{
+               type: "object",
+               properties: %{
+                 audio_file_path: %{
+                   type: "string",
+                   description: "The audio file path"
+                 }
+               }
+             }
+           }
+         ]
+       }
+     }}
+  end
+
+  @impl true
+  def handle_call_tool(request_id, %{
+        "name" => "speak",
+        "arguments" => %{"words" => words}
+      }) do
+
+    case speak(words) do
+      {:ok, audio_file_path} ->
+        {:ok,
+         %{
+           jsonrpc: "2.0",
+           id: request_id,
+           result: %{
+             content: [
+               %{
+                 type: "text",
+                 text: audio_file_path
+               }
+             ]
+           }
+         }}
+
+      {:error, reason} ->
+        {:error,
+         %{
+           jsonrpc: "2.0",
+           id: request_id,
+           error: %{
+             code: -32_000,
+             message: "Failed to say: #{reason}"
+           }
+         }}
+    end
+  end
+
+  @impl true
+  def handle_call_tool(request_id, %{"name" => unknown_tool} = params) do
+    Logger.warning(
+      "Unknown tool called: #{unknown_tool} with params: #{inspect(params, pretty: true)}"
+    )
+
+    {:error,
+     %{
+       jsonrpc: "2.0",
+       id: request_id,
+       error: %{
+         code: -32_601,
+         message: "Method not found",
+         data: %{
+           name: unknown_tool
+         }
+       }
+     }}
+  end
+
+  defp speak(words) do
+    case Req.post("#{@voicevox_api_url}/audio_query", params: %{text: words, speaker: 3}) do
+      {:ok, %{status: 200, body: audio_query}} ->
+
+        case Req.post("#{@voicevox_api_url}/synthesis", params: %{speaker: 3}, json: audio_query, receive_timeout: 120_000) do
+          {:ok, %{status: 200, body: data}} ->
+            audio_file_path = "/tmp/#{String.slice(words, 0..10)}.wav"
+            File.write!(audio_file_path, data)
+
+            {:ok, audio_file_path}
+
+          {:ok, %{status: status, body: body}} ->
+            error_message = get_in(body, ["error", "message"]) || "HTTP error: #{status}"
+            Logger.error("Voicevox API error: #{error_message}")
+            {:error, error_message}
+    
+          {:error, exception} ->
+            Logger.error("Request error: #{inspect(exception)}")
+            {:error, "Failed to connect to Voicevox service"} 
+        end
+
+      {:ok, %{status: status, body: body}} ->
+        error_message = get_in(body, ["error", "message"]) || "HTTP error: #{status}"
+        Logger.error("Voicevox API error: #{error_message}")
+        {:error, error_message}
+
+      {:error, exception} ->
+        Logger.error("Request error: #{inspect(exception)}")
+        {:error, "Failed to connect to Voicevox service"}
+    end
+  end
+end
+```
+
+## Application
+
+```elixir
+defmodule MyApplication do
+  use Application
+
+  @impl true
+  def start(_type, _args) do
+    children = [
+      {Bandit, plug: MyRouter, port: 4000}
+    ]
+
+    opts = [strategy: :one_for_one, name: MySupervisor]
+    Supervisor.start_link(children, opts)
+  end
+end
+```
+
+## Start MCP Server
+
+```elixir
+Application.put_env(:mcp_sse, :mcp_server, VoicevoxMCPServer)
+```
+
+```elixir
+MyApplication.start(nil, nil)
+```
