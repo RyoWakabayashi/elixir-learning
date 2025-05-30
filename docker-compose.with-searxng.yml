@@ -2,7 +2,7 @@
 
 services:
   livebook_with_searxng:
-    image: ghcr.io/livebook-dev/livebook:0.15.5
+    image: ghcr.io/livebook-dev/livebook:0.16.1
     container_name: livebook_with_searxng
     ports:
       - '8080:8080'
