@@ -1,0 +1,164 @@
+# Pythonx Image Conversion
+
+```elixir
+Mix.install([
+  {:pythonx, "~> 0.4.2"},
+  {:kino_pythonx, "~> 0.1.0"},
+  {:evision, "~> 0.2.13"},
+  {:image, "~> 0.59.3"}
+])
+```
+
+```pyproject.toml
+[project]
+name = "project"
+version = "0.0.0"
+requires-python = "==3.13.*"
+dependencies = [
+  "opencv-python == 4.11.*",
+  "pillow == 11.2.*"
+]
+```
+
+## OpenCV to Evision
+
+```python
+import io
+
+import cv2
+import numpy as np
+
+from PIL import Image
+```
+
+```python
+img = np.zeros((200, 300, 3), np.uint8)
+img[:,:,0] = 255
+
+img
+```
+
+```python
+Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+```
+
+```python
+l_img = img.tolist()
+```
+
+```elixir
+l_img
+|> Pythonx.decode()
+|> Nx.tensor(type: :u8)
+|> Evision.Mat.from_nx_2d()
+```
+
+```python
+b_img = img.tobytes()
+b_img
+```
+
+```elixir
+ex_img =
+  b_img
+  |> Pythonx.decode()
+  |> Evision.Mat.from_binary(:u8, 200, 300, 3)
+```
+
+## Evision to OpenCV
+
+```elixir
+sky_img =
+  [255, 255, 0]
+  |> Nx.tensor(type: :u8)
+  |> Nx.broadcast({200, 300, 3})
+  |> Evision.Mat.from_nx_2d()
+```
+
+```elixir
+py_b_img = Evision.Mat.to_binary(sky_img)
+```
+
+```python
+py_b_img
+```
+
+```python
+py_img = np.frombuffer(py_b_img, dtype=np.uint8)
+py_img = np.reshape(py_img, [200, 300, 3])
+py_img
+```
+
+```python
+Image.fromarray(cv2.cvtColor(py_img, cv2.COLOR_BGR2RGB))
+```
+
+## Pillow to Evision
+
+```python
+pil_img = Image.new("RGB", (300, 200), (0, 255, 0))
+pil_img
+```
+
+```python
+pil_b_img = io.BytesIO()
+pil_img.save(pil_b_img, format='PNG')
+pil_b_img = pil_b_img.getvalue()
+pil_b_img
+```
+
+```elixir
+ex_pil_img =
+  pil_b_img
+  |> Pythonx.decode()
+  |> Evision.imdecode(Evision.Constant.cv_IMREAD_COLOR())
+```
+
+## Evision to Pillow
+
+```elixir
+png_img = Evision.imencode(".png", ex_pil_img)
+```
+
+```python
+png_img
+```
+
+```python
+Image.open(io.BytesIO(png_img))
+```
+
+## Pillow to Image
+
+```python
+pil_yellow_img = Image.new("RGB", (300, 200), (255, 255, 0))
+pil_yellow_img
+```
+
+```python
+pil_yb_img = io.BytesIO()
+pil_yellow_img.save(pil_yb_img, format='PNG')
+pil_yb_img = pil_yb_img.getvalue()
+pil_yb_img
+```
+
+```elixir
+ex_yellow_img =
+  pil_yb_img
+  |> Pythonx.decode()
+  |> Image.from_binary!()
+```
+
+## Image to Pillow
+
+```elixir
+ex_yb_img = Image.write!(ex_yellow_img, :memory, suffix: ".png")
+```
+
+```python
+ex_yb_img
+```
+
+```python
+Image.open(io.BytesIO(ex_yb_img))
+```
