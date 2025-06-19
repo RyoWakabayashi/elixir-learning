@@ -1,4 +1,4 @@
-FROM ghcr.io/livebook-dev/livebook:0.16.1
+FROM ghcr.io/livebook-dev/livebook:0.16.3
 
 RUN mix local.hex --force \
   && mix archive.install hex phx_new --force \
@@ -14,6 +14,7 @@ RUN apt-get upgrade -y \
     erlang-dev \
     gnupg2 \
     lsb-release \
+    software-properties-common \
     sudo \
     unzip \
     vim \
@@ -41,8 +42,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 # For WSL
-RUN wget -O - https://pkg.wslutiliti.es/public.key | sudo tee -a /etc/apt/trusted.gpg.d/wslu.asc
-RUN echo "deb https://pkg.wslutiliti.es/debian bullseye main" | sudo tee -a /etc/apt/sources.list
+RUN add-apt-repository ppa:wslutilities/wslu
 RUN apt-get update \
   && apt-get install --no-install-recommends -y \
   wslu \
