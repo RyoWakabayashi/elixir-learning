@@ -1,0 +1,73 @@
+# Stable Diffusion with Pythonx
+
+```elixir
+Mix.install([
+  {:pythonx, "~> 0.4.2"},
+  {:kino_pythonx, "~> 0.1.0"},
+  {:evision, "~> 0.2.13"}
+])
+```
+
+```pyproject.toml
+[project]
+name = "project"
+version = "0.0.0"
+requires-python = "==3.13.*"
+dependencies = [
+  "diffusers[torch]",
+  "transformers"
+]
+```
+
+## Section
+
+```python
+import torch
+
+torch.cuda.is_available()
+```
+
+```python
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained(
+  "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  torch_dtype=torch.float16)
+pipeline.to("cuda")
+
+images = pipeline("Jumping dog", num_inference_steps=100).images
+images[0]
+```
+
+```elixir
+prompt_input = Kino.Input.text("prompt")
+```
+
+```elixir
+prompt = Kino.Input.read(prompt_input)
+```
+
+```python
+images = pipeline(prompt.decode(), num_inference_steps=100, num_images_per_prompt=4).images
+images[0]
+```
+
+```python
+import io
+
+binary_images = []
+
+for image in images:
+  binary_image = io.BytesIO()
+  image.save(binary_image, format='PNG')
+  binary_images.append(binary_image.getvalue())
+```
+
+```elixir
+binary_images
+|> Pythonx.decode()
+|> Enum.map(fn binary_image ->
+  Evision.imdecode(binary_image, Evision.Constant.cv_IMREAD_COLOR())
+end)
+|> Kino.Layout.grid(columns: 2)
+```
