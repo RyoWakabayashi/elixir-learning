@@ -38,23 +38,23 @@ rem(7, 3)
 "Hello"
 ```
 
-シングルクォーテーションで囲むと Character List
+`~C""` で囲むと Character List
 
 ```elixir
-'Hello'
+~C"Hello"
 ```
 
 Character List は文字コードの配列
 
 ```elixir
-'Hello'
+~C"Hello"
 |> Enum.map(&IO.inspect(&1))
 ```
 
 String と Character List は異なる
 
 ```elixir
-'Hello' == "Hello"
+~C"Hello" == "Hello"
 ```
 
 ## atom型
