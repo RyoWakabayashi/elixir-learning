@@ -222,13 +222,6 @@ client
 
 ## テーブル作成
 
-まずは DataFrame の列名を確認します
-
-```elixir
-wine_df
-|> Explorer.DataFrame.names()
-```
-
 Explorer の型情報を S3 Tables 用のスキーマ定義に変換します
 
 ```elixir
