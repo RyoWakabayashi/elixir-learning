@@ -91,7 +91,7 @@ exist_s3tablescatalog =
   |> AWS.Glue.get_catalogs(%{})
   |> elem(1)
   |> Map.get("CatalogList")
-  |> Enum.any?(fn catalog -> catalog == "s3tablescatalog" end)
+  |> Enum.any?(fn catalog -> Map.get(catalog, "Name") == "s3tablescatalog" end)
 ```
 
 存在しない場合だけ、S3 Tables 用の Federated Catalog を作成します
