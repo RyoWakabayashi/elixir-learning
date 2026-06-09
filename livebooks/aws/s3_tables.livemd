@@ -81,15 +81,6 @@ wine_df = Explorer.Datasets.wine()
 Kino.DataTable.new(wine_df)
 ```
 
-後で Athena とは別経路でも確認できるよう、CSV として保存します
-
-```elixir
-# CSV に保存
-csv_filename = "wine.csv"
-
-DataFrame.to_csv(wine_df, csv_filename)
-```
-
 ## データカタログの作成
 
 Glue に `s3tablescatalog` が既にあるかを確認します
