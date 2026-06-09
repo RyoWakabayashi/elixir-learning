@@ -378,7 +378,9 @@ exec_id = exec_query.("SELECT * FROM \"wine\";")
 削除後に空になっていることを確認します
 
 ```elixir
-get_results.(exec_id)
+exec_id
+|> get_results.()
+|> Kino.DataTable.new()
 ```
 
 INSERT 文を組み立てるために列名を取り出します
