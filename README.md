@@ -7,8 +7,6 @@ Elixir 学習用
 ### Livebook 単独での起動
 
 ```bash
-
-```bash
 $ docker compose up --build
 ...
 Attaching to livebook
@@ -254,6 +252,28 @@ receive do message -> IO.puts( "received: #{ message }" ) end
 ```
 
 ターミナル bar で `received: second message` と表示されることを確認する
+
+## LLM 教材
+
+LLM を `Elixir` / `Livebook` で学ぶための教材シリーズを追加しています。
+
+入口:
+
+* [livebooks/llm/index.livemd](livebooks/llm/index.livemd)
+
+主なノート:
+
+* [01_tokens_embeddings_attention.livemd](livebooks/llm/01_tokens_embeddings_attention.livemd)
+* [02_decoder_generation_with_bumblebee.livemd](livebooks/llm/02_decoder_generation_with_bumblebee.livemd)
+* [03_alignment_data_and_preferences.livemd](livebooks/llm/03_alignment_data_and_preferences.livemd)
+* [04_tiny_bigram_language_model_training.livemd](livebooks/llm/04_tiny_bigram_language_model_training.livemd)
+
+学習の流れ:
+
+1. トークン化、埋め込み、Attention を可視化で理解する
+2. 事前学習済み GPT 系モデルで次トークン予測を体感する
+3. SFT や選好学習の考え方を小さな例でつかむ
+4. 極小の言語モデルを実際に学習して、損失と生成結果の変化を見る
 
 ## Phoenix LiveView の起動
 

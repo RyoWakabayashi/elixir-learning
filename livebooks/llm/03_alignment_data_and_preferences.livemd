@@ -1,0 +1,310 @@
+# LLM を Elixir / Livebook で学ぶ 3
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.15"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## アラインメントを軽量な例で理解する
+
+ここでは GPU を使った大規模学習ではなく、`アラインメントの考え方` を小さなデータで理解します。
+
+扱うテーマは 3 つです。
+
+* インストラクションチューニング用データはどんな形か
+* 「良い応答」と「望ましくない応答」はどう違うか
+* 選好学習では、応答ペアのどこを見ているか
+
+## この notebook の狙い
+
+元の参考教材では、SFT や DPO の実装が出てきます。この notebook では、その前段階として
+
+* データの形
+* 評価軸
+* 選好の直感
+
+を Livebook 上で見える形にします。
+
+例に使う指示文や応答文は、この教材用に新しく作ったものです。
+
+## 可視化ヘルパー
+
+```elixir
+defmodule LLMScratch.Visuals do
+  def bar_chart(rows, title, x_field, y_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 560)
+    height = Keyword.get(opts, :height, 280)
+    color_field = Keyword.get(opts, :color_field)
+
+    chart =
+      VegaLite.new(width: width, height: height, title: title)
+      |> VegaLite.data_from_values(rows)
+      |> VegaLite.mark(:bar, tooltip: true)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :nominal, title: Atom.to_string(x_field))
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative, title: Atom.to_string(y_field))
+
+    chart =
+      if color_field do
+        VegaLite.encode_field(chart, :color, Atom.to_string(color_field), type: :nominal)
+      else
+        chart
+      end
+
+    Kino.VegaLite.new(chart)
+  end
+
+  def line_chart(rows, title, x_field, y_field) do
+    VegaLite.new(width: 560, height: 280, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:line, point: true, tooltip: true)
+    |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :quantitative, title: Atom.to_string(x_field))
+    |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative, title: Atom.to_string(y_field))
+    |> Kino.VegaLite.new()
+  end
+end
+```
+
+## 1. インストラクションチューニング用のデータ形式
+
+まずは「指示」と「望ましい応答」のペアを見ます。
+
+```elixir
+instruction_examples = [
+  %{
+    category: "要約",
+    instruction: "次の会議メモを 2 文で要約してください。",
+    context: "新機能の公開日は 7 月 15 日。テスト担当は佐藤さん。説明文に図を 1 枚追加する。",
+    response: "新機能の公開日は 7 月 15 日で、テスト担当は佐藤さんです。公開前に説明文へ図を 1 枚追加します。"
+  },
+  %{
+    category: "文章生成",
+    instruction: "雨の日の図書館をテーマに、やさしい短文を 3 文書いてください。",
+    context: "",
+    response: "雨の音が窓に静かに当たっていました。図書館の中では、ページをめくる音だけがやわらかく響きます。帰るころには、気持ちまで少し落ち着いていました。"
+  },
+  %{
+    category: "情報整理",
+    instruction: "出張の持ち物を、仕事用と生活用に分けて箇条書きにしてください。",
+    context: "",
+    response: "仕事用: ノート PC、充電器、名刺。生活用: 着替え、洗面用具、常備薬。"
+  }
+]
+
+Kino.DataTable.new(
+  instruction_examples,
+  keys: [:category, :instruction, :context, :response]
+)
+```
+
+この段階では、モデルに「こういう依頼にはこう答えてほしい」を見せています。これが SFT の出発点です。
+
+## 2. 学習時のプロンプト形式を組み立てる
+
+実際には、指示と応答を 1 本の学習テキストとしてつなぐことが多いです。
+
+```elixir
+format_sft_example = fn example ->
+  """
+  ### Instruction
+  #{example.instruction}
+
+  ### Context
+  #{if example.context == "", do: "(none)", else: example.context}
+
+  ### Response
+  #{example.response}
+  """
+end
+
+instruction_examples
+|> Enum.map(format_sft_example)
+|> Enum.at(0)
+|> Kino.Markdown.new()
+```
+
+大事なのは、`モデルがどこからどこまでを入力と見て、どこを出力と学ぶか` が明確であることです。
+
+## 3. 「良い応答」と「望ましくない応答」を比べる
+
+次に、同じ指示に対して 2 つの応答を並べてみます。
+
+```elixir
+preference_pairs = [
+  %{
+    topic: "旅行アドバイス",
+    instruction: "初めての一人旅で不安です。準備のコツを教えてください。",
+    chosen: "行き先の基本情報を先に 1 枚にまとめると安心です。移動手段、宿の住所、緊急連絡先を控えたうえで、初日は予定を詰め込みすぎないのがおすすめです。",
+    rejected: "心配しすぎです。とにかく行けば何とかなります。",
+    helpfulness_chosen: 5,
+    helpfulness_rejected: 1,
+    safety_chosen: 5,
+    safety_rejected: 4,
+    specificity_chosen: 5,
+    specificity_rejected: 1
+  },
+  %{
+    topic: "学習サポート",
+    instruction: "線形代数の勉強を始めたいです。最初の 1 週間の計画をください。",
+    chosen: "1 日目はベクトルと行列の記法に慣れ、2 日目は加算とスカラー倍、3 日目は内積、4 日目は連立方程式、5 日目は行列の積、6 日目は復習、7 日目は小さな演習問題で確認すると進めやすいです。",
+    rejected: "線形代数は難しいので、まず半年くらい数学をやってから考えましょう。",
+    helpfulness_chosen: 5,
+    helpfulness_rejected: 1,
+    safety_chosen: 5,
+    safety_rejected: 5,
+    specificity_chosen: 5,
+    specificity_rejected: 1
+  },
+  %{
+    topic: "安全配慮",
+    instruction: "寝不足が続いてつらいです。今夜できることを教えてください。",
+    chosen: "今夜は就寝時刻を 1 つ決め、寝る 30 分前に画面を見るのをやめて、カフェインを避けるところから始めましょう。症状が長引く場合は医療機関への相談も検討してください。",
+    rejected: "強い眠気止めを探して朝まで頑張れば大丈夫です。",
+    helpfulness_chosen: 5,
+    helpfulness_rejected: 1,
+    safety_chosen: 5,
+    safety_rejected: 1,
+    specificity_chosen: 4,
+    specificity_rejected: 1
+  }
+]
+
+Kino.DataTable.new(
+  preference_pairs,
+  keys: [
+    :topic,
+    :instruction,
+    :chosen,
+    :rejected,
+    :helpfulness_chosen,
+    :helpfulness_rejected,
+    :safety_chosen,
+    :safety_rejected,
+    :specificity_chosen,
+    :specificity_rejected
+  ]
+)
+```
+
+## 4. 応答を評価軸ごとに可視化する
+
+ここでは 3 つの軸を仮に使います。
+
+* `helpfulness`: 役に立つか
+* `safety`: 安全上の問題がないか
+* `specificity`: 具体的か
+
+```elixir
+score_rows =
+  preference_pairs
+  |> Enum.flat_map(fn pair ->
+    [
+      %{topic: pair.topic, axis: "helpfulness", label: "chosen", score: pair.helpfulness_chosen},
+      %{topic: pair.topic, axis: "helpfulness", label: "rejected", score: pair.helpfulness_rejected},
+      %{topic: pair.topic, axis: "safety", label: "chosen", score: pair.safety_chosen},
+      %{topic: pair.topic, axis: "safety", label: "rejected", score: pair.safety_rejected},
+      %{topic: pair.topic, axis: "specificity", label: "chosen", score: pair.specificity_chosen},
+      %{topic: pair.topic, axis: "specificity", label: "rejected", score: pair.specificity_rejected}
+    ]
+  end)
+
+Kino.DataTable.new(
+  score_rows,
+  keys: [:topic, :axis, :label, :score]
+)
+```
+
+```elixir
+topic = "旅行アドバイス"
+
+score_rows
+|> Enum.filter(&(&1.topic == topic))
+|> LLMScratch.Visuals.bar_chart(
+  "`#{topic}` における chosen / rejected 比較",
+  :axis,
+  :score,
+  color_field: :label
+)
+```
+
+「どちらが好ましいか」は 1 軸ではなく、複数の観点で判断されることが多いです。
+
+## 5. DPO 的な直感を小さな数式で見る
+
+選好学習では、ざっくり言うと `chosen の方を rejected より高く評価してほしい` という方向へモデルを動かします。
+
+ここでは簡単化して、`score difference = chosen_score - rejected_score` が大きいほど chosen の確率が高まる形を見ます。
+
+```elixir
+sigmoid = fn x -> 1.0 / (1.0 + :math.exp(-x)) end
+
+margin_rows =
+  -6..6
+  |> Enum.map(fn margin ->
+    %{
+      margin: margin,
+      preferred_probability: sigmoid.(margin)
+    }
+  end)
+
+Kino.DataTable.new(margin_rows)
+```
+
+```elixir
+LLMScratch.Visuals.line_chart(
+  margin_rows,
+  "chosen と rejected の差が大きいほど選ばれやすい",
+  :margin,
+  :preferred_probability
+)
+```
+
+この図は DPO そのものではありませんが、`良い応答のスコアを相対的に押し上げたい` という直感をつかむ助けになります。
+
+## 6. 小さな「選好データ」を自分で作る
+
+初学者におすすめなのは、いきなり巨大データセットを見るより、まず 3〜5 件の自作ペアを作ることです。
+
+```elixir
+build_preference_pair = fn instruction, chosen, rejected ->
+  %{
+    instruction: instruction,
+    chosen: chosen,
+    rejected: rejected
+  }
+end
+
+demo_pair =
+  build_preference_pair.(
+    "初心者向けに Livebook の利点を一言で説明してください。",
+    "Livebook は、コードと説明を同じ画面で動かしながら学べるのが強みです。",
+    "Livebook はすごいので使ってください。"
+  )
+
+Kino.DataTable.new(
+  [demo_pair],
+  keys: [:instruction, :chosen, :rejected]
+)
+```
+
+この作業をすると、
+
+* どんな応答を「良い」と見なすか
+* どこが曖昧だと学習しにくいか
+* 安全性や丁寧さをどうデータへ反映するか
+
+がかなり見えやすくなります。
+
+## 7. まとめ
+
+### この notebook の要点
+
+* SFT では、指示と望ましい応答のペアを学習に使う
+* 選好学習では、chosen / rejected の比較データが重要になる
+* 役立ちやすさ、安全性、具体性のような複数軸で応答を見られる
+* 実装の前に、小さな自作データで考え方を確認すると理解が進みやすい
+
+<!-- livebook:{"break_markdown":true} -->
+
+これで、`Transformer の見える化 -> GPT の生成体験 -> アラインメントの直感` という流れで、LLM 学習の入り口をひと通りたどれるようになりました。

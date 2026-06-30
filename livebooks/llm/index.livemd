@@ -1,0 +1,29 @@
+# LLM を Elixir / Livebook で学ぶ
+
+## 概要
+
+このディレクトリーには、LLM の基本を `Elixir` と `Livebook` で学ぶための教材をまとめています。
+
+## 学び方
+
+1. まずは `01_tokens_embeddings_attention.livemd` で、トークン・埋め込み・Attention を目で見ながら理解する
+2. 次に `02_decoder_generation_with_bumblebee.livemd` で、事前学習済み GPT 系モデルを動かして「次トークン予測」を体感する
+3. 最後に `03_alignment_data_and_preferences.livemd` で、インストラクションチューニングや選好学習の考え方をつかむ
+4. 発展編として `04_tiny_bigram_language_model_training.livemd` で、極小の next-token モデルを実際に学習する
+
+## ノートブック一覧
+
+* [01_tokens_embeddings_attention.livemd](01_tokens_embeddings_attention.livemd)
+* [02_decoder_generation_with_bumblebee.livemd](02_decoder_generation_with_bumblebee.livemd)
+* [03_alignment_data_and_preferences.livemd](03_alignment_data_and_preferences.livemd)
+* [04_tiny_bigram_language_model_training.livemd](04_tiny_bigram_language_model_training.livemd)
+
+## この教材の方針
+
+* 初学者が追いやすいように、数式だけでなく表・ヒートマップ・フローチャートを多めに入れています
+* 長時間の GPU 学習を前提にせず、Livebook 上で試しやすい内容を優先しています
+* 著作権に配慮し、例文やデータ例はこの教材用に新しく作っています
+
+## 補足
+
+このシリーズは「LLM の全実装」を目標にしたものではなく、まず仕組みをつかむための導入コースです。その次の段階として、`Nx` を使って極小の言語モデルを自分で学習する発展編も用意しています。
