@@ -8,127 +8,146 @@ Mix.install([
 ])
 ```
 
-## 発展編: Transformer を部品から組み立てる
+## Bigram から Transformer へ: 部品・学習・予測をつなげる
 
-この notebook では、これまで別々に触れてきた要素をつなげて、
+第2章では、`現在の1トークンだけ` から次を予測する bigram モデルを学習しました。この章でも学習の基本は変わりません。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  A["入力を数値にする"] --> B["次トークンの点数を出す"]
+  B --> C["正解との差を損失にする"]
+  C --> D["損失が下がるように重みを更新する"]
+  D --> A
+""")
+```
+
+変わるのは、`次を予測するときに使える情報` です。
+
+| モデル | 次トークンを予測するために見るもの | 苦手・得意 |
+|---|---|---|
+| 第2章の bigram | 直前の1トークン | 簡単だが、長い文脈を区別できない |
+| この章のTransformer | 入力文全体 + 出力文の左側 | 離れた情報や別の文を参照できる |
+
+たとえばデコーダーが `<BOS> わたし は` まで読んだ時点では、bigramに見える最後のトークンはどの例でも `は` です。一方Transformerは、エンコーダーが読んだ英語側を参照できるため、次を `緑茶`、`猫`、`本` などに選び分けられます。
+
+この違いを作るために、
 
 * マルチヘッドアテンション
 * 位置エンコーディング
 * フィードフォワード層
-* スキップ接続
+* 残差接続
 * レイヤー正規化
-* エンコーダ
-* デコーダ
+* エンコーダー
+* デコーダー
 * Transformer 全体
 
 を 1 本の流れとして実装します。
 
 ## この notebook の狙い
 
-ここでの実装は `学習済みモデル` ではなく、`構造理解用の最小実装` です。
+この notebook は2段階で進みます。
 
-* 形がどうつながるか
-* 各ブロックがどんな役割を持つか
-* encoder-decoder の全体像がどう forward されるか
+1. まずランダムな重みで各部品を動かし、データの流れと形状を見る
+2. 次に複数の翻訳例を使い、最後の出力層を学習して予測の変化を見る
 
-を Livebook 上で追いやすくすることを優先しています。
-
-重みはランダム初期化なので、出力文章の意味はまだ良くありません。今回は「仕組みを自分で組めるようになる」ことがゴールです。
+すべての層を同時に学習すると、初学者には「どの部分を観察しているか」が見えにくくなります。そこで後半の小さな実験では、Transformer本体を文脈を作る装置として固定し、`デコーダーの表現 -> 次トークン` を結ぶ出力層だけを学習します。実用モデルはTransformer全体を学習しますが、損失・更新・学習前後の比較は同じ考え方です。
 
 ## 全体像
 
 ```elixir
 Kino.Mermaid.new("""
-flowchart LR
-  A["source token ids"] --> B["source embedding + positional encoding"]
-  B --> C["encoder block x N"]
-  C --> D["encoder memory"]
-  E["target token ids"] --> F["target embedding + positional encoding"]
-  F --> G["decoder block x N"]
+flowchart
+  A["入力文のトークン ID"] --> B["入力文の埋め込み + 位置情報"]
+  B --> C["エンコーダーブロック × N"]
+  C --> D["エンコーダーの記憶"]
+  E["出力文のトークン ID"] --> F["出力文の埋め込み + 位置情報"]
+  F --> G["デコーダーブロック × N"]
   D --> G
-  G --> H["linear projection"]
-  H --> I["target vocabulary logits"]
+  G --> H["出力語彙への線形変換"]
+  H --> I["次トークン候補のスコア"]
 """)
 ```
 
-## エンコーダブロックとデコーダブロック
+## エンコーダーブロックとデコーダーブロック
 
 ```elixir
 Kino.Mermaid.new("""
 flowchart TD
-  subgraph EncoderBlock
-    E1["multi-head self attention"] --> E2["skip connection + layer norm"]
-    E2 --> E3["feed-forward"]
-    E3 --> E4["skip connection + layer norm"]
+  subgraph encoder_block["エンコーダーブロック"]
+    E1["マルチヘッド自己アテンション"] --> E2["残差接続 + レイヤー正規化"]
+    E2 --> E3["フィードフォワード層"]
+    E3 --> E4["残差接続 + レイヤー正規化"]
   end
 
-  subgraph DecoderBlock
-    D1["masked multi-head self attention"] --> D2["skip connection + layer norm"]
-    D2 --> D3["cross attention to encoder memory"]
-    D3 --> D4["skip connection + layer norm"]
-    D4 --> D5["feed-forward"]
-    D5 --> D6["skip connection + layer norm"]
+  subgraph decoder_block["デコーダーブロック"]
+    D1["因果マスク付きマルチヘッド自己アテンション"] --> D2["残差接続 + レイヤー正規化"]
+    D2 --> D3["エンコーダーの記憶へのクロスアテンション"]
+    D3 --> D4["残差接続 + レイヤー正規化"]
+    D4 --> D5["フィードフォワード層"]
+    D5 --> D6["残差接続 + レイヤー正規化"]
   end
 """)
 ```
 
 この 2 つは似ていますが、役割は少し違います。
 
-* `encoder` は source 側の文を読んで、「この文は何を言っているか」を表す `memory` を作る
-* `decoder` は target 側の途中経過を見ながら、必要に応じて encoder memory を参照して次トークンを決める
+* エンコーダーは入力文を読んで、「この文は何を言っているか」を表す記憶を作る
+* デコーダーは出力文の途中経過を見ながら、必要に応じてエンコーダーの記憶を参照して次トークンを決める
 
 ```elixir
 component_rows = [
   %{
-    component: "multi-head self-attention",
-    where: "encoder / decoder",
-    reads: "同じ系列の各位置",
-    purpose: "文脈を読んで各位置の表現を更新する"
+    部品: "マルチヘッド自己アテンション",
+    使用場所: "エンコーダー / デコーダー",
+    参照範囲: "同じ系列の各位置",
+    役割: "文脈を読んで各位置の表現を更新する"
   },
   %{
-    component: "masked self-attention",
-    where: "decoder only",
-    reads: "target の左側だけ",
-    purpose: "未来を見ずに次トークン予測を成立させる"
+    部品: "因果マスク付き自己アテンション",
+    使用場所: "デコーダーのみ",
+    参照範囲: "出力文の左側だけ",
+    役割: "未来を見ずに次トークン予測を成立させる"
   },
   %{
-    component: "cross-attention",
-    where: "decoder only",
-    reads: "encoder memory",
-    purpose: "source 側の情報を target 生成へ持ち込む"
+    部品: "クロスアテンション",
+    使用場所: "デコーダーのみ",
+    参照範囲: "エンコーダーの記憶",
+    役割: "入力文の情報を出力文の生成へ持ち込む"
   },
   %{
-    component: "feed-forward",
-    where: "encoder / decoder",
-    reads: "各位置を独立に変換",
-    purpose: "attention 後の表現をさらに変換する"
+    部品: "フィードフォワード層",
+    使用場所: "エンコーダー / デコーダー",
+    参照範囲: "各位置を独立に変換",
+    役割: "アテンション後の表現をさらに変換する"
   },
   %{
-    component: "skip + layer norm",
-    where: "encoder / decoder",
-    reads: "入力 + サブレイヤー出力",
-    purpose: "情報を保ちつつ学習を安定させる"
+    部品: "残差接続 + レイヤー正規化",
+    使用場所: "エンコーダー / デコーダー",
+    参照範囲: "入力 + サブレイヤー出力",
+    役割: "情報を保ちつつ学習を安定させる"
   }
 ]
 
-Kino.DataTable.new(component_rows, keys: [:component, :where, :reads, :purpose])
+Kino.DataTable.new(component_rows, keys: [:部品, :使用場所, :参照範囲, :役割])
 ```
 
 ## マルチヘッドアテンションを直感で捉える
 
-1 本の attention だけだと、全部の関係を 1 種類の重み行列で表そうとします。  
+1本のアテンションだけだと、全部の関係を1種類の重み行列で表そうとします。
+
 マルチヘッドアテンションでは、埋め込みを複数の小さな部分空間へ分けて、`別々の見方` を並列に学べるようにします。
 
 ```elixir
 Kino.Mermaid.new("""
-flowchart LR
-  A["input embeddings"] --> B["linear projections"]
-  B --> C["split into heads"]
-  C --> D1["head 0 attention"]
-  C --> D2["head 1 attention"]
-  D1 --> E["concatenate"]
+flowchart
+  A["入力の埋め込み"] --> B["Query / Key / Value へ線形変換"]
+  B --> C["複数のヘッドへ分割"]
+  C --> D1["ヘッド 0 のアテンション"]
+  C --> D2["ヘッド 1 のアテンション"]
+  D1 --> E["各ヘッドを連結"]
   D2 --> E
-  E --> F["output projection"]
+  E --> F["出力用の線形変換"]
 """)
 ```
 
@@ -155,6 +174,24 @@ defmodule LLMScratch.Visuals do
     |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :nominal, title: x_title)
     |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :nominal, title: y_title)
     |> VegaLite.encode_field(:color, Atom.to_string(color_field), type: :quantitative, scale: [scheme: "tealblues"])
+    |> Kino.VegaLite.new()
+  end
+
+  def line_chart(rows, title, x_field, y_field, opts \\ []) do
+    x_title = Keyword.get(opts, :x_title, Atom.to_string(x_field))
+    y_title = Keyword.get(opts, :y_title, Atom.to_string(y_field))
+
+    VegaLite.new(width: 620, height: 280, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:line, point: true, tooltip: true)
+    |> VegaLite.encode_field(:x, Atom.to_string(x_field),
+      type: :quantitative,
+      title: x_title
+    )
+    |> VegaLite.encode_field(:y, Atom.to_string(y_field),
+      type: :quantitative,
+      title: y_title
+    )
     |> Kino.VegaLite.new()
   end
 end
@@ -384,18 +421,120 @@ defmodule LLMScratch.Transformer do
 end
 ```
 
-## 1. 小さな語彙と例文を用意する
+```elixir
+defmodule LLMScratch.TrainableHead do
+  import Nx.Defn
+
+  defn row_softmax(logits) do
+    shifted = Nx.subtract(logits, Nx.reduce_max(logits, axes: [1], keep_axes: true))
+    exps = Nx.exp(shifted)
+    Nx.divide(exps, Nx.sum(exps, axes: [1], keep_axes: true))
+  end
+
+  defn loss(w, b, features, target_one_hot) do
+    probabilities =
+      features
+      |> Nx.dot(w)
+      |> Nx.add(b)
+      |> row_softmax()
+
+    target_one_hot
+    |> Nx.multiply(Nx.log(Nx.add(probabilities, 1.0e-9)))
+    |> Nx.sum(axes: [1])
+    |> Nx.negate()
+    |> Nx.mean()
+  end
+
+  defn update(w, b, features, target_one_hot, learning_rate) do
+    {grad_w, grad_b} =
+      grad({w, b}, fn {current_w, current_b} ->
+        loss(current_w, current_b, features, target_one_hot)
+      end)
+
+    {
+      Nx.subtract(w, Nx.multiply(grad_w, learning_rate)),
+      Nx.subtract(b, Nx.multiply(grad_b, learning_rate))
+    }
+  end
+
+  def probabilities(w, b, features) do
+    features
+    |> Nx.dot(w)
+    |> Nx.add(b)
+    |> row_softmax()
+  end
+end
+```
+
+## 1. 複数の短い翻訳例を用意する
 
 ```elixir
-src_vocab = ["<PAD>", "<BOS>", "<EOS>", "i", "really", "like", "green", "tea", "cats"]
-tgt_vocab = ["<PAD>", "<BOS>", "<EOS>", "わたし", "は", "緑茶", "が", "好き", "猫"]
+src_vocab = [
+  "<PAD>", "<BOS>", "<EOS>", "i", "really", "like",
+  "green", "tea", "cats", "coffee", "books"
+]
+
+tgt_vocab = [
+  "<PAD>", "<BOS>", "<EOS>", "わたし", "は", "緑茶",
+  "が", "好き", "猫", "コーヒー", "本"
+]
 
 src_token_to_id = src_vocab |> Enum.with_index() |> Map.new()
 tgt_token_to_id = tgt_vocab |> Enum.with_index() |> Map.new()
 
-src_tokens = ["i", "really", "like", "green", "tea", "<EOS>"]
-tgt_tokens = ["<BOS>", "わたし", "は", "緑茶", "が", "好き"]
-tgt_expected_next_tokens = ["わたし", "は", "緑茶", "が", "好き", "<EOS>"]
+training_examples = [
+  %{
+    label: "緑茶の例",
+    source: ["i", "really", "like", "green", "tea", "<EOS>"],
+    decoder_input: ["<BOS>", "わたし", "は", "緑茶", "が", "好き"],
+    expected: ["わたし", "は", "緑茶", "が", "好き", "<EOS>"]
+  },
+  %{
+    label: "猫の例",
+    source: ["i", "really", "like", "cats", "<PAD>", "<EOS>"],
+    decoder_input: ["<BOS>", "わたし", "は", "猫", "が", "好き"],
+    expected: ["わたし", "は", "猫", "が", "好き", "<EOS>"]
+  },
+  %{
+    label: "コーヒーの例",
+    source: ["i", "really", "like", "coffee", "<PAD>", "<EOS>"],
+    decoder_input: ["<BOS>", "わたし", "は", "コーヒー", "が", "好き"],
+    expected: ["わたし", "は", "コーヒー", "が", "好き", "<EOS>"]
+  },
+  %{
+    label: "本の例",
+    source: ["i", "really", "like", "books", "<PAD>", "<EOS>"],
+    decoder_input: ["<BOS>", "わたし", "は", "本", "が", "好き"],
+    expected: ["わたし", "は", "本", "が", "好き", "<EOS>"]
+  }
+]
+
+example_rows =
+  Enum.map(training_examples, fn example ->
+    %{
+      例: example.label,
+      エンコーダー入力: Enum.join(example.source, " "),
+      デコーダー入力: Enum.join(example.decoder_input, " "),
+      正解の次トークン列: Enum.join(example.expected, " ")
+    }
+  end)
+
+Kino.DataTable.new(
+  example_rows,
+  keys: [:例, :エンコーダー入力, :デコーダー入力, :正解の次トークン列]
+)
+```
+
+4例とも出力文側の最初は `<BOS> わたし は` で同じです。次に来る目的語を選ぶには、デコーダー側だけでなく、エンコーダーが読む `green tea`、`cats`、`coffee`、`books` を見分ける必要があります。
+
+以下ではまず `green tea` の1例を使って、Transformer内部を順番に観察します。後半で4例すべてを学習に使います。
+
+```elixir
+walkthrough_example = hd(training_examples)
+
+src_tokens = walkthrough_example.source
+tgt_tokens = walkthrough_example.decoder_input
+tgt_expected_next_tokens = walkthrough_example.expected
 
 src_ids = src_tokens |> Enum.map(&src_token_to_id[&1]) |> Nx.tensor(type: :s64)
 tgt_ids = tgt_tokens |> Enum.map(&tgt_token_to_id[&1]) |> Nx.tensor(type: :s64)
@@ -409,11 +548,11 @@ tgt_ids = tgt_tokens |> Enum.map(&tgt_token_to_id[&1]) |> Nx.tensor(type: :s64)
 }
 ```
 
-この例では、source 側に
+この例では、入力文側に
 
 `i really like green tea`
 
-が入り、target 側では
+が入り、出力文側では
 
 `<BOS> わたし は 緑茶 が 好き`
 
@@ -424,24 +563,24 @@ sequence_rows =
   0..(length(src_tokens) - 1)
   |> Enum.map(fn position ->
     %{
-      position: position,
-      source_token: Enum.at(src_tokens, position),
-      decoder_input_token: Enum.at(tgt_tokens, position),
-      expected_next_token: Enum.at(tgt_expected_next_tokens, position)
+      位置: position,
+      入力文のトークン: Enum.at(src_tokens, position),
+      デコーダーに見せるトークン: Enum.at(tgt_tokens, position),
+      正解の次トークン: Enum.at(tgt_expected_next_tokens, position)
     }
   end)
 
 Kino.DataTable.new(
   sequence_rows,
-  keys: [:position, :source_token, :decoder_input_token, :expected_next_token]
+  keys: [:位置, :入力文のトークン, :デコーダーに見せるトークン, :正解の次トークン]
 )
 ```
 
 この表の見方は次の通りです。
 
-* `source_token` は encoder が読む単語
-* `decoder_input_token` は decoder がその位置までに見えている単語
-* `expected_next_token` は、その位置で本来高く出てほしい次トークン
+* `入力文のトークン` はエンコーダーが読む単語
+* `デコーダーに見せるトークン` はデコーダーがその位置までに見えている単語
+* `正解の次トークン` は、その位置で本来高く出てほしい次トークン
 
 ## 2. Transformer の設定
 
@@ -455,33 +594,33 @@ config = %{
 }
 ```
 
-`d_model=8` はかなり小さいですが、形を見るには十分です。`num_heads=2` にすると、マルチヘッドアテンションの分割も追いやすくなります。
+`d_model=8` はかなり小さいですが、形状を見るには十分です。`num_heads=2` にすると、マルチヘッドアテンションの分割も追いやすくなります。
 
 ```elixir
 shape_concept_rows = [
   %{
-    item: "1 token embedding",
-    shape: "{d_model} = {8}",
-    note: "1 つの位置の表現"
+    項目: "1トークンの埋め込み",
+    形状: "{d_model} = {8}",
+    意味: "1つの位置の表現"
   },
   %{
-    item: "sequence embeddings",
-    shape: "{seq_len, d_model} = {6, 8}",
-    note: "系列全体の表現"
+    項目: "系列全体の埋め込み",
+    形状: "{系列長, d_model} = {6, 8}",
+    意味: "系列全体の表現"
   },
   %{
-    item: "after split into 2 heads",
-    shape: "{num_heads, seq_len, head_dim} = {2, 6, 4}",
-    note: "8 次元を 4 次元 x 2 に分ける"
+    項目: "2つのヘッドへ分割した後",
+    形状: "{ヘッド数, 系列長, ヘッド次元} = {2, 6, 4}",
+    意味: "8次元を4次元 × 2に分ける"
   },
   %{
-    item: "attention weights per head",
-    shape: "{seq_len, seq_len} = {6, 6}",
-    note: "各位置がどこを見るか"
+    項目: "ヘッドごとのアテンション重み",
+    形状: "{系列長, 系列長} = {6, 6}",
+    意味: "各位置がどこを見るか"
   }
 ]
 
-Kino.DataTable.new(shape_concept_rows, keys: [:item, :shape, :note])
+Kino.DataTable.new(shape_concept_rows, keys: [:項目, :形状, :意味])
 ```
 
 ## 3. パラメータを初期化する
@@ -585,18 +724,18 @@ position_rows =
   for position <- 0..(length(src_tokens) - 1),
       dim <- 0..(config.d_model - 1) do
     %{
-      position: "pos_#{position}",
-      dimension: "dim_#{dim}",
-      value: Nx.to_number(positional_encoding[[position, dim]])
+      位置: "位置_#{position}",
+      次元: "次元_#{dim}",
+      値: Nx.to_number(positional_encoding[[position, dim]])
     }
   end
 
 LLMScratch.Visuals.heatmap(
   position_rows,
   "位置エンコーディング",
-  :dimension,
-  :position,
-  :value,
+  :次元,
+  :位置,
+  :値,
   x_title: "埋め込み次元",
   y_title: "位置"
 )
@@ -630,17 +769,17 @@ position_detail_rows =
       |> inspect()
 
     %{
-      position: position,
-      token: Enum.at(src_tokens, position),
-      token_embedding_head: token_preview,
-      positional_encoding_head: pe_preview,
-      summed_head: sum_preview
+      位置: position,
+      トークン: Enum.at(src_tokens, position),
+      トークン埋め込みの先頭4要素: token_preview,
+      位置情報の先頭4要素: pe_preview,
+      加算後の先頭4要素: sum_preview
     }
   end
 
 Kino.DataTable.new(
   position_detail_rows,
-  keys: [:position, :token, :token_embedding_head, :positional_encoding_head, :summed_head]
+  keys: [:位置, :トークン, :トークン埋め込みの先頭4要素, :位置情報の先頭4要素, :加算後の先頭4要素]
 )
 ```
 
@@ -653,7 +792,7 @@ Kino.DataTable.new(
 
 ## 5. マルチヘッドアテンションを単独で動かす
 
-まずは encoder 側の入力埋め込みに対して、`multi-head self attention` を 1 回だけかけてみます。
+まずはエンコーダー側の入力埋め込みに対して、マルチヘッド自己アテンションを1回だけかけてみます。
 
 ```elixir
 src_embeddings = src_embeddings_with_position
@@ -674,7 +813,7 @@ src_embeddings = src_embeddings_with_position
 }
 ```
 
-`attention_weight_shape = {head, query_position, key_position}` になっていれば、ヘッドごとの参照先を分けて見られます。
+`attention_weight_shape = {head, query_position, key_position}` という形状になっていれば、ヘッドごとの参照先を分けて見られます。
 
 ```elixir
 q_projection =
@@ -687,12 +826,12 @@ q_projection =
 q_heads = LLMScratch.Transformer.split_heads(q_projection, config.num_heads)
 
 head_shape_rows = [
-  %{stage: "input embeddings", shape: inspect(Tuple.to_list(Nx.shape(src_embeddings))), note: "各位置 8 次元"},
-  %{stage: "query projection", shape: inspect(Tuple.to_list(Nx.shape(q_projection))), note: "まだ 8 次元のまま"},
-  %{stage: "split heads", shape: inspect(Tuple.to_list(Nx.shape(q_heads))), note: "2 ヘッド x 4 次元へ分割"}
+  %{段階: "入力の埋め込み", 形状: inspect(Tuple.to_list(Nx.shape(src_embeddings))), 説明: "各位置8次元"},
+  %{段階: "Queryへの線形変換", 形状: inspect(Tuple.to_list(Nx.shape(q_projection))), 説明: "まだ8次元のまま"},
+  %{段階: "ヘッドへ分割", 形状: inspect(Tuple.to_list(Nx.shape(q_heads))), 説明: "2ヘッド × 4次元へ分割"}
 ]
 
-Kino.DataTable.new(head_shape_rows, keys: [:stage, :shape, :note])
+Kino.DataTable.new(head_shape_rows, keys: [:段階, :形状, :説明])
 ```
 
 ```elixir
@@ -703,20 +842,20 @@ q_head_tabs =
       for position <- 0..(length(src_tokens) - 1),
           dim <- 0..(div(config.d_model, config.num_heads) - 1) do
         %{
-          position: "#{position}:#{Enum.at(src_tokens, position)}",
-          dimension: "dim_#{dim}",
-          value: Float.round(Nx.to_number(q_heads[[head, position, dim]]), 4)
+          位置とトークン: "#{position}:#{Enum.at(src_tokens, position)}",
+          次元: "次元_#{dim}",
+          値: Float.round(Nx.to_number(q_heads[[head, position, dim]]), 4)
         }
       end
 
-    {"query_head_#{head}",
+    {"Queryヘッド #{head}",
      LLMScratch.Visuals.heatmap(
        rows,
-       "query vector values for head #{head}",
-       :dimension,
-       :position,
-       :value,
-       x_title: "head 内の次元",
+       "ヘッド #{head} のQueryベクトル",
+       :次元,
+       :位置とトークン,
+       :値,
+       x_title: "ヘッド内の次元",
        y_title: "位置"
      )}
   end)
@@ -724,7 +863,7 @@ q_head_tabs =
 Kino.Layout.tabs(q_head_tabs)
 ```
 
-ここで見えるのは、`1 本の 8 次元ベクトル` が `4 次元の head 0` と `4 次元の head 1` に分かれてから、それぞれ独立に attention へ入っていくことです。
+ここで見えるのは、`1本の8次元ベクトル` が `4次元のヘッド0` と `4次元のヘッド1` に分かれてから、それぞれ独立にアテンションへ入っていくことです。
 
 ```elixir
 head_tabs =
@@ -734,19 +873,19 @@ head_tabs =
       for q <- 0..(length(src_tokens) - 1),
           k <- 0..(length(src_tokens) - 1) do
         %{
-          query: "#{q}:#{Enum.at(src_tokens, q)}",
-          key: "#{k}:#{Enum.at(src_tokens, k)}",
-          score: Float.round(Nx.to_number(mh_weights[[head, q, k]]), 4)
+          参照元: "#{q}:#{Enum.at(src_tokens, q)}",
+          参照先: "#{k}:#{Enum.at(src_tokens, k)}",
+          重み: Float.round(Nx.to_number(mh_weights[[head, q, k]]), 4)
         }
       end
 
-    {"head_#{head}",
+    {"ヘッド #{head}",
      LLMScratch.Visuals.heatmap(
        rows,
-       "encoder self-attention head #{head}",
-       :key,
-       :query,
-       :score,
+       "エンコーダーの自己アテンション: ヘッド #{head}",
+       :参照先,
+       :参照元,
+       :重み,
        x_title: "参照先",
        y_title: "見ている位置"
      )}
@@ -757,22 +896,23 @@ Kino.Layout.tabs(head_tabs)
 
 重みはランダム初期化なので意味解釈はまだ難しいですが、`ヘッドごとに別の重み行列を持つ` という構造はここで確認できます。
 
-## 6. フィードフォワード層・スキップ接続・レイヤー正規化
+## 6. フィードフォワード層・残差接続・レイヤー正規化
 
-encoder block の前半と後半で何が起きるかを、shape と一緒に見ます。
+エンコーダーブロックの前半と後半で何が起きるかを、形状と一緒に見ます。
 
-attention は「他の位置を読む」層ですが、feed-forward は違います。  
-feed-forward は `各位置を独立に` 非線形変換します。つまり、位置 0 と位置 1 を混ぜるのではなく、各位置のベクトルを個別に押し広げて変換しています。
+アテンションは「他の位置を読む」層ですが、フィードフォワード層は違います。
+
+フィードフォワード層は `各位置を独立に` 非線形変換します。つまり、位置0と位置1を混ぜるのではなく、各位置のベクトルを個別に押し広げて変換しています。
 
 ```elixir
 Kino.Mermaid.new("""
-flowchart LR
-  A["position 0 vector"] --> B0["same feed-forward network"]
-  C["position 1 vector"] --> B1["same feed-forward network"]
-  D["position 2 vector"] --> B2["same feed-forward network"]
-  B0 --> E["updated position 0"]
-  B1 --> F["updated position 1"]
-  B2 --> G["updated position 2"]
+flowchart
+  A["位置 0 のベクトル"] --> B0["共通のフィードフォワード層"]
+  C["位置 1 のベクトル"] --> B1["共通のフィードフォワード層"]
+  D["位置 2 のベクトル"] --> B2["共通のフィードフォワード層"]
+  B0 --> E["更新後の位置 0"]
+  B1 --> F["更新後の位置 1"]
+  B2 --> G["更新後の位置 2"]
 """)
 ```
 
@@ -783,13 +923,13 @@ first_encoder_block = hd(params.encoder_blocks)
   LLMScratch.Transformer.encoder_block(src_embeddings, first_encoder_block, config.num_heads)
 
 shape_rows = [
-  %{name: "block input", shape: inspect(Tuple.to_list(Nx.shape(src_embeddings)))},
-  %{name: "self-attention output", shape: inspect(Tuple.to_list(Nx.shape(encoder_block_info.attention_output)))},
-  %{name: "feed-forward output", shape: inspect(Tuple.to_list(Nx.shape(encoder_block_info.feed_forward_output)))},
-  %{name: "block output", shape: inspect(Tuple.to_list(Nx.shape(encoder_block_output)))}
+  %{データ: "ブロックへの入力", 形状: inspect(Tuple.to_list(Nx.shape(src_embeddings)))},
+  %{データ: "自己アテンションの出力", 形状: inspect(Tuple.to_list(Nx.shape(encoder_block_info.attention_output)))},
+  %{データ: "フィードフォワード層の出力", 形状: inspect(Tuple.to_list(Nx.shape(encoder_block_info.feed_forward_output)))},
+  %{データ: "ブロック全体の出力", 形状: inspect(Tuple.to_list(Nx.shape(encoder_block_output)))}
 ]
 
-Kino.DataTable.new(shape_rows, keys: [:name, :shape])
+Kino.DataTable.new(shape_rows, keys: [:データ, :形状])
 ```
 
 ```elixir
@@ -808,24 +948,24 @@ ff_preview_rows =
       |> inspect()
 
     %{
-      position: "#{position}:#{Enum.at(src_tokens, position)}",
-      ff_input_head: input_preview,
-      ff_output_head: output_preview
+      位置とトークン: "#{position}:#{Enum.at(src_tokens, position)}",
+      変換前の先頭4要素: input_preview,
+      変換後の先頭4要素: output_preview
     }
   end
 
-Kino.DataTable.new(ff_preview_rows, keys: [:position, :ff_input_head, :ff_output_head])
+Kino.DataTable.new(ff_preview_rows, keys: [:位置とトークン, :変換前の先頭4要素, :変換後の先頭4要素])
 ```
 
 このブロックでは次の順で処理しています。
 
-1. `multi-head self attention`
-2. 入力との足し算 `skip connection`
-3. `layer normalization`
-4. `feed-forward`
-5. もう一度 `skip connection + layer normalization`
+1. マルチヘッド自己アテンション
+2. 入力との足し算である残差接続
+3. レイヤー正規化
+4. フィードフォワード層
+5. もう一度、残差接続とレイヤー正規化
 
-スキップ接続は、深いネットワークでも元の情報が流れやすくなるのを助けます。レイヤー正規化は、各位置の表現を安定させる役割を持ちます。
+残差接続は、深いネットワークでも元の情報が流れやすくなるのを助けます。レイヤー正規化は、各位置の表現を安定させる役割を持ちます。
 
 ```elixir
 residual_before_norm =
@@ -845,47 +985,51 @@ norm_rows =
     normalized = residual_after_norm[position]
 
     %{
-      position: "#{position}:#{Enum.at(src_tokens, position)}",
-      before_mean: Float.round(Nx.to_number(Nx.mean(before)), 4),
-      before_var: Float.round(Nx.to_number(Nx.mean(Nx.pow(Nx.subtract(before, Nx.mean(before)), 2))), 4),
-      after_mean: Float.round(Nx.to_number(Nx.mean(normalized)), 4),
-      after_var: Float.round(Nx.to_number(Nx.mean(Nx.pow(Nx.subtract(normalized, Nx.mean(normalized)), 2))), 4)
+      位置とトークン: "#{position}:#{Enum.at(src_tokens, position)}",
+      正規化前の平均: Float.round(Nx.to_number(Nx.mean(before)), 4),
+      正規化前の分散: Float.round(Nx.to_number(Nx.mean(Nx.pow(Nx.subtract(before, Nx.mean(before)), 2))), 4),
+      正規化後の平均: Float.round(Nx.to_number(Nx.mean(normalized)), 4),
+      正規化後の分散: Float.round(Nx.to_number(Nx.mean(Nx.pow(Nx.subtract(normalized, Nx.mean(normalized)), 2))), 4)
     }
   end
 
-Kino.DataTable.new(norm_rows, keys: [:position, :before_mean, :before_var, :after_mean, :after_var])
+Kino.DataTable.new(
+  norm_rows,
+  keys: [:位置とトークン, :正規化前の平均, :正規化前の分散, :正規化後の平均, :正規化後の分散]
+)
 ```
 
-この表では、layer normalization の後に各位置ベクトルの平均が 0 付近、分散が 1 付近へ寄ることが見えます。  
-つまり、`skip connection で情報を足し戻しつつ、layer norm で値のスケールを整える` という役割分担です。
+この表では、レイヤー正規化の後に各位置ベクトルの平均が0付近、分散が1付近へ寄ることが見えます。
 
-## 7. エンコーダを実行する
+つまり、`残差接続で情報を足し戻しつつ、レイヤー正規化で値のスケールを整える` という役割分担です。
 
-エンコーダとデコーダは混同しやすいので、先に役割を表で整理しておきます。
+## 7. エンコーダーを実行する
+
+エンコーダーとデコーダーは混同しやすいので、先に役割を表で整理しておきます。
 
 ```elixir
 encoder_decoder_rows = [
   %{
-    part: "encoder",
-    input: "source tokens",
-    main_attention: "self-attention",
-    can_see_future: "source 全体を見てよい",
-    output: "encoder memory",
-    job: "source を理解した表現を作る"
+    部分: "エンコーダー",
+    入力: "入力文のトークン",
+    主なアテンション: "自己アテンション",
+    未来の参照: "入力文全体を見てよい",
+    出力: "エンコーダーの記憶",
+    役割: "入力文を理解した表現を作る"
   },
   %{
-    part: "decoder",
-    input: "target tokens so far",
-    main_attention: "masked self-attention + cross-attention",
-    can_see_future: "target の未来は見ない",
-    output: "decoder hidden states / logits",
-    job: "source memory を参照しながら target を生成する"
+    部分: "デコーダー",
+    入力: "ここまでの出力文トークン",
+    主なアテンション: "因果マスク付き自己アテンション + クロスアテンション",
+    未来の参照: "出力文の未来は見ない",
+    出力: "隠れ状態 / 次トークン候補のスコア",
+    役割: "入力文の記憶を参照しながら出力文を生成する"
   }
 ]
 
 Kino.DataTable.new(
   encoder_decoder_rows,
-  keys: [:part, :input, :main_attention, :can_see_future, :output, :job]
+  keys: [:部分, :入力, :主なアテンション, :未来の参照, :出力, :役割]
 )
 ```
 
@@ -899,9 +1043,9 @@ Kino.DataTable.new(
 }
 ```
 
-encoder は source 側の系列を読み取り、後で decoder が参照する `memory` を作ります。
+エンコーダーは入力文の系列を読み取り、後でデコーダーが参照する記憶を作ります。
 
-この例では、encoder は単に `tea` だけを見るのではなく、
+この例では、エンコーダーは単に `tea` だけを見るのではなく、
 
 * `really`
 * `like`
@@ -909,31 +1053,31 @@ encoder は source 側の系列を読み取り、後で decoder が参照する 
 * `tea`
 
 の並び全体を 6 個の位置表現へ変換します。  
-decoder はこの `memory` を見ることで、「何を好きなのか」「どの語がどこにあったか」の手がかりを受け取ります。
+デコーダーはこの記憶を見ることで、「何を好きなのか」「どの語がどこにあったか」の手がかりを受け取ります。
 
 ```elixir
 encoder_memory_rows =
   for position <- 0..(length(src_tokens) - 1),
       dim <- 0..(config.d_model - 1) do
     %{
-      position: "#{position}:#{Enum.at(src_tokens, position)}",
-      dimension: "dim_#{dim}",
-      value: Float.round(Nx.to_number(encoder_memory[[position, dim]]), 4)
+      位置とトークン: "#{position}:#{Enum.at(src_tokens, position)}",
+      次元: "次元_#{dim}",
+      値: Float.round(Nx.to_number(encoder_memory[[position, dim]]), 4)
     }
   end
 
 LLMScratch.Visuals.heatmap(
   encoder_memory_rows,
-  "encoder memory",
-  :dimension,
-  :position,
-  :value,
+  "エンコーダーの記憶",
+  :次元,
+  :位置とトークン,
+  :値,
   x_title: "埋め込み次元",
-  y_title: "source の位置"
+  y_title: "入力文の位置"
 )
 ```
 
-## 8. デコーダを実行する
+## 8. デコーダーを実行する
 
 ```elixir
 {decoder_output, decoder_infos, tgt_mask} =
@@ -946,13 +1090,14 @@ LLMScratch.Visuals.heatmap(
 }
 ```
 
-decoder では 2 種類の attention が使われます。
+デコーダーでは2種類のアテンションが使われます。
 
-* `masked self-attention`: target の左側だけを見る
-* `cross-attention`: encoder memory を参照する
+* 因果マスク付き自己アテンション: 出力文の左側だけを見る
+* クロスアテンション: エンコーダーの記憶を参照する
 
-今回の例なら、decoder の最後の位置 `好き` の直後では、本来 `<EOS>` が来そうです。  
-その 1 つ前の位置 `が` では、次に `好き` が来るかどうかを target 左側と source memory の両方から判断します。
+今回の例なら、デコーダーの最後の位置 `好き` の直後では、本来 `<EOS>` が来そうです。
+
+その1つ前の位置 `が` では、次に `好き` が来るかどうかを、出力文の左側とエンコーダーの記憶の両方から判断します。
 
 ```elixir
 decoder_step_rows =
@@ -964,26 +1109,26 @@ decoder_step_rows =
       |> Enum.join(" ")
 
     %{
-      position: position,
-      visible_target_prefix: visible_prefix,
-      should_predict_next: Enum.at(tgt_expected_next_tokens, position)
+      位置: position,
+      デコーダーから見える範囲: visible_prefix,
+      予測すべき次トークン: Enum.at(tgt_expected_next_tokens, position)
     }
   end)
 
 Kino.DataTable.new(
   decoder_step_rows,
-  keys: [:position, :visible_target_prefix, :should_predict_next]
+  keys: [:位置, :デコーダーから見える範囲, :予測すべき次トークン]
 )
 ```
 
 ```elixir
 Kino.Mermaid.new("""
-flowchart LR
-  A["target prefix"] --> B["masked self-attention"]
-  B --> C["decoder intermediate state"]
-  D["encoder memory"] --> E["cross-attention"]
+flowchart
+  A["ここまでの出力文"] --> B["因果マスク付き自己アテンション"]
+  B --> C["デコーダーの中間表現"]
+  D["エンコーダーの記憶"] --> E["クロスアテンション"]
   C --> E
-  E --> F["next-token prediction side"]
+  E --> F["次トークン予測へ"]
 """)
 ```
 
@@ -992,24 +1137,24 @@ mask_rows =
   for q <- 0..(length(tgt_tokens) - 1),
       k <- 0..(length(tgt_tokens) - 1) do
     %{
-      query: "#{q}:#{Enum.at(tgt_tokens, q)}",
-      key: "#{k}:#{Enum.at(tgt_tokens, k)}",
-      score: if(Nx.to_number(tgt_mask[[q, k]]) == 1, do: 1.0, else: 0.0)
+      現在位置: "#{q}:#{Enum.at(tgt_tokens, q)}",
+      参照先: "#{k}:#{Enum.at(tgt_tokens, k)}",
+      マスク値: if(Nx.to_number(tgt_mask[[q, k]]) == 1, do: 1.0, else: 0.0)
     }
   end
 
 LLMScratch.Visuals.heatmap(
   mask_rows,
-  "decoder causal mask",
-  :key,
-  :query,
-  :score,
+  "デコーダーの因果マスク",
+  :参照先,
+  :現在位置,
+  :マスク値,
   x_title: "未来を含む参照先",
   y_title: "現在位置"
 )
 ```
 
-## 9. デコーダの self-attention と cross-attention を見る
+## 9. デコーダーの因果マスク付き自己アテンションとクロスアテンションを見る
 
 ```elixir
 first_decoder_info = hd(decoder_infos)
@@ -1021,21 +1166,21 @@ self_tabs =
       for q <- 0..(length(tgt_tokens) - 1),
           k <- 0..(length(tgt_tokens) - 1) do
         %{
-          query: "#{q}:#{Enum.at(tgt_tokens, q)}",
-          key: "#{k}:#{Enum.at(tgt_tokens, k)}",
-          score: Float.round(Nx.to_number(first_decoder_info.self_weights[[head, q, k]]), 4)
+          参照元: "#{q}:#{Enum.at(tgt_tokens, q)}",
+          参照先: "#{k}:#{Enum.at(tgt_tokens, k)}",
+          重み: Float.round(Nx.to_number(first_decoder_info.self_weights[[head, q, k]]), 4)
         }
       end
 
-    {"self_head_#{head}",
+    {"自己アテンション #{head}",
      LLMScratch.Visuals.heatmap(
        rows,
-       "decoder masked self-attention head #{head}",
-       :key,
-       :query,
-       :score,
-       x_title: "target 内の参照先",
-       y_title: "target の現在位置"
+       "デコーダーの因果マスク付き自己アテンション: ヘッド #{head}",
+       :参照先,
+       :参照元,
+       :重み,
+       x_title: "出力文内の参照先",
+       y_title: "出力文の現在位置"
      )}
   end)
 
@@ -1046,28 +1191,28 @@ cross_tabs =
       for q <- 0..(length(tgt_tokens) - 1),
           k <- 0..(length(src_tokens) - 1) do
         %{
-          query: "#{q}:#{Enum.at(tgt_tokens, q)}",
-          key: "#{k}:#{Enum.at(src_tokens, k)}",
-          score: Float.round(Nx.to_number(first_decoder_info.cross_weights[[head, q, k]]), 4)
+          出力文の位置: "#{q}:#{Enum.at(tgt_tokens, q)}",
+          入力文の位置: "#{k}:#{Enum.at(src_tokens, k)}",
+          重み: Float.round(Nx.to_number(first_decoder_info.cross_weights[[head, q, k]]), 4)
         }
       end
 
-    {"cross_head_#{head}",
+    {"クロスアテンション #{head}",
      LLMScratch.Visuals.heatmap(
        rows,
-       "decoder cross-attention head #{head}",
-       :key,
-       :query,
-       :score,
-       x_title: "source 側 memory",
-       y_title: "target の現在位置"
+       "デコーダーのクロスアテンション: ヘッド #{head}",
+       :入力文の位置,
+       :出力文の位置,
+       :重み,
+       x_title: "入力文側の記憶",
+       y_title: "出力文の現在位置"
      )}
   end)
 
 Kino.Layout.tabs(self_tabs ++ cross_tabs)
 ```
 
-ここで、decoder が `target の左側` と `encoder memory` を別の attention で読むことが見えます。
+ここで、デコーダーが `出力文の左側` と `エンコーダーの記憶` を別のアテンションで読むことが見えます。
 
 ## 10. Transformer 全体を実行する
 
@@ -1076,52 +1221,52 @@ transformer_run =
   LLMScratch.Transformer.transformer(src_ids, tgt_ids, params, config)
 
 summary_rows = [
-  %{name: "encoder_memory", shape: inspect(Tuple.to_list(Nx.shape(transformer_run.encoder_memory)))},
-  %{name: "decoder_output", shape: inspect(Tuple.to_list(Nx.shape(transformer_run.decoder_output)))},
-  %{name: "logits", shape: inspect(Tuple.to_list(Nx.shape(transformer_run.logits)))}
+  %{データ: "エンコーダーの記憶", 形状: inspect(Tuple.to_list(Nx.shape(transformer_run.encoder_memory)))},
+  %{データ: "デコーダーの出力", 形状: inspect(Tuple.to_list(Nx.shape(transformer_run.decoder_output)))},
+  %{データ: "次トークン候補のロジット", 形状: inspect(Tuple.to_list(Nx.shape(transformer_run.logits)))}
 ]
 
-Kino.DataTable.new(summary_rows, keys: [:name, :shape])
+Kino.DataTable.new(summary_rows, keys: [:データ, :形状])
 ```
 
-`logits` の shape が `{target_sequence_length, target_vocab_size}` になっていれば、各 target 位置で「次に出しそうな target 語彙」をスコアとして出していることが分かります。
+`logits`（ロジット）の形状が `{出力文の系列長, 出力語彙数}` になっていれば、出力文の各位置で「次に出しそうなトークン」をスコアとして出していることが分かります。
 
 ここは少し抽象的なので、今回の例に当てはめるとこう読めます。
 
-* position 0 の logits: `<BOS>` を見たあとに何が来そうか
-* position 1 の logits: `<BOS> わたし` のあとに何が来そうか
-* position 2 の logits: `<BOS> わたし は` のあとに何が来そうか
+* 位置0のロジット: `<BOS>` を見たあとに何が来そうか
+* 位置1のロジット: `<BOS> わたし` のあとに何が来そうか
+* 位置2のロジット: `<BOS> わたし は` のあとに何が来そうか
 
-つまり、`logits` は「文全体を一度に完成させる出力」ではなく、`各位置での次トークン候補表` です。
+つまり、ロジットは「文全体を一度に完成させる出力」ではなく、`各位置での次トークン候補表` です。
 
 ```elixir
 pipeline_rows = [
   %{
-    stage: "source embedding + position",
-    shape: inspect(Tuple.to_list(Nx.shape(src_embeddings))),
-    meaning: "source の各位置を数値ベクトル化したもの"
+    段階: "入力文の埋め込み + 位置情報",
+    形状: inspect(Tuple.to_list(Nx.shape(src_embeddings))),
+    意味: "入力文の各位置を数値ベクトル化したもの"
   },
   %{
-    stage: "encoder memory",
-    shape: inspect(Tuple.to_list(Nx.shape(transformer_run.encoder_memory))),
-    meaning: "source 全体を読んだ後の文脈表現"
+    段階: "エンコーダーの記憶",
+    形状: inspect(Tuple.to_list(Nx.shape(transformer_run.encoder_memory))),
+    意味: "入力文全体を読んだ後の文脈表現"
   },
   %{
-    stage: "decoder output",
-    shape: inspect(Tuple.to_list(Nx.shape(transformer_run.decoder_output))),
-    meaning: "target 各位置の隠れ状態"
+    段階: "デコーダーの出力",
+    形状: inspect(Tuple.to_list(Nx.shape(transformer_run.decoder_output))),
+    意味: "出力文の各位置に対応する隠れ状態"
   },
   %{
-    stage: "logits",
-    shape: inspect(Tuple.to_list(Nx.shape(transformer_run.logits))),
-    meaning: "各位置で target 語彙へ射影したスコア"
+    段階: "次トークン候補のロジット",
+    形状: inspect(Tuple.to_list(Nx.shape(transformer_run.logits))),
+    意味: "各位置で出力語彙へ変換したスコア"
   }
 ]
 
-Kino.DataTable.new(pipeline_rows, keys: [:stage, :shape, :meaning])
+Kino.DataTable.new(pipeline_rows, keys: [:段階, :形状, :意味])
 ```
 
-## 11. 出力語彙への射影を確認する
+## 11. 学習前の出力語彙への射影を確認する
 
 ```elixir
 top_predictions =
@@ -1137,44 +1282,258 @@ top_predictions =
       |> Enum.join(" / ")
 
     %{
-      position: position,
-      decoder_token: Enum.at(tgt_tokens, position),
-      expected_next_token: Enum.at(tgt_expected_next_tokens, position),
-      top3_logits: top3
+      位置: position,
+      デコーダー入力: Enum.at(tgt_tokens, position),
+      正解の次トークン: Enum.at(tgt_expected_next_tokens, position),
+      スコア上位3候補: top3
     }
   end)
 
-Kino.DataTable.new(top_predictions, keys: [:position, :decoder_token, :expected_next_token, :top3_logits])
+Kino.DataTable.new(top_predictions, keys: [:位置, :デコーダー入力, :正解の次トークン, :スコア上位3候補])
 ```
 
-まだランダム重みなので `expected_next_token` が上位に来るとは限りません。  
-ただし、ここで見たいのは精度ではなく、
+まだランダム重みなので `正解の次トークン` が上位に来るとは限りません。ここではまず、
 
-* decoder の各位置ごとに
-* target 語彙全体へのスコアが出て
+* デコーダーの各位置ごとに
+* 出力語彙全体へのスコアが出て
 * その中から次トークンを選べる
 
 という Transformer 出力の形そのものです。
 
-## 12. まとめ
+## 12. 4つの例で出力層を学習する
+
+ここから第2章と同じ `学習前 -> 損失を下げる -> 学習後` の流れに戻ります。
+
+各翻訳例をTransformerへ通すと、デコーダーの各位置に8次元の表現ができます。この実験では、その表現を作るTransformer本体は固定し、最後の `8次元 -> 出力語彙の確率` だけを学習します。
 
 ```elixir
-Kino.Markdown.new("""
+training_runs =
+  Enum.map(training_examples, fn example ->
+    example_src_ids =
+      example.source
+      |> Enum.map(&src_token_to_id[&1])
+      |> Nx.tensor(type: :s64)
+
+    example_tgt_ids =
+      example.decoder_input
+      |> Enum.map(&tgt_token_to_id[&1])
+      |> Nx.tensor(type: :s64)
+
+    run =
+      LLMScratch.Transformer.transformer(
+        example_src_ids,
+        example_tgt_ids,
+        params,
+        config
+      )
+
+    %{
+      label: example.label,
+      decoder_output: run.decoder_output,
+      expected: example.expected
+    }
+  end)
+
+sequence_length = length(tgt_tokens)
+training_example_count = length(training_examples)
+
+training_features =
+  training_runs
+  |> Enum.map(& &1.decoder_output)
+  |> Nx.stack()
+  |> Nx.reshape({training_example_count * sequence_length, config.d_model})
+
+training_target_ids =
+  training_examples
+  |> Enum.flat_map(& &1.expected)
+  |> Enum.map(&tgt_token_to_id[&1])
+  |> Nx.tensor(type: :s64)
+
+training_target_one_hot =
+  Nx.equal(
+    Nx.new_axis(training_target_ids, 1),
+    Nx.iota({length(tgt_vocab)})
+  )
+  |> Nx.as_type(:f32)
+
+%{
+  examples: training_example_count,
+  positions_per_example: sequence_length,
+  training_rows: elem(Nx.shape(training_features), 0),
+  feature_shape: Nx.shape(training_features),
+  target_shape: Nx.shape(training_target_one_hot)
+}
+```
+
+`training_rows = 4例 x 6位置 = 24` です。24個の次トークン問題をまとめて解き、正解トークンの確率が高くなるよう出力層を更新します。
+
+```elixir
+initial_head_w = params.output_projection.w
+initial_head_b = params.output_projection.b
+
+head_epochs = 3000
+head_learning_rate = 0.5
+
+{{trained_head_w, trained_head_b}, head_loss_rows} =
+  Enum.reduce(
+    0..head_epochs,
+    {{initial_head_w, initial_head_b}, []},
+    fn epoch, {{w, b}, rows} ->
+      loss =
+        LLMScratch.TrainableHead.loss(
+          w,
+          b,
+          training_features,
+          training_target_one_hot
+        )
+        |> Nx.to_number()
+
+      {next_w, next_b} =
+        LLMScratch.TrainableHead.update(
+          w,
+          b,
+          training_features,
+          training_target_one_hot,
+          head_learning_rate
+        )
+
+      {{next_w, next_b}, [%{epoch: epoch, loss: loss} | rows]}
+    end
+  )
+
+head_loss_rows = Enum.reverse(head_loss_rows)
+
+%{
+  loss_before: hd(head_loss_rows).loss,
+  loss_after: List.last(head_loss_rows).loss
+}
+```
+
+```elixir
+head_loss_chart_rows =
+  Enum.map(head_loss_rows, fn row ->
+    %{学習回数: row.epoch, 損失: row.loss}
+  end)
+
+LLMScratch.Visuals.line_chart(
+  head_loss_chart_rows,
+  "Transformer の出力層を学習したときの損失",
+  :学習回数,
+  :損失,
+  x_title: "学習回数（epoch）",
+  y_title: "損失（loss）"
+)
+```
+
+第2章と同じく、左から右へ損失が下がれば、出力層が24個の正解へ近づいています。
+
+### 同じ `は` の次を、入力文に応じて変えられるか
+
+4例すべてで、位置2のデコーダー入力は `は` です。bigramなら入力が同じなので同じ確率しか出せません。Transformerのデコーダー表現にはエンコーダーの情報が混ざるため、例ごとに別の目的語を予測できる可能性があります。
+
+```elixir
+top_prediction = fn w, b, feature ->
+  probabilities =
+    LLMScratch.TrainableHead.probabilities(
+      w,
+      b,
+      Nx.new_axis(feature, 0)
+    )
+    |> Nx.squeeze(axes: [0])
+    |> Nx.to_flat_list()
+
+  {probability, token} =
+    probabilities
+    |> Enum.zip(tgt_vocab)
+    |> Enum.max_by(fn {probability, _token} -> probability end)
+
+  "#{token} (#{Float.round(probability, 3)})"
+end
+
+object_position = 2
+
+object_prediction_rows =
+  training_runs
+  |> Enum.zip(training_examples)
+  |> Enum.map(fn {run, example} ->
+    feature = run.decoder_output[object_position]
+
+    %{
+      入力文: Enum.join(example.source, " "),
+      共通のデコーダー入力: "<BOS> わたし は",
+      正解の次トークン: Enum.at(example.expected, object_position),
+      学習前の予測: top_prediction.(initial_head_w, initial_head_b, feature),
+      学習後の予測: top_prediction.(trained_head_w, trained_head_b, feature)
+    }
+  end)
+
+Kino.DataTable.new(
+  object_prediction_rows,
+  keys: [
+    :入力文,
+    :共通のデコーダー入力,
+    :正解の次トークン,
+    :学習前の予測,
+    :学習後の予測
+  ]
+)
+```
+
+この表の中心は `共通のデコーダー入力` が全行で同じなのに、学習後の予測が入力文に応じて変わる点です。これはデコーダーのクロスアテンションがエンコーダーの記憶を読み、入力文の違いをデコーダーの表現へ持ち込めるためです。
+
+```elixir
+before_probabilities =
+  LLMScratch.TrainableHead.probabilities(
+    initial_head_w,
+    initial_head_b,
+    training_features
+  )
+
+after_probabilities =
+  LLMScratch.TrainableHead.probabilities(
+    trained_head_w,
+    trained_head_b,
+    training_features
+  )
+
+accuracy = fn probabilities ->
+  predicted_ids =
+    probabilities
+    |> Nx.argmax(axis: 1)
+    |> Nx.to_flat_list()
+
+  correct_ids = Nx.to_flat_list(training_target_ids)
+
+  Enum.zip(predicted_ids, correct_ids)
+  |> Enum.count(fn {predicted, correct} -> predicted == correct end)
+  |> Kernel./(length(correct_ids))
+end
+
+Kino.DataTable.new([
+  %{段階: "学習前", 正答率: accuracy.(before_probabilities)},
+  %{段階: "学習後", 正答率: accuracy.(after_probabilities)}
+])
+```
+
+正答率（accuracy）は24位置のうち正しい次トークンを1位にできた割合です。実用的な翻訳性能を測る値ではなく、この小さな学習データに対して出力層が変化したことを確認する指標です。
+
+## 13. まとめ
+
 ### この notebook の要点
 
-* マルチヘッドアテンションは、複数の attention を並列に走らせて結合する
+* マルチヘッドアテンションは、複数のアテンションを並列に走らせて結合する
 * 位置エンコーディングは、トークンの並び順を表現へ加える
-* feed-forward は各位置ごとに非線形変換をかける層
-* skip connection と layer normalization は深い構造を安定させる
-* encoder は source を文脈表現へ変換し、decoder はそれを参照して target を生成する
-* Transformer 全体は、これらのブロックを積み重ねた構造として forward 実装できる
-""")
-```
+* フィードフォワード層は各位置ごとに非線形変換をかける
+* 残差接続とレイヤー正規化は深い構造を安定させる
+* エンコーダーは入力文を文脈表現へ変換し、デコーダーはそれを参照して出力文を生成する
+* Transformer全体は、これらのブロックを積み重ねた構造として順伝播を実装できる
+* 学習の基本はbigramと同じだが、Transformerは入力文全体と出力文の左側を使って次を予測できる
+* 同じデコーダー入力でも、クロスアテンションによって入力文に応じた次トークンを選び分けられる
 
 次に進むなら、
 
-* この notebook の重みに学習ループをつける
-* padding mask を足す
-* decoder-only GPT へ寄せて causal LM を作る
+* 出力層だけでなく、埋め込み・アテンション・フィードフォワード層もまとめて学習する
+* パディングマスクを足す
+* デコーダーのみのGPTへ寄せて、因果言語モデル（causal LM）を作る
 
 という順が自然です。

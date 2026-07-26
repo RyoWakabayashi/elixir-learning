@@ -15,7 +15,7 @@ Mix.install(
 
 ## 事前学習済み GPT 系モデルで「次トークン予測」を体感する
 
-前のノートブックでは、Transformer の主要部品と encoder-decoder 全体の forward を自分で組み立てました。
+前のノートブックでは、Transformerの主要部品とエンコーダー／デコーダー全体の順伝播を自分で組み立てました。
 
 このノートブックでは、`Bumblebee` を使って GPT 系モデルを実際に動かしながら、
 
@@ -64,7 +64,7 @@ end
 
 ```elixir
 Kino.Mermaid.new("""
-flowchart LR
+flowchart
   A["プロンプト"] --> B["トークン化"]
   B --> C["モデルへ入力"]
   C --> D["次トークンの確率"]
@@ -91,12 +91,14 @@ repo = {:hf, "gpt2", cache_dir: cache_dir}
 
 ## 1. プロンプトをトークンとして見る
 
-`gpt2` は英語向けのモデルなので、まずは短い英語プロンプトで観察します。
+`gpt2` は英語向けのモデルなので、英語で典型的に「1単語が複数トークンへ分かれる」例を観察します。
+
+人が空白で数える単語と、モデルのトークンは別物です。頻出する文字列は1トークンになりやすい一方、長い語・派生語・珍しい綴りは、モデルが知っている小さな部品へ分割されることがあります。
 
 ```elixir
 prompt_input =
   Kino.Input.textarea("PROMPT",
-    default: "The sky above the city looked calm, but"
+    default: "Tokenization is unexpectedly interesting."
   )
 ```
 
@@ -126,7 +128,43 @@ Kino.DataTable.new(
 )
 ```
 
-同じ文章でも、私たちが思う「単語」とモデルの「トークン」は一致しないことがあります。これがサブワード分割の感覚です。
+表の `piece` を上から読むと、たとえば `Tokenization` が `Token` と `ization` に分かれるはずです。先頭の空白が後ろの piece に含まれることもあります。
+
+```elixir
+tokenization_examples = [
+  %{english: "Tokenization", japanese: "トークン化"},
+  %{english: "tokenizer", japanese: "トークナイザー"},
+  %{english: "reuses", japanese: "再利用する"},
+  %{english: "unexpectedly", japanese: "意外にも"}
+]
+
+token_piece_rows =
+  tokenization_examples
+  |> Enum.flat_map(fn example ->
+    ids =
+      Bumblebee.apply_tokenizer(tokenizer, example.english)["input_ids"][[0]]
+      |> Nx.to_flat_list()
+
+    ids
+    |> Enum.with_index()
+    |> Enum.map(fn {token_id, piece_index} ->
+      %{
+        word: example.english,
+        japanese_meaning: example.japanese,
+        piece_index: piece_index,
+        piece: Bumblebee.Tokenizer.decode(tokenizer, [token_id]),
+        token_id: token_id
+      }
+    end)
+  end)
+
+Kino.DataTable.new(
+  token_piece_rows,
+  keys: [:word, :japanese_meaning, :piece_index, :piece, :token_id]
+)
+```
+
+同じ `word` が複数行にまたがっていれば、`1単語 = 1トークン` ではありません。モデルは単語辞書だけでなく、再利用しやすい文字列の部品を組み合わせて文章を扱っています。これがサブワード分割です。
 
 ## 2. プロンプトごとの長さを比べる
 
@@ -134,10 +172,10 @@ Kino.DataTable.new(
 
 ```elixir
 prompt_examples = [
-  "The sky above the city looked calm, but",
-  "Elixir is pleasant for interactive experiments because",
-  "A robot entered the library and asked",
-  "Write a short poem about rain and memory."
+  "cat",
+  "tokenizer",
+  "Tokenization is interesting.",
+  "The tokenizer reuses reusable pieces."
 ]
 
 prompt_length_rows =
@@ -158,35 +196,35 @@ Kino.DataTable.new(prompt_length_rows)
 LLMScratch.Visuals.bar_chart(prompt_length_rows, "プロンプトごとのトークン数", :prompt, :token_count)
 ```
 
-文章の長さが同じでも、トークン数は同じとは限りません。モデルの見え方は「文字数」ではなく「トークン数」に近いです。
+`cat` は短く頻出なので1トークンになりやすい一方、`tokenizer` は複数 piece へ分かれます。文字数や空白区切りの単語数だけでは、モデルにとっての長さを決められません。計算量やコンテキスト上限を考えるときは、トークン数を見ます。
 
 ## 3. 生成設定を変えてみる
 
 ここでは 2 つの設定を比べます。
 
-* `greedy`: 毎回もっとも確率の高い候補を選びやすい
-* `creative`: 少しランダム性を入れて広がりを持たせる
+* `greedy`: 毎回もっとも確率の高い候補を選ぶ
+* `sampling`: 上位候補の確率に応じて抽選し、別の展開も選べるようにする
 
 ```elixir
 greedy_config =
   Bumblebee.configure(generation_config,
     max_new_tokens: 40,
-    temperature: 0.7
+    strategy: %{type: :greedy_search}
   )
 
-creative_config =
+sampling_config =
   Bumblebee.configure(generation_config,
     max_new_tokens: 40,
     temperature: 1.1,
     strategy: %{
-      type: :contrastive_search,
+      type: :multinomial_sampling,
       top_k: 40,
-      alpha: 0.6
+      top_p: 0.9
     }
   )
 
 greedy_serving = Bumblebee.Text.generation(gpt2, tokenizer, greedy_config)
-creative_serving = Bumblebee.Text.generation(gpt2, tokenizer, creative_config)
+sampling_serving = Bumblebee.Text.generation(gpt2, tokenizer, sampling_config)
 ```
 
 ```elixir
@@ -195,52 +233,71 @@ greedy_result =
   |> Nx.Serving.run(prompt)
   |> Map.get(:results)
 
-creative_result =
-  creative_serving
+sampling_result =
+  sampling_serving
   |> Nx.Serving.run(prompt)
   |> Map.get(:results)
 
 Kino.Layout.tabs([
   greedy: Kino.DataTable.new(greedy_result),
-  creative: Kino.DataTable.new(creative_result)
+  sampling: Kino.DataTable.new(sampling_result)
 ])
 ```
 
 初学者向けの観察ポイントは次の通りです。
 
-* `temperature` を下げると、出力が安定しやすい
-* `temperature` を上げると、予測の裾を拾いやすい
-* `top_k` を入れると、極端に低い候補を切り落としやすい
+* `greedy` は同じ入力なら同じ経路を選びやすく、無難だが繰り返しも起きやすい
+* `sampling` は確率に応じて抽選するので、同じ入力でも実行ごとに続きが変わり得る
+* `temperature` を上げると確率差がなだらかになり、低確率だった候補も選ばれやすくなる
+* `top_k=40` と `top_p=0.9` は、可能性が極端に低い候補まで抽選対象にしないための制限
+
+ここで「創造性」という特別な能力を追加したわけではありません。`次トークン候補から常に1位を取るか、上位候補を抽選するか` を変えただけで、その小さな分岐が後続トークンへ連鎖します。
 
 ## 4. 同じ入力でも生成の感じが変わる
 
-プロンプトの書き方も出力を大きく変えます。
+同じ中心場面 `A small robot arrived at the station` に、文体を示す短い書き出しを加えて比べます。英語生成ですが、比較の意図は日本語ラベルで確認できるようにします。
 
 ```elixir
 prompt_variants = [
-  "The sky above the city looked calm, but",
-  "Continue this as a mystery story: The sky above the city looked calm, but",
-  "Continue this as a cheerful children's story: The sky above the city looked calm, but"
+  %{
+    style: "ニュース調",
+    prompt: "News report: A small robot arrived at the station. According to witnesses,"
+  },
+  %{
+    style: "子ども向け物語",
+    prompt: "Children's story: A small robot arrived at the station. It smiled and said,"
+  },
+  %{
+    style: "ミステリー",
+    prompt: "Mystery story: A small robot arrived at the station. Nobody knew why,"
+  }
 ]
 
 variant_results =
   prompt_variants
-  |> Enum.map(fn text ->
+  |> Enum.map(fn example ->
     output =
-      creative_serving
-      |> Nx.Serving.run(text)
+      sampling_serving
+      |> Nx.Serving.run(example.prompt)
       |> Map.get(:results)
 
     %{
-      prompt: text,
+      style: example.style,
+      prompt: example.prompt,
       result: inspect(output)
     }
   end)
 
-Kino.DataTable.new(variant_results)
+Kino.DataTable.new(variant_results, keys: [:style, :prompt, :result])
 ```
 
-ここで見たいのは、「モデルの知識」だけでなく「指示文の置き方」でも振る舞いが変わる、という点です。
+3行は中心となる出来事を共通にしています。観察するときは、単語を逐語訳するより次を比べてください。
+
+* ニュース調では、人・場所・目撃情報のような説明へ寄るか
+* 子ども向けでは、会話や明るい展開へ寄るか
+* ミステリーでは、理由・秘密・不穏な出来事へ寄るか
+
+GPT-2 は指示に従うよう調整されたチャットモデルではないため、毎回きれいに文体が分かれるとは限りません。その不安定さも含めて、`入力の少しの違いが次トークン確率を変え、生成全体の分岐になる` ことを観察します。
 
 ## 5. 生成トークン数と時間の関係
 
@@ -282,7 +339,7 @@ LLMScratch.Visuals.line_chart(timing_rows, "生成トークン数と実行時間
 
 * 入力文がトークン列になる
 * 各トークンが埋め込みベクトルになる
-* causal self-attention で左側の文脈だけを見る
+* 因果マスク付き自己アテンションで左側の文脈だけを見る
 * 最後の位置から「次トークン候補」の確率を出す
 * 1 つ選んで末尾に足し、また同じ処理をする
 

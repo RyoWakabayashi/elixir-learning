@@ -6,11 +6,17 @@
 
 ## 学び方
 
-1. まずは `01_tokens_embeddings_attention.livemd` で、トークン・埋め込み・Attention の基礎を目で見ながら理解する
-2. 次に `02_tiny_bigram_language_model_training.livemd` で、極小の next-token モデルを実際に学習して、言語モデル学習の最小形をつかむ
-3. そのあと `03_transformer_from_building_blocks.livemd` で、Transformer を部品から組み上げて構造を理解する
-4. 次に `04_decoder_generation_with_bumblebee.livemd` で、事前学習済み GPT 系モデルを動かして「次トークン予測」を体感する
-5. 最後に `05_alignment_data_and_preferences.livemd` で、インストラクションチューニングや選好学習の考え方をつかむ
+このシリーズは、次の1本の問いを少しずつ広げます。
+
+`モデルは、何を手がかりに次のトークンを予測するのか？`
+
+1. `01_tokens_embeddings_attention.livemd`: GPTの全体像を見てから、トークン・埋め込み・位置・アテンションを分解する
+2. `02_tiny_bigram_language_model_training.livemd`: 直前の1トークンだけを見るモデルを学習し、損失と予測が変わる様子を見る
+3. `03_transformer_from_building_blocks.livemd`: 入力文全体も読めるTransformerを組み、複数例で学習前後を比べる
+4. `04_decoder_generation_with_bumblebee.livemd`: 事前学習済み GPT-2 を動かし、サブワード分割と生成の分岐を観察する
+5. `05_alignment_data_and_preferences.livemd`: 極小モデルでSFTとDPOを実行し、損失・応答確率・選好マージンの変化を見る
+
+途中で用語が分からなくなった場合は、コードより先に各節の「表の見方」「観察ポイント」を読んでください。数式を完全に理解してから進む必要はありません。
 
 ## ノートブック一覧
 
@@ -24,8 +30,27 @@
 
 * 初学者が追いやすいように、数式だけでなく表・ヒートマップ・フローチャートを多めに入れています
 * 長時間の GPU 学習を前提にせず、Livebook 上で試しやすい内容を優先しています
-* 著作権に配慮し、例文やデータ例はこの教材用に新しく作っています
+
+## 用語の表記
+
+このシリーズでは、同じ概念を章ごとに別の名前で呼ばないよう、次の表記に統一します。英語名は初出やコードとの対応が必要な場所だけで併記します。
+
+| 統一する表記 | 英語名・コード上の表記 |
+|---|---|
+| アテンション | attention |
+| 自己アテンション | self-attention |
+| 因果マスク付き自己アテンション | causal self-attention / masked self-attention |
+| マルチヘッドアテンション | multi-head attention |
+| クロスアテンション | cross-attention |
+| 因果マスク | causal mask |
+| 位置エンコーディング | positional encoding |
+| フィードフォワード層 | feed-forward layer |
+| 残差接続 | residual connection |
+| レイヤー正規化 | layer normalization |
+| エンコーダー／デコーダー | encoder / decoder |
+| ロジット | logits |
+| 損失 | loss |
 
 ## 補足
 
-このシリーズは「LLM の全実装」を目標にしたものではなく、まず仕組みをつかむための導入コースです。その次の段階として、`Nx` を使って極小の言語モデルを自分で学習する発展編と、Transformer を部品から組み上げる notebook も用意しています。
+このシリーズは実用規模のLLMを一から再現するものではなく、`入力 -> 予測 -> 損失 -> 学習 -> 生成 -> 調整` の関係を手元で確かめる導入コースです。第3章の学習では観察しやすさを優先し、Transformer本体を固定して最後の出力層を学習します。

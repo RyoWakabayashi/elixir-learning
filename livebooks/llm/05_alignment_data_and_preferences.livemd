@@ -2,6 +2,7 @@
 
 ```elixir
 Mix.install([
+  {:nx, "~> 0.9"},
   {:kino, "~> 0.15"},
   {:kino_vega_lite, "~> 0.1"}
 ])
@@ -11,23 +12,46 @@ Mix.install([
 
 ここでは GPU を使った大規模学習ではなく、`アラインメントの考え方` を小さなデータで理解します。
 
-扱うテーマは 3 つです。
+扱うテーマは4つです。
 
 * インストラクションチューニング用データはどんな形か
 * 「良い応答」と「望ましくない応答」はどう違うか
 * 選好学習では、応答ペアのどこを見ているか
+* SFTとDPOで実際に損失を下げると、応答確率がどう変わるか
 
 ## この notebook の狙い
 
-元の参考教材では、SFT や DPO の実装が出てきます。この notebook では、その前段階として
+このnotebookでは、
 
 * データの形
 * 評価軸
 * 選好の直感
+* 小さなモデルの学習ループ
 
 を Livebook 上で見える形にします。
 
-例に使う指示文や応答文は、この教材用に新しく作ったものです。
+## 最初に: SFT と DPO は何か
+
+事前学習直後の言語モデルは、文章の続きを予測することはできても、必ずしも人の指示へ分かりやすく答えるとは限りません。そこで、望ましい応答の例を使って振る舞いを調整します。
+
+| 手法 | 正式名 | 学習データ | モデルに覚えてほしいこと |
+|---|---|---|---|
+| SFT | Supervised Fine-Tuning（教師あり微調整） | `指示 -> 望ましい応答` | この指示には、このような形で答える |
+| DPO | Direct Preference Optimization | `指示 + chosen + rejected` | rejected より chosen を出しやすくする |
+
+SFT は「良い回答のお手本をまねる」段階、DPO は「2つの回答を比べ、より好ましい方へ寄せる」段階と考えると分かりやすいです。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  A["事前学習済みモデル<br/>文章の続きは予測できる"] --> B["SFT<br/>指示と模範回答で学ぶ"]
+  B --> C["指示に答えやすいモデル"]
+  C --> D["DPO<br/>chosen / rejected を比較して学ぶ"]
+  D --> E["人の好みにより沿ったモデル"]
+""")
+```
+
+実際の開発では必ずこの2段階だけとは限りませんが、このnotebookでは `SFTのデータを見る -> 選好データを見る -> SFTを実行する -> DPOを実行する` という順で進みます。
 
 ## 可視化ヘルパー
 
@@ -64,6 +88,102 @@ defmodule LLMScratch.Visuals do
     |> Kino.VegaLite.new()
   end
 end
+
+defmodule LLMScratch.AlignmentTraining do
+  import Nx.Defn
+
+  defn log_softmax(logits) do
+    shifted = Nx.subtract(logits, Nx.reduce_max(logits, axes: [1], keep_axes: true))
+    shifted - Nx.log(Nx.sum(Nx.exp(shifted), axes: [1], keep_axes: true))
+  end
+
+  defn probabilities(logits) do
+    Nx.exp(log_softmax(logits))
+  end
+
+  defn sft_loss(policy_logits, prompt_ids, chosen_one_hot) do
+    log_probs =
+      policy_logits
+      |> Nx.take(prompt_ids)
+      |> log_softmax()
+
+    log_probs
+    |> Nx.multiply(chosen_one_hot)
+    |> Nx.sum(axes: [1])
+    |> Nx.negate()
+    |> Nx.mean()
+  end
+
+  defn sft_update(policy_logits, prompt_ids, chosen_one_hot, learning_rate) do
+    gradient =
+      grad(policy_logits, fn current_logits ->
+        sft_loss(current_logits, prompt_ids, chosen_one_hot)
+      end)
+
+    Nx.subtract(policy_logits, Nx.multiply(gradient, learning_rate))
+  end
+
+  defn dpo_loss(
+         policy_logits,
+         reference_logits,
+         prompt_ids,
+         chosen_one_hot,
+         rejected_one_hot,
+         beta
+       ) do
+    policy_log_probs =
+      policy_logits
+      |> Nx.take(prompt_ids)
+      |> log_softmax()
+
+    reference_log_probs =
+      reference_logits
+      |> Nx.take(prompt_ids)
+      |> log_softmax()
+
+    policy_chosen = Nx.sum(policy_log_probs * chosen_one_hot, axes: [1])
+    policy_rejected = Nx.sum(policy_log_probs * rejected_one_hot, axes: [1])
+    reference_chosen = Nx.sum(reference_log_probs * chosen_one_hot, axes: [1])
+    reference_rejected = Nx.sum(reference_log_probs * rejected_one_hot, axes: [1])
+
+    relative_margin =
+      Nx.subtract(policy_chosen, policy_rejected) -
+        Nx.subtract(reference_chosen, reference_rejected)
+
+    preferred_probability =
+      Nx.divide(1.0, Nx.add(1.0, Nx.exp(Nx.negate(beta * relative_margin))))
+
+    preferred_probability
+    |> Nx.add(1.0e-9)
+    |> Nx.log()
+    |> Nx.negate()
+    |> Nx.mean()
+  end
+
+  defn dpo_update(
+         policy_logits,
+         reference_logits,
+         prompt_ids,
+         chosen_one_hot,
+         rejected_one_hot,
+         beta,
+         learning_rate
+       ) do
+    gradient =
+      grad(policy_logits, fn current_logits ->
+        dpo_loss(
+          current_logits,
+          reference_logits,
+          prompt_ids,
+          chosen_one_hot,
+          rejected_one_hot,
+          beta
+        )
+      end)
+
+    Nx.subtract(policy_logits, Nx.multiply(gradient, learning_rate))
+  end
+end
 ```
 
 ## 1. インストラクションチューニング用のデータ形式
@@ -98,7 +218,7 @@ Kino.DataTable.new(
 )
 ```
 
-この段階では、モデルに「こういう依頼にはこう答えてほしい」を見せています。これが SFT の出発点です。
+この段階では、モデルに「こういう依頼にはこう答えてほしい」を正解例として見せています。これが SFT の出発点です。第2章・第3章では次トークンを正解として学びましたが、SFT でも内部では模範回答をトークン列へ分け、その続きを予測する損失を下げます。違うのは、学習テキストが人の指示と望ましい回答の組になっている点です。
 
 ## 2. 学習時のプロンプト形式を組み立てる
 
@@ -232,7 +352,9 @@ score_rows
 
 ## 5. DPO 的な直感を小さな数式で見る
 
-選好学習では、ざっくり言うと `chosen の方を rejected より高く評価してほしい` という方向へモデルを動かします。
+DPO は、同じ指示に対する `chosen` と `rejected` をモデル自身に比較させ、chosen の相対的な確率を上げる手法です。別に大きな報酬モデルを学習してから使う方法もありますが、DPO は選好ペアから直接この差を最適化する点が名前の由来です。
+
+重要なのは、chosen の確率だけを無制限に上げるのではなく、基準となるモデルから離れすぎないようにしながら `chosen と rejected の相対差` を調整することです。
 
 ここでは簡単化して、`score difference = chosen_score - rejected_score` が大きいほど chosen の確率が高まる形を見ます。
 
@@ -260,7 +382,7 @@ LLMScratch.Visuals.line_chart(
 )
 ```
 
-この図は DPO そのものではありませんが、`良い応答のスコアを相対的に押し上げたい` という直感をつかむ助けになります。
+この図は DPO の完全な損失関数ではありません。横軸が右へ行くほど chosen が rejected より優勢になり、縦軸の「chosen を選ぶ確率」が上がる、という比較学習の中心だけを取り出したものです。
 
 ## 6. 小さな「選好データ」を自分で作る
 
@@ -296,15 +418,343 @@ Kino.DataTable.new(
 
 がかなり見えやすくなります。
 
-## 7. まとめ
+## 7. 実行用の極小モデルと学習データを作る
+
+ここからは、実際にSFTとDPOの損失を計算し、自動微分で重みを更新します。
+
+ただし、実用的なLLMをこの場で学習するには大量のトークン・GPU・時間が必要です。そこで今回は、`1つの応答文全体を1候補として扱う極小モデル` を使います。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  A["指示 ID"] --> B["学習可能なロジット表から1行を選ぶ"]
+  B --> C["softmaxで応答候補の確率へ変換"]
+  C --> D["chosen / rejected の確率"]
+  D --> E["SFTまたはDPOの損失"]
+  E --> F["自動微分でロジット表を更新"]
+""")
+```
+
+このモデルは新しい文章を生成できず、未知の指示へ一般化もしません。一方で、次の重要な部分は省略せずに実行します。
+
+* SFTの交差エントロピー損失
+* DPOの基準モデルを含む選好損失
+* 自動微分による勾配計算
+* 勾配降下法によるパラメータ更新
+
+```elixir
+response_candidates =
+  preference_pairs
+  |> Enum.flat_map(fn pair -> [pair.chosen, pair.rejected] end)
+  |> Enum.uniq()
+
+response_to_id =
+  response_candidates
+  |> Enum.with_index()
+  |> Map.new()
+
+prompt_ids =
+  preference_pairs
+  |> Enum.with_index()
+  |> Enum.map(fn {_pair, prompt_id} -> prompt_id end)
+  |> Nx.tensor(type: :s64)
+
+chosen_ids =
+  preference_pairs
+  |> Enum.map(&response_to_id[&1.chosen])
+  |> Nx.tensor(type: :s64)
+
+rejected_ids =
+  preference_pairs
+  |> Enum.map(&response_to_id[&1.rejected])
+  |> Nx.tensor(type: :s64)
+
+response_count = length(response_candidates)
+
+chosen_one_hot =
+  Nx.equal(
+    Nx.new_axis(chosen_ids, 1),
+    Nx.iota({response_count})
+  )
+  |> Nx.as_type(:f32)
+
+rejected_one_hot =
+  Nx.equal(
+    Nx.new_axis(rejected_ids, 1),
+    Nx.iota({response_count})
+  )
+  |> Nx.as_type(:f32)
+
+training_data_rows =
+  preference_pairs
+  |> Enum.with_index()
+  |> Enum.map(fn {pair, prompt_id} ->
+    %{
+      指示番号: prompt_id,
+      トピック: pair.topic,
+      採用応答番号: response_to_id[pair.chosen],
+      不採用応答番号: response_to_id[pair.rejected]
+    }
+  end)
+
+Kino.DataTable.new(
+  training_data_rows,
+  keys: [:指示番号, :トピック, :採用応答番号, :不採用応答番号]
+)
+```
+
+モデルのパラメータは `{指示数, 応答候補数}` のロジット表です。各行が1つの指示、各列が1つの応答候補に対応します。
+
+```elixir
+prompt_count = length(preference_pairs)
+
+initial_policy_logits =
+  Nx.broadcast(0.0, {prompt_count, response_count})
+  |> Nx.as_type(:f32)
+
+%{
+  指示数: prompt_count,
+  応答候補数: response_count,
+  ロジット表の形状: Nx.shape(initial_policy_logits)
+}
+```
+
+最初はすべてのロジットが0なので、6つの応答候補はすべて同じ確率です。
+
+## 8. SFTを実行する
+
+SFTでは、各指示のchosen応答を正解として扱います。モデルがchosen応答へ低い確率を付けるほど損失が大きくなります。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  A["指示"] --> B["応答候補の確率"]
+  B --> C["chosen応答の確率を取り出す"]
+  C --> D["-log(chosenの確率)"]
+  D --> E["平均してSFT損失にする"]
+""")
+```
+
+```elixir
+sft_epochs = 30
+sft_learning_rate = 0.3
+
+{sft_policy_logits, sft_loss_rows} =
+  Enum.reduce(
+    0..sft_epochs,
+    {initial_policy_logits, []},
+    fn epoch, {policy_logits, rows} ->
+      loss =
+        LLMScratch.AlignmentTraining.sft_loss(
+          policy_logits,
+          prompt_ids,
+          chosen_one_hot
+        )
+        |> Nx.to_number()
+
+      next_policy_logits =
+        LLMScratch.AlignmentTraining.sft_update(
+          policy_logits,
+          prompt_ids,
+          chosen_one_hot,
+          sft_learning_rate
+        )
+
+      {
+        next_policy_logits,
+        [%{学習回数: epoch, 損失: loss} | rows]
+      }
+    end
+  )
+
+sft_loss_rows = Enum.reverse(sft_loss_rows)
+
+%{
+  教師あり微調整開始時の損失: hd(sft_loss_rows).損失,
+  教師あり微調整終了時の損失: List.last(sft_loss_rows).損失
+}
+```
+
+```elixir
+LLMScratch.Visuals.line_chart(
+  sft_loss_rows,
+  "SFTで交差エントロピー損失が下がる様子",
+  :学習回数,
+  :損失
+)
+```
+
+右へ進むほど損失が下がっていれば、chosen応答へ割り当てる確率が高くなる方向へロジット表が更新されています。
+
+## 9. DPOを実行する
+
+DPOでは、SFT後のモデルを基準モデルとして固定します。もう1つ同じ状態の方策モデルを用意し、こちらだけを更新します。
+
+この実験で使うDPO損失は、次の比較を実際に計算しています。
+
+```text
+DPO損失 =
+  -log sigmoid(
+    beta * (
+      方策モデルでの chosen と rejected の対数確率差
+        -
+      基準モデルでの chosen と rejected の対数確率差
+    )
+  )
+```
+
+差が正の方向へ広がると、方策モデルは基準モデルよりもchosenを相対的に選びやすくなります。`beta` は、この差をどれくらい強く損失へ反映するかを調整します。
+
+```elixir
+reference_logits = sft_policy_logits
+initial_dpo_policy_logits = sft_policy_logits
+
+dpo_epochs = 60
+dpo_learning_rate = 0.3
+beta = 0.5
+
+{dpo_policy_logits, dpo_loss_rows} =
+  Enum.reduce(
+    0..dpo_epochs,
+    {initial_dpo_policy_logits, []},
+    fn epoch, {policy_logits, rows} ->
+      loss =
+        LLMScratch.AlignmentTraining.dpo_loss(
+          policy_logits,
+          reference_logits,
+          prompt_ids,
+          chosen_one_hot,
+          rejected_one_hot,
+          beta
+        )
+        |> Nx.to_number()
+
+      next_policy_logits =
+        LLMScratch.AlignmentTraining.dpo_update(
+          policy_logits,
+          reference_logits,
+          prompt_ids,
+          chosen_one_hot,
+          rejected_one_hot,
+          beta,
+          dpo_learning_rate
+        )
+
+      {
+        next_policy_logits,
+        [%{学習回数: epoch, 損失: loss} | rows]
+      }
+    end
+  )
+
+dpo_loss_rows = Enum.reverse(dpo_loss_rows)
+
+%{
+  選好学習開始時の損失: hd(dpo_loss_rows).損失,
+  選好学習終了時の損失: List.last(dpo_loss_rows).損失,
+  ベータ: beta
+}
+```
+
+```elixir
+LLMScratch.Visuals.line_chart(
+  dpo_loss_rows,
+  "DPOで選好損失が下がる様子",
+  :学習回数,
+  :損失
+)
+```
+
+DPO開始時は方策モデルと基準モデルが同じなので、両者の相対的な差は0です。学習が進むと、方策モデルだけがchosenをより選びやすい方向へ動きます。
+
+## 10. 学習前・SFT後・DPO後を比較する
+
+各段階で、chosenとrejectedの確率がどう変わったかを比べます。
+
+`対数確率マージン = log P(chosen) - log P(rejected)` とし、値が大きいほどchosenがrejectedより優勢だと読みます。
+
+```elixir
+summarize_policy = fn policy_logits, stage ->
+  probabilities =
+    LLMScratch.AlignmentTraining.probabilities(policy_logits)
+    |> Nx.to_list()
+
+  preference_pairs
+  |> Enum.with_index()
+  |> Enum.map(fn {pair, prompt_id} ->
+    chosen_probability =
+      probabilities
+      |> Enum.at(prompt_id)
+      |> Enum.at(response_to_id[pair.chosen])
+
+    rejected_probability =
+      probabilities
+      |> Enum.at(prompt_id)
+      |> Enum.at(response_to_id[pair.rejected])
+
+    %{
+      段階: stage,
+      トピック: pair.topic,
+      採用応答の確率: chosen_probability,
+      不採用応答の確率: rejected_probability,
+      対数確率マージン:
+        :math.log(chosen_probability + 1.0e-9) -
+          :math.log(rejected_probability + 1.0e-9)
+    }
+  end)
+end
+
+policy_comparison_rows =
+  summarize_policy.(initial_policy_logits, "学習前") ++
+    summarize_policy.(sft_policy_logits, "SFT後") ++
+    summarize_policy.(dpo_policy_logits, "DPO後")
+
+Kino.DataTable.new(
+  policy_comparison_rows,
+  keys: [:段階, :トピック, :採用応答の確率, :不採用応答の確率, :対数確率マージン]
+)
+```
+
+表では、各トピックについて次の順で確認してください。
+
+1. 学習前はchosenとrejectedの確率が等しい
+2. SFT後はchosenの確率が上がる
+3. DPO後はchosenとrejectedの対数確率マージンがさらに広がる
+
+```elixir
+margin_chart_rows =
+  Enum.map(policy_comparison_rows, fn row ->
+    %{
+      比較: "#{row.トピック} / #{row.段階}",
+      対数確率マージン: row.対数確率マージン
+    }
+  end)
+
+LLMScratch.Visuals.bar_chart(
+  margin_chart_rows,
+  "SFTとDPOによるchosen / rejectedの差",
+  :比較,
+  :対数確率マージン,
+  width: 700
+)
+```
+
+この結果から、SFTとDPOはどちらもchosenを出しやすくしますが、見ている学習データと損失が違うことを確認できます。
+
+* SFT: chosenを正解として直接まねる
+* DPO: 基準モデルと比較しながら、chosenをrejectedより相対的に好む
+
+## 11. まとめ
 
 ### この notebook の要点
 
 * SFT では、指示と望ましい応答のペアを学習に使う
 * 選好学習では、chosen / rejected の比較データが重要になる
 * 役立ちやすさ、安全性、具体性のような複数軸で応答を見られる
-* 実装の前に、小さな自作データで考え方を確認すると理解が進みやすい
+* SFTの交差エントロピー損失を実際に下げると、chosen応答の確率が上がる
+* DPOの選好損失を実際に下げると、chosenとrejectedの対数確率マージンが広がる
+* 極小モデルで学習の流れを確認してから、トークン単位のLLM学習へ進むと理解しやすい
 
 <!-- livebook:{"break_markdown":true} -->
 
-これで、`Attention の基礎 -> 小さな言語モデル学習 -> Transformer の構造 -> GPT の生成体験 -> アラインメントの直感` という流れで、LLM 学習の入り口をひと通りたどれるようになりました。
+これで、`アテンションの基礎 -> 小さな言語モデル学習 -> Transformerの構造 -> GPTの生成体験 -> アラインメントの直感` という流れで、LLM学習の入り口をひと通りたどれるようになりました。

@@ -30,7 +30,7 @@ Mix.install(
 これは `Transformer の代わり` ではありません。むしろ逆で、
 
 * 「学習とは何か」を手で追いやすくする
-* Attention を入れる前の最小の next-token 学習を理解する
+* アテンションを入れる前の最小の次トークン学習を理解する
 
 ための導入用モデルです。
 
@@ -166,7 +166,7 @@ token_rows =
     }
   end)
 
-Kino.DataTable.new(token_rows)
+Kino.DataTable.new(token_rows, num_rows: 20)
 ```
 
 ## 3. next-token 学習用のペアへ分解する
@@ -199,12 +199,20 @@ training_pairs =
     end)
   end)
 
-Kino.DataTable.new(training_pairs)
+Kino.DataTable.new(training_pairs, num_rows: 40)
 ```
 
 ## 4. 観察用に、出現回数の bigram 行列も作る
 
 学習済みモデルの重みが、どのくらいこの分布に近づくかを見るための比較材料です。
+
+このヒートマップは、コーパスを `現在トークン -> 次トークン` の対応表として数えたものです。
+
+* 縦軸で「現在のトークン」を1つ選ぶ
+* その行を横へたどる
+* 色が濃い列ほど、そのトークンが次に多く現れた
+
+たとえば `ねこ` の行で `は` の列が濃ければ、学習データ中で `ねこ -> は` が何度も現れたことを表します。空白に見えるセルは、その組み合わせを一度も観察していないという意味です。
 
 ```elixir
 pair_counts =
@@ -223,7 +231,33 @@ count_rows =
 LLMScratch.Visuals.heatmap(count_rows, "学習コーパスの bigram 出現回数")
 ```
 
+ヒートマップ全体を一度に読むのが難しい場合は、1行だけ表にすると分かりやすくなります。
+
+```elixir
+focus_source = "は"
+
+focus_count_rows =
+  count_rows
+  |> Enum.filter(&(&1.source == focus_source))
+  |> Enum.reject(&(&1.score == 0))
+  |> Enum.sort_by(& &1.score, :desc)
+
+Kino.DataTable.new(focus_count_rows, keys: [:source, :target, :score])
+```
+
+`は` の次には複数の語が現れています。bigram モデルは `は` より前に `ねこ` があったのか `いぬ` があったのかを見られないので、この行にある候補のどれかを確率的に選ぶしかありません。この制約が、第3章で Transformer が必要になる理由につながります。
+
 ## 5. モデルに渡す tensor を作る
+
+ここまでは、人が読める `%{source: "ねこ", target: "は"}`、つまり `現在トークン: "ねこ", 次トークン: "は"` という形でした。しかし数値計算ライブラリ `Nx` に渡すには、同じ長さ・同じ型の数値の箱であるtensorにまとめます。
+
+ここでは1件の学習例を、次の3段階で表現します。
+
+| 表現 | 例 | 用途 |
+|---|---|---|
+| トークン | `ねこ -> は` | 人が意味を確認する |
+| ID | `7 -> 5` | 行列の何行・何列かを指定する |
+| one-hot | `[0, 0, ..., 1, ...]` | 正解の列だけを1にして、予測確率と比較する |
 
 ```elixir
 input_ids =
@@ -249,6 +283,31 @@ target_one_hot =
   vocab_size: vocab_size
 }
 ```
+
+形状の先頭の数は学習ペア数です。`input_ids` と `target_ids` は1ペアにつき1個のID、`target_one_hot` は1ペアにつき語彙数個の0/1を持ちます。
+
+```elixir
+tensor_preview_rows =
+  training_pairs
+  |> Enum.take(5)
+  |> Enum.with_index()
+  |> Enum.map(fn {pair, row_index} ->
+    %{
+      row: row_index,
+      human_pair: "#{pair.source} -> #{pair.target}",
+      input_id: Nx.to_number(input_ids[row_index]),
+      target_id: Nx.to_number(target_ids[row_index]),
+      one_hot_1_position: pair.target_id
+    }
+  end)
+
+Kino.DataTable.new(
+  tensor_preview_rows,
+  keys: [:row, :human_pair, :input_id, :target_id, :one_hot_1_position]
+)
+```
+
+たとえば `input_id=7` なら、モデルは重み行列の7行目を次トークン候補の点数として取り出します。`one_hot_1_position` は「その行の正解は何列目か」を示します。
 
 ## 6. 学習前の状態を見る
 
@@ -299,7 +358,7 @@ summarize_predictions = fn probabilities ->
 end
 
 initial_probabilities = TinyBigram.probabilities(initial_weights)
-Kino.DataTable.new(summarize_predictions.(initial_probabilities))
+Kino.DataTable.new(summarize_predictions.(initial_probabilities), num_rows: 20)
 ```
 
 学習前はほぼランダムなので、`ねこ` の次に何が来るかもまだ分かっていません。
@@ -307,6 +366,20 @@ Kino.DataTable.new(summarize_predictions.(initial_probabilities))
 ## 7. 学習を回す
 
 今回は小さな全データをまとめて使う、フルバッチ学習にします。
+
+1 epoch では、次の4段階を1回ずつ行います。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  A["a. 全 training pairs を入力"] --> B["b. 次トークン確率を計算"]
+  B --> C["c. 正解とのずれを損失にする"]
+  C --> D["d. 損失が下がる方向へ重みを少し更新"]
+  D --> A
+""")
+```
+
+損失（loss）は、正解トークンに十分な確率を出せなかった度合いです。値そのものを暗記する必要はなく、まずは `学習が進むにつれて下がっているか` を見ます。`learning_rate` は1回に重みをどれだけ動かすか、`epochs` はこの練習を何回繰り返すかです。
 
 ```elixir
 epochs = 400
@@ -338,11 +411,15 @@ loss_rows = Enum.reverse(loss_rows)
 LLMScratch.Visuals.line_chart(loss_rows, "学習中の損失", :epoch, :loss)
 ```
 
+グラフの左から右へ進むにつれて損失が下がり、やがて変化が小さくなれば、モデルはこのコーパスから学べる規則をだいたい取り込んだと読めます。
+
 ## 8. 学習後の予測を見る
+
+学習後は、重み行列の各行を確率へ変換して読みます。次の表では、各現在トークンのあとにモデルが高い確率を付けた上位3候補を表示します。
 
 ```elixir
 trained_probabilities = TinyBigram.probabilities(trained_weights)
-Kino.DataTable.new(summarize_predictions.(trained_probabilities))
+Kino.DataTable.new(summarize_predictions.(trained_probabilities), num_rows: 20)
 ```
 
 ```elixir
@@ -359,7 +436,42 @@ trained_rows =
 LLMScratch.Visuals.heatmap(trained_rows, "学習後の next-token 確率")
 ```
 
-`<BOS>` の行では、文頭に来やすい語へ確率が集まります。`は` の行では、その後ろに来た語の傾向が見えるはずです。
+このヒートマップは先ほどの「出現回数」ではなく、モデルが学習後に出している `確率` です。
+
+* `<BOS>` の行では、文頭に来やすい `ねこ`、`いぬ`、`とり` へ確率が集まる
+* `ねこ` の行では、次に頻出した `は` が強くなる
+* `は` の行では複数候補へ確率が分かれ、bigram の曖昧さが残る
+
+出現回数ヒートマップと似た濃淡になれば、モデルがデータの傾向を重みに写し取ったと判断できます。
+
+```elixir
+comparison_sources = ["<BOS>", "ねこ", "は"]
+
+before_after_rows =
+  for source <- comparison_sources do
+    source_id = token_to_id[source]
+
+    best = fn probabilities ->
+      probabilities[source_id]
+      |> Nx.to_flat_list()
+      |> Enum.zip(vocab)
+      |> Enum.max_by(fn {probability, _token} -> probability end)
+    end
+
+    {before_probability, before_token} = best.(initial_probabilities)
+    {after_probability, after_token} = best.(trained_probabilities)
+
+    %{
+      source: source,
+      before_top: "#{before_token} (#{Float.round(before_probability, 3)})",
+      after_top: "#{after_token} (#{Float.round(after_probability, 3)})"
+    }
+  end
+
+Kino.DataTable.new(before_after_rows, keys: [:source, :before_top, :after_top])
+```
+
+この比較では、ランダムだった候補が、コーパスで実際によく続いた候補へ変わるところを確認してください。
 
 ## 9. 学習前後で生成を比べる
 
@@ -446,7 +558,7 @@ LLM が Transformer を使うのは、こうした `長い文脈を読む必要`
 
 * bigram では足りない理由
 * 長い文脈を扱うために Transformer が何を足すのか
-* エンコーダ / デコーダ全体がどう組み上がるのか
+* エンコーダー／デコーダー全体がどう組み上がるのか
 
 を、実装しながら見ていきます。
 
@@ -454,6 +566,6 @@ LLM が Transformer を使うのは、こうした `長い文脈を読む必要`
 
 * 2 語以上の文脈を見る trigram / 小さな MLP
 * `Axon` で埋め込み層つきのモデルを組む
-* 最終的に causal self-attention を入れる
+* 最終的に因果マスク付き自己アテンションを入れる
 
 という順で進むと理解しやすいです。
