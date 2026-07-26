@@ -1,4 +1,4 @@
-# LLM を Elixir / Livebook で学ぶ 3
+# LLM を Elixir / Livebook で学ぶ 5
 
 ```elixir
 Mix.install([
@@ -307,4 +307,4 @@ Kino.DataTable.new(
 
 <!-- livebook:{"break_markdown":true} -->
 
-これで、`Transformer の見える化 -> GPT の生成体験 -> アラインメントの直感` という流れで、LLM 学習の入り口をひと通りたどれるようになりました。
+これで、`Attention の基礎 -> 小さな言語モデル学習 -> Transformer の構造 -> GPT の生成体験 -> アラインメントの直感` という流れで、LLM 学習の入り口をひと通りたどれるようになりました。

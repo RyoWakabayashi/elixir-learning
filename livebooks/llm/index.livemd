@@ -6,17 +6,19 @@
 
 ## 学び方
 
-1. まずは `01_tokens_embeddings_attention.livemd` で、トークン・埋め込み・Attention を目で見ながら理解する
-2. 次に `02_decoder_generation_with_bumblebee.livemd` で、事前学習済み GPT 系モデルを動かして「次トークン予測」を体感する
-3. 最後に `03_alignment_data_and_preferences.livemd` で、インストラクションチューニングや選好学習の考え方をつかむ
-4. 発展編として `04_tiny_bigram_language_model_training.livemd` で、極小の next-token モデルを実際に学習する
+1. まずは `01_tokens_embeddings_attention.livemd` で、トークン・埋め込み・Attention の基礎を目で見ながら理解する
+2. 次に `02_tiny_bigram_language_model_training.livemd` で、極小の next-token モデルを実際に学習して、言語モデル学習の最小形をつかむ
+3. そのあと `03_transformer_from_building_blocks.livemd` で、Transformer を部品から組み上げて構造を理解する
+4. 次に `04_decoder_generation_with_bumblebee.livemd` で、事前学習済み GPT 系モデルを動かして「次トークン予測」を体感する
+5. 最後に `05_alignment_data_and_preferences.livemd` で、インストラクションチューニングや選好学習の考え方をつかむ
 
 ## ノートブック一覧
 
 * [01_tokens_embeddings_attention.livemd](01_tokens_embeddings_attention.livemd)
-* [02_decoder_generation_with_bumblebee.livemd](02_decoder_generation_with_bumblebee.livemd)
-* [03_alignment_data_and_preferences.livemd](03_alignment_data_and_preferences.livemd)
-* [04_tiny_bigram_language_model_training.livemd](04_tiny_bigram_language_model_training.livemd)
+* [02_tiny_bigram_language_model_training.livemd](02_tiny_bigram_language_model_training.livemd)
+* [03_transformer_from_building_blocks.livemd](03_transformer_from_building_blocks.livemd)
+* [04_decoder_generation_with_bumblebee.livemd](04_decoder_generation_with_bumblebee.livemd)
+* [05_alignment_data_and_preferences.livemd](05_alignment_data_and_preferences.livemd)
 
 ## この教材の方針
 
@@ -26,4 +28,4 @@
 
 ## 補足
 
-このシリーズは「LLM の全実装」を目標にしたものではなく、まず仕組みをつかむための導入コースです。その次の段階として、`Nx` を使って極小の言語モデルを自分で学習する発展編も用意しています。
+このシリーズは「LLM の全実装」を目標にしたものではなく、まず仕組みをつかむための導入コースです。その次の段階として、`Nx` を使って極小の言語モデルを自分で学習する発展編と、Transformer を部品から組み上げる notebook も用意しています。

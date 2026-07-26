@@ -264,16 +264,18 @@ LLM を `Elixir` / `Livebook` で学ぶための教材シリーズを追加し�
 主なノート:
 
 * [01_tokens_embeddings_attention.livemd](livebooks/llm/01_tokens_embeddings_attention.livemd)
-* [02_decoder_generation_with_bumblebee.livemd](livebooks/llm/02_decoder_generation_with_bumblebee.livemd)
-* [03_alignment_data_and_preferences.livemd](livebooks/llm/03_alignment_data_and_preferences.livemd)
-* [04_tiny_bigram_language_model_training.livemd](livebooks/llm/04_tiny_bigram_language_model_training.livemd)
+* [02_tiny_bigram_language_model_training.livemd](livebooks/llm/02_tiny_bigram_language_model_training.livemd)
+* [03_transformer_from_building_blocks.livemd](livebooks/llm/03_transformer_from_building_blocks.livemd)
+* [04_decoder_generation_with_bumblebee.livemd](livebooks/llm/04_decoder_generation_with_bumblebee.livemd)
+* [05_alignment_data_and_preferences.livemd](livebooks/llm/05_alignment_data_and_preferences.livemd)
 
 学習の流れ:
 
 1. トークン化、埋め込み、Attention を可視化で理解する
-2. 事前学習済み GPT 系モデルで次トークン予測を体感する
-3. SFT や選好学習の考え方を小さな例でつかむ
-4. 極小の言語モデルを実際に学習して、損失と生成結果の変化を見る
+2. 極小の言語モデルを実際に学習して、損失と生成結果の変化を見る
+3. Transformer の主要部品を実装し、encoder-decoder 全体の forward を追う
+4. 事前学習済み GPT 系モデルで次トークン予測を体感する
+5. SFT や選好学習の考え方を小さな例でつかむ
 
 ## Phoenix LiveView の起動
 

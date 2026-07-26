@@ -1,4 +1,4 @@
-# LLM を Elixir / Livebook で学ぶ 4
+# LLM を Elixir / Livebook で学ぶ 2
 
 ```elixir
 Mix.install(
@@ -442,7 +442,15 @@ LLM が Transformer を使うのは、こうした `長い文脈を読む必要`
 
 <!-- livebook:{"break_markdown":true} -->
 
-次の発展としては、
+次のノートブックでは、
+
+* bigram では足りない理由
+* 長い文脈を扱うために Transformer が何を足すのか
+* エンコーダ / デコーダ全体がどう組み上がるのか
+
+を、実装しながら見ていきます。
+
+その先の発展としては、
 
 * 2 語以上の文脈を見る trigram / 小さな MLP
 * `Axon` で埋め込み層つきのモデルを組む

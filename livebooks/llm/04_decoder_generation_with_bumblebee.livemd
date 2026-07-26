@@ -1,4 +1,4 @@
-# LLM を Elixir / Livebook で学ぶ 2
+# LLM を Elixir / Livebook で学ぶ 4
 
 ```elixir
 Mix.install(
@@ -15,7 +15,7 @@ Mix.install(
 
 ## 事前学習済み GPT 系モデルで「次トークン予測」を体感する
 
-前のノートブックでは、トークン化・埋め込み・Attention を図で見ました。
+前のノートブックでは、Transformer の主要部品と encoder-decoder 全体の forward を自分で組み立てました。
 
 このノートブックでは、`Bumblebee` を使って GPT 系モデルを実際に動かしながら、
 

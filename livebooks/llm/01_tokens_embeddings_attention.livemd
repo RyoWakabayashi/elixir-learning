@@ -508,4 +508,4 @@ flowchart TD
 
 <!-- livebook:{"break_markdown":true} -->
 
-次のノートブックでは、ここで見た考え方が実際の GPT 系モデルの生成にどう現れるかを `Bumblebee` で触っていきます。
+次のノートブックでは、ここで見た考え方をいったん極小の言語モデル学習へつなげて、`next-token prediction` そのものを自分の手で動かしてみます。
