@@ -1,6 +1,7 @@
 # LLM を Elixir / Livebook で学ぶ 5
 
 ```elixir
+# 小さなSFT／DPO学習と可視化に使うライブラリを準備する
 Mix.install([
   {:nx, "~> 0.9"},
   {:kino, "~> 0.15"},
@@ -30,6 +31,28 @@ Mix.install([
 
 を Livebook 上で見える形にします。
 
+## このnotebookで使う用語
+
+この章では、事前学習後のモデルを人の指示や好みに合わせて調整する用語を扱います。
+
+| 用語 | 英語・コード上の表記 | この章での意味 |
+|---|---|---|
+| アラインメント | alignment | モデルの応答を、人の意図・好み・安全上の基準へ合わせること |
+| 事前学習 | pretraining | 大量の文章を使い、次トークン予測の基礎能力を学習する段階 |
+| 微調整 | fine-tuning | 事前学習済みモデルを、より小さな目的別データで追加学習すること |
+| SFT | Supervised Fine-Tuning | 指示と模範回答のペアを正解として学ぶ教師あり微調整 |
+| 指示／文脈／応答 | instruction / context / response | モデルへの依頼、補足情報、モデルに出してほしい回答 |
+| 選好データ | preference data | 同じ指示に対するchosenとrejectedを組にした比較データ |
+| chosen | chosen response | 比較した応答のうち、より望ましいと判断された応答 |
+| rejected | rejected response | 比較した応答のうち、chosenより望ましくないと判断された応答 |
+| 方策モデル | policy model | DPOで更新対象となる、応答確率を出すモデル |
+| 基準モデル | reference model | DPO中は固定し、方策モデルが離れすぎないための比較基準にするモデル |
+| 交差エントロピー損失 | cross-entropy loss | SFTで、模範回答の確率が低いほど大きくなる損失 |
+| DPO | Direct Preference Optimization | 基準モデルと比べながら、chosenをrejectedより出しやすくする選好学習 |
+| beta | `beta` / β | DPOで選好の差を損失へどれだけ強く反映するかを調整する値 |
+| 対数確率マージン | log-probability margin | chosenとrejectedの対数確率の差。大きいほどchosenが優勢 |
+| 自動微分 | automatic differentiation | 損失から各パラメータの勾配を自動計算する仕組み |
+
 ## 最初に: SFT と DPO は何か
 
 事前学習直後の言語モデルは、文章の続きを予測することはできても、必ずしも人の指示へ分かりやすく答えるとは限りません。そこで、望ましい応答の例を使って振る舞いを調整します。
@@ -57,6 +80,7 @@ flowchart
 
 ```elixir
 defmodule LLMScratch.Visuals do
+  # chosen／rejectedのような系列を、必要に応じて色分けする
   def bar_chart(rows, title, x_field, y_field, opts \\ []) do
     width = Keyword.get(opts, :width, 560)
     height = Keyword.get(opts, :height, 280)
@@ -69,6 +93,7 @@ defmodule LLMScratch.Visuals do
       |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :nominal, title: Atom.to_string(x_field))
       |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative, title: Atom.to_string(y_field))
 
+    # 比較系列を指定した場合だけ、棒へ色を割り当てる
     chart =
       if color_field do
         VegaLite.encode_field(chart, :color, Atom.to_string(color_field), type: :nominal)
@@ -79,6 +104,7 @@ defmodule LLMScratch.Visuals do
     Kino.VegaLite.new(chart)
   end
 
+  # 学習回数に対する損失の変化を表示する
   def line_chart(rows, title, x_field, y_field) do
     VegaLite.new(width: 560, height: 280, title: title)
     |> VegaLite.data_from_values(rows)
@@ -93,20 +119,24 @@ defmodule LLMScratch.AlignmentTraining do
   import Nx.Defn
 
   defn log_softmax(logits) do
+    # 最大値を引いて数値を安定させ、対数確率を直接計算する
     shifted = Nx.subtract(logits, Nx.reduce_max(logits, axes: [1], keep_axes: true))
     shifted - Nx.log(Nx.sum(Nx.exp(shifted), axes: [1], keep_axes: true))
   end
 
   defn probabilities(logits) do
+    # 対数確率を通常の確率へ戻す
     Nx.exp(log_softmax(logits))
   end
 
   defn sft_loss(policy_logits, prompt_ids, chosen_one_hot) do
+    # 各指示IDに対応するロジット行だけを取り出す
     log_probs =
       policy_logits
       |> Nx.take(prompt_ids)
       |> log_softmax()
 
+    # chosen応答の負の対数確率を、全指示について平均する
     log_probs
     |> Nx.multiply(chosen_one_hot)
     |> Nx.sum(axes: [1])
@@ -115,6 +145,7 @@ defmodule LLMScratch.AlignmentTraining do
   end
 
   defn sft_update(policy_logits, prompt_ids, chosen_one_hot, learning_rate) do
+    # SFT損失からロジット表全体の勾配を自動微分する
     gradient =
       grad(policy_logits, fn current_logits ->
         sft_loss(current_logits, prompt_ids, chosen_one_hot)
@@ -131,6 +162,7 @@ defmodule LLMScratch.AlignmentTraining do
          rejected_one_hot,
          beta
        ) do
+    # 更新対象の方策モデルと、固定した基準モデルの対数確率を求める
     policy_log_probs =
       policy_logits
       |> Nx.take(prompt_ids)
@@ -141,18 +173,22 @@ defmodule LLMScratch.AlignmentTraining do
       |> Nx.take(prompt_ids)
       |> log_softmax()
 
+    # one-hotで、各モデルのchosen／rejected対数確率だけを抜き出す
     policy_chosen = Nx.sum(policy_log_probs * chosen_one_hot, axes: [1])
     policy_rejected = Nx.sum(policy_log_probs * rejected_one_hot, axes: [1])
     reference_chosen = Nx.sum(reference_log_probs * chosen_one_hot, axes: [1])
     reference_rejected = Nx.sum(reference_log_probs * rejected_one_hot, axes: [1])
 
+    # 方策モデルの選好差が、基準モデルよりどれだけ広がったかを測る
     relative_margin =
       Nx.subtract(policy_chosen, policy_rejected) -
         Nx.subtract(reference_chosen, reference_rejected)
 
+    # 相対マージンをsigmoidへ通し、chosenを好む確率として読む
     preferred_probability =
       Nx.divide(1.0, Nx.add(1.0, Nx.exp(Nx.negate(beta * relative_margin))))
 
+    # chosenを好む確率が低いほど大きくなる損失
     preferred_probability
     |> Nx.add(1.0e-9)
     |> Nx.log()
@@ -169,6 +205,7 @@ defmodule LLMScratch.AlignmentTraining do
          beta,
          learning_rate
        ) do
+    # 基準モデルは固定し、方策モデルのロジットだけを微分・更新する
     gradient =
       grad(policy_logits, fn current_logits ->
         dpo_loss(
@@ -191,6 +228,7 @@ end
 まずは「指示」と「望ましい応答」のペアを見ます。
 
 ```elixir
+# 指示、任意の補足文脈、模範回答を1件のSFTデータとしてまとめる
 instruction_examples = [
   %{
     category: "要約",
@@ -226,6 +264,7 @@ Kino.DataTable.new(
 
 ```elixir
 format_sft_example = fn example ->
+  # 区切り見出しを付け、3つのフィールドを1本の学習テキストへ連結する
   """
   ### Instruction
   #{example.instruction}
@@ -251,6 +290,7 @@ instruction_examples
 次に、同じ指示に対して 2 つの応答を並べてみます。
 
 ```elixir
+# 同じ指示に対し、望ましいchosenと望ましくないrejectedを対にする
 preference_pairs = [
   %{
     topic: "旅行アドバイス",
@@ -316,6 +356,7 @@ Kino.DataTable.new(
 * `specificity`: 具体的か
 
 ```elixir
+# 1つの選好ペアを、3評価軸 × 2応答の6行へ展開する
 score_rows =
   preference_pairs
   |> Enum.flat_map(fn pair ->
@@ -336,6 +377,7 @@ Kino.DataTable.new(
 ```
 
 ```elixir
+# まず1トピックに絞り、評価軸ごとのchosen／rejectedを比較する
 topic = "旅行アドバイス"
 
 score_rows
@@ -359,8 +401,10 @@ DPO は、同じ指示に対する `chosen` と `rejected` をモデル自身に
 ここでは簡単化して、`score difference = chosen_score - rejected_score` が大きいほど chosen の確率が高まる形を見ます。
 
 ```elixir
+# スコア差を0から1の範囲へ写すsigmoid関数
 sigmoid = fn x -> 1.0 / (1.0 + :math.exp(-x)) end
 
+# chosenとrejectedの差を-6から6まで動かし、選択確率の変化を見る
 margin_rows =
   -6..6
   |> Enum.map(fn margin ->
@@ -389,6 +433,7 @@ LLMScratch.Visuals.line_chart(
 初学者におすすめなのは、いきなり巨大データセットを見るより、まず 3〜5 件の自作ペアを作ることです。
 
 ```elixir
+# 指示と2応答を同じキー構成へそろえる小さな作成ヘルパー
 build_preference_pair = fn instruction, chosen, rejected ->
   %{
     instruction: instruction,
@@ -443,6 +488,7 @@ flowchart
 * 勾配降下法によるパラメータ更新
 
 ```elixir
+# 全選好ペアから、重複しない応答候補と整数IDの対応を作る
 response_candidates =
   preference_pairs
   |> Enum.flat_map(fn pair -> [pair.chosen, pair.rejected] end)
@@ -453,12 +499,14 @@ response_to_id =
   |> Enum.with_index()
   |> Map.new()
 
+# 各指示はこの極小モデルのロジット表で1行に対応する
 prompt_ids =
   preference_pairs
   |> Enum.with_index()
   |> Enum.map(fn {_pair, prompt_id} -> prompt_id end)
   |> Nx.tensor(type: :s64)
 
+# chosen／rejectedの文章を、応答候補表の整数IDへ変換する
 chosen_ids =
   preference_pairs
   |> Enum.map(&response_to_id[&1.chosen])
@@ -471,6 +519,7 @@ rejected_ids =
 
 response_count = length(response_candidates)
 
+# 損失計算で対象の応答だけを選べるよう、両ID列をone-hot化する
 chosen_one_hot =
   Nx.equal(
     Nx.new_axis(chosen_ids, 1),
@@ -485,6 +534,7 @@ rejected_one_hot =
   )
   |> Nx.as_type(:f32)
 
+# 指示IDと2つの応答IDの対応を、確認用の表へ整形する
 training_data_rows =
   preference_pairs
   |> Enum.with_index()
@@ -508,6 +558,7 @@ Kino.DataTable.new(
 ```elixir
 prompt_count = length(preference_pairs)
 
+# 学習前は全候補を同確率にするため、ロジットをすべて0で初期化する
 initial_policy_logits =
   Nx.broadcast(0.0, {prompt_count, response_count})
   |> Nx.as_type(:f32)
@@ -539,11 +590,13 @@ flowchart
 sft_epochs = 30
 sft_learning_rate = 0.3
 
+# {現在のロジット, 損失履歴}をSFTの各epochで更新する
 {sft_policy_logits, sft_loss_rows} =
   Enum.reduce(
     0..sft_epochs,
     {initial_policy_logits, []},
     fn epoch, {policy_logits, rows} ->
+      # 更新前のchosenに対する交差エントロピー損失を記録する
       loss =
         LLMScratch.AlignmentTraining.sft_loss(
           policy_logits,
@@ -552,6 +605,7 @@ sft_learning_rate = 0.3
         )
         |> Nx.to_number()
 
+      # chosenの確率が上がる方向へ、ロジット表を1回更新する
       next_policy_logits =
         LLMScratch.AlignmentTraining.sft_update(
           policy_logits,
@@ -560,6 +614,7 @@ sft_learning_rate = 0.3
           sft_learning_rate
         )
 
+      # 先頭へ追加した履歴は、ループ終了後に時系列順へ反転する
       {
         next_policy_logits,
         [%{学習回数: epoch, 損失: loss} | rows]
@@ -606,6 +661,7 @@ DPO損失 =
 差が正の方向へ広がると、方策モデルは基準モデルよりもchosenを相対的に選びやすくなります。`beta` は、この差をどれくらい強く損失へ反映するかを調整します。
 
 ```elixir
+# SFT後の同じ状態を複製し、一方を固定した基準モデルとして扱う
 reference_logits = sft_policy_logits
 initial_dpo_policy_logits = sft_policy_logits
 
@@ -618,6 +674,7 @@ beta = 0.5
     0..dpo_epochs,
     {initial_dpo_policy_logits, []},
     fn epoch, {policy_logits, rows} ->
+      # 現在の方策モデルと固定した基準モデルの相対差から損失を測る
       loss =
         LLMScratch.AlignmentTraining.dpo_loss(
           policy_logits,
@@ -629,6 +686,7 @@ beta = 0.5
         )
         |> Nx.to_number()
 
+      # 基準モデルは変えず、方策モデルのロジットだけを更新する
       next_policy_logits =
         LLMScratch.AlignmentTraining.dpo_update(
           policy_logits,
@@ -640,6 +698,7 @@ beta = 0.5
           dpo_learning_rate
         )
 
+      # 損失履歴を逆順で蓄え、最後に時系列順へ戻す
       {
         next_policy_logits,
         [%{学習回数: epoch, 損失: loss} | rows]
@@ -675,6 +734,7 @@ DPO開始時は方策モデルと基準モデルが同じなので、両者の�
 
 ```elixir
 summarize_policy = fn policy_logits, stage ->
+  # 1つの学習段階のロジット表を、応答候補の確率へ変換する
   probabilities =
     LLMScratch.AlignmentTraining.probabilities(policy_logits)
     |> Nx.to_list()
@@ -682,6 +742,7 @@ summarize_policy = fn policy_logits, stage ->
   preference_pairs
   |> Enum.with_index()
   |> Enum.map(fn {pair, prompt_id} ->
+    # この指示に対応するchosenとrejectedの列だけを取り出す
     chosen_probability =
       probabilities
       |> Enum.at(prompt_id)
@@ -692,6 +753,7 @@ summarize_policy = fn policy_logits, stage ->
       |> Enum.at(prompt_id)
       |> Enum.at(response_to_id[pair.rejected])
 
+    # 対数確率の差が大きいほど、chosenが相対的に優勢
     %{
       段階: stage,
       トピック: pair.topic,
@@ -704,6 +766,7 @@ summarize_policy = fn policy_logits, stage ->
   end)
 end
 
+# 学習前、SFT後、DPO後を同じ表で比較できるよう連結する
 policy_comparison_rows =
   summarize_policy.(initial_policy_logits, "学習前") ++
     summarize_policy.(sft_policy_logits, "SFT後") ++
@@ -722,6 +785,7 @@ Kino.DataTable.new(
 3. DPO後はchosenとrejectedの対数確率マージンがさらに広がる
 
 ```elixir
+# 対数確率マージンだけを取り出し、段階ごとの棒グラフへ変換する
 margin_chart_rows =
   Enum.map(policy_comparison_rows, fn row ->
     %{

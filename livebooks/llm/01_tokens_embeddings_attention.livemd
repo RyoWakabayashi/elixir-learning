@@ -1,6 +1,7 @@
 # LLM を Elixir / Livebook で学ぶ 1
 
 ```elixir
+# 数値計算、表、グラフの表示に使うライブラリを準備する
 Mix.install([
   {:nx, "~> 0.9"},
   {:kino, "~> 0.15"},
@@ -23,10 +24,30 @@ Mix.install([
 
 GPU を使う大規模学習はまだ行わず、まずは「仕組みの見える化」に集中します。
 
+## このnotebookで使う用語
+
+最初からすべて暗記する必要はありません。分からない言葉が出てきたときに、この表へ戻って確認してください。
+
+| 用語 | 英語・コード上の表記 | この章での意味 |
+|---|---|---|
+| LLM | Large Language Model | 大量の文章から言葉の続き方を学んだ大規模言語モデル |
+| トークン | token | モデルが文章を処理するときの単位。単語・単語の一部・記号など |
+| 語彙 | vocabulary / vocab | モデルが区別できるトークンの一覧 |
+| トークンID | token ID | 各トークンへ割り当てた整数番号 |
+| 埋め込み | embedding | トークンIDを、計算に使える実数ベクトルへ変換したもの |
+| アテンション | attention | 現在位置に必要な情報を、ほかの位置から重み付きで集める仕組み |
+| Query／Key／Value | query / key / value | 参照したい情報、参照先との相性、実際に取り出す情報を表す3種類のベクトル |
+| softmax | softmax | 複数の点数を、合計1になる確率や重みへ変換する関数 |
+| 因果マスク | causal mask | 現在位置から未来のトークンを見えなくする制限 |
+| 位置エンコーディング | positional encoding | トークンが何番目にあるかをベクトルへ加える仕組み |
+| デコーダーのみのモデル | decoder-only model | 左側の文脈から次トークンを予測するデコーダーを積み重ねたモデル |
+| 次トークン予測 | next-token prediction | ここまでのトークンから、次の1トークンを当てる問題 |
+
 ## 準備
 
 ```elixir
 defmodule LLMScratch.Visuals do
+  # 行データを、カテゴリごとの大きさを比べる棒グラフへ変換する
   def bar_chart(rows, title, x_field, y_field, opts \\ []) do
     width = Keyword.get(opts, :width, 520)
     height = Keyword.get(opts, :height, 260)
@@ -47,6 +68,7 @@ defmodule LLMScratch.Visuals do
     |> Kino.VegaLite.new()
   end
 
+  # 同じ形式のデータを、値の推移を追う折れ線グラフへ変換する
   def line_chart(rows, title, x_field, y_field, opts \\ []) do
     width = Keyword.get(opts, :width, 520)
     height = Keyword.get(opts, :height, 260)
@@ -65,6 +87,7 @@ defmodule LLMScratch.Visuals do
         title: Atom.to_string(y_field)
       )
 
+    # 系列を色分けしたい場合だけcolorエンコーディングを追加する
     chart =
       if color_field do
         VegaLite.encode_field(chart, :color, Atom.to_string(color_field), type: :nominal)
@@ -75,6 +98,7 @@ defmodule LLMScratch.Visuals do
     Kino.VegaLite.new(chart)
   end
 
+  # QueryとKeyの全組み合わせを、色の濃さで読めるヒートマップにする
   def heatmap(rows, title, opts \\ []) do
     width = Keyword.get(opts, :width, 520)
     height = Keyword.get(opts, :height, 260)
@@ -143,21 +167,25 @@ Transformer には、文章を読み取るエンコーダーと、1トークン�
 ここでは説明しやすいように、空白で区切られた簡単な文を使います。
 
 ```elixir
+# この章では、説明しやすい空白区切りを簡易トークナイザーとして使う
 sentence = "ねこ は ひるね が すき"
 tokens = String.split(sentence, " ")
 ```
 
 ```elixir
+# 重複を除いたトークン一覧を、この小さな例の語彙とする
 vocab =
   tokens
   |> Enum.uniq()
   |> Enum.sort()
 
+# 文字列を計算可能な整数IDへ変換する対応表
 token_to_id =
   vocab
   |> Enum.with_index()
   |> Map.new()
 
+# 予測したIDを文字列へ戻すため、逆向きの対応表も用意する
 id_to_token =
   token_to_id
   |> Enum.map(fn {token, id} -> {id, token} end)
@@ -173,6 +201,7 @@ token_ids = Enum.map(tokens, &token_to_id[&1])
 ```
 
 ```elixir
+# 各位置について、元のトークンと割り当てられたIDを並べる
 token_rows =
   tokens
   |> Enum.with_index()
@@ -196,6 +225,7 @@ one-hot は「その語がどこにあるか」だけを表すベクトルです
 ```elixir
 vocab_size = length(vocab)
 
+# IDと同じ位置だけが1になるone-hotベクトルを、系列順に積み重ねる
 sequence_one_hot =
   token_ids
   |> Enum.map(fn id ->
@@ -209,6 +239,8 @@ one-hot は便利ですが、語と語の近さを表しにくいです。そこ
 ここでは説明用に、2 次元の手作り埋め込みを置きます。
 
 ```elixir
+# 説明用に、人手で2次元の埋め込みを割り当てる
+# 実際のLLMでは、この値も学習によって更新される
 embedding_map = %{
   "ねこ" => [0.90, 0.15],
   "は" => [0.10, 0.05],
@@ -217,6 +249,7 @@ embedding_map = %{
   "すき" => [0.88, 0.70]
 }
 
+# 表で値を確認できるよう、埋め込みを行データへ整形する
 embedding_rows =
   vocab
   |> Enum.map(fn token ->
@@ -236,6 +269,7 @@ Kino.DataTable.new(
 ```
 
 ```elixir
+# 文中の各トークンを埋め込みへ置き換え、{系列長, 埋め込み次元}のtensorにする
 embedding_tensor =
   tokens
   |> Enum.map(&embedding_map[&1])
@@ -266,23 +300,30 @@ embedding_tensor
 
 ```elixir
 softmax_1d = fn scores ->
+  # 最大値を先に引くと、expの値が大きくなりすぎるのを防げる
   exps = Nx.exp(Nx.subtract(scores, Nx.reduce_max(scores)))
   Nx.divide(exps, Nx.sum(exps))
 end
 
 scaled_dot_attention = fn query, keys, values ->
   d_model = keys |> Nx.shape() |> elem(1)
+
+  # Queryと各Keyの内積を次元数の平方根で割り、参照先ごとの点数を作る
   scores = Nx.divide(Nx.dot(keys, [1], query, [0]), :math.sqrt(d_model))
   weights = softmax_1d.(scores)
+
+  # 合計1の重みでValueを混ぜ、現在位置へ集める情報を作る
   output = Nx.dot(weights, [0], values, [0])
   {output, weights}
 end
 ```
 
 ```elixir
+# 今回は最後の「すき」をQueryとして、文中の全位置を参照させる
 query_index = Enum.find_index(tokens, &(&1 == "すき"))
 query = embedding_tensor[query_index]
 
+# 最小例なので、同じ埋め込みtensorをKeyとValueにも使う
 {attention_output, attention_weights} =
   scaled_dot_attention.(query, embedding_tensor, embedding_tensor)
 
@@ -294,6 +335,7 @@ query = embedding_tensor[query_index]
 ```
 
 ```elixir
+# tensorの重みを、トークン名付きのグラフ用データへ変換する
 weight_rows =
   tokens
   |> Enum.with_index()
@@ -328,8 +370,10 @@ LLMScratch.Visuals.bar_chart(weight_rows, "`すき` がどのトークンを見�
 埋め込み次元が大きいと、内積の値が大きくなりやすく、softmax が極端に尖ることがあります。
 
 ```elixir
+# 比較を再現できるよう、乱数の初期状態を固定する
 :rand.seed(:exsss, {11, 22, 33})
 
+# 値のばらつきが大きい点数と、小さい点数を用意する
 large_scores =
   1..12
   |> Enum.map(fn _ -> :rand.normal() * 8 end)
@@ -338,6 +382,7 @@ small_scores =
   1..12
   |> Enum.map(fn _ -> :rand.normal() end)
 
+# 2種類の点数へ同じsoftmaxを適用し、確率の偏り方を比べる
 large_softmax = softmax_1d.(Nx.tensor(large_scores))
 small_softmax = softmax_1d.(Nx.tensor(small_scores))
 
@@ -356,6 +401,7 @@ Kino.DataTable.new(score_rows)
 ```
 
 ```elixir
+# 2系列を同じグラフに重ねられる縦長の行データへ変換する
 softmax_rows =
   score_rows
   |> Enum.flat_map(fn row ->
@@ -393,6 +439,7 @@ LLMScratch.Visuals.line_chart(
 たとえば3番目のトークンは、4番目や5番目を見てはいけません。これを実現するのが因果マスクです。
 
 ```elixir
+# 因果マスクを観察するための、デコーダー入力と手作り埋め込み
 decoder_tokens = ["わたし", "は", "きょう", "本", "を", "読む"]
 
 decoder_embedding_map = %{
@@ -404,6 +451,7 @@ decoder_embedding_map = %{
   "読む" => [0.75, 0.88, 0.92]
 }
 
+# 各トークンの埋め込みを系列順に並べる
 decoder_embeddings =
   decoder_tokens
   |> Enum.map(&decoder_embedding_map[&1])
@@ -413,6 +461,7 @@ decoder_embeddings
 ```
 
 ```elixir
+# Query位置iより右にあるKey位置jを「参照禁止=1」として記録する
 causal_mask_rows =
   for {query, i} <- Enum.with_index(decoder_tokens),
       {key, j} <- Enum.with_index(decoder_tokens) do
@@ -430,6 +479,7 @@ LLMScratch.Visuals.heatmap(causal_mask_rows, "1 の場所は未来なので見�
 
 ```elixir
 row_softmax = fn matrix ->
+  # 行ごとにsoftmaxを計算し、各QueryからKeyへの重みの合計を1にする
   exps =
     Nx.exp(
       Nx.subtract(matrix, Nx.reduce_max(matrix, axes: [1], keep_axes: true))
@@ -438,12 +488,14 @@ row_softmax = fn matrix ->
   Nx.divide(exps, Nx.sum(exps, axes: [1], keep_axes: true))
 end
 
+# 全Queryと全Keyの内積を一度に計算し、{系列長, 系列長}の点数表を作る
 score_matrix =
   Nx.divide(
     Nx.dot(decoder_embeddings, [1], Nx.transpose(decoder_embeddings), [0]),
     :math.sqrt(3)
   )
 
+# j > i、つまり現在位置より未来だけが1になる因果マスク
 mask_tensor =
   for i <- 0..(length(decoder_tokens) - 1) do
     for j <- 0..(length(decoder_tokens) - 1) do
@@ -452,11 +504,13 @@ mask_tensor =
   end
   |> Nx.tensor(type: {:u, 8})
 
+# 未来の点数を非常に小さくすると、softmax後の重みはほぼ0になる
 masked_scores =
   Nx.select(mask_tensor, Nx.broadcast(-1.0e9, Nx.shape(score_matrix)), score_matrix)
 
 masked_weights = row_softmax.(masked_scores)
 
+# マスク適用後のtensorを、トークン名付きのヒートマップ用データへ戻す
 masked_weight_rows =
   for {query, i} <- Enum.with_index(decoder_tokens),
       {key, j} <- Enum.with_index(decoder_tokens) do
@@ -485,10 +539,12 @@ LLMScratch.Visuals.heatmap(masked_weight_rows, "因果マスク適用後のア�
 
 ```elixir
 positional_encoding = fn max_position, d_model ->
+  # 位置ごと、次元ごとに周期の異なるsin/cosの値を計算する
   for pos <- 0..(max_position - 1) do
     for dim <- 0..(d_model - 1) do
       angle = pos / :math.pow(10_000, (2 * div(dim, 2)) / d_model)
 
+      # 偶数次元にはsin、奇数次元にはcosを使う
       if rem(dim, 2) == 0 do
         :math.sin(angle)
       else
@@ -503,6 +559,7 @@ pe_matrix |> Enum.take(4)
 ```
 
 ```elixir
+# 最初の4次元だけを取り出し、位置による波形の違いを可視化する
 pe_rows =
   pe_matrix
   |> Enum.with_index()
@@ -529,12 +586,14 @@ LLMScratch.Visuals.line_chart(
 ```
 
 ```elixir
+# 同じトークン埋め込みを3つの異なる位置へ置く
 same_token_embedding = Nx.tensor([0.8, 0.2, -0.1, 0.5], type: {:f, 32})
 small_pe = positional_encoding.(3, 4) |> Nx.tensor(type: {:f, 32})
 
 same_token_position_rows =
   0..2
   |> Enum.map(fn position ->
+    # トークン埋め込みへ位置ベクトルを足すと、位置ごとに異なる入力になる
     combined = Nx.add(same_token_embedding, small_pe[position])
 
     %{

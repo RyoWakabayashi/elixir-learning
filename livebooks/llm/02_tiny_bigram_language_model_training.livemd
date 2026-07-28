@@ -1,6 +1,7 @@
 # LLM を Elixir / Livebook で学ぶ 2
 
 ```elixir
+# Nxの計算をEXLAで実行し、表とグラフも表示できるようにする
 Mix.install(
   [
     {:nx, "~> 0.9"},
@@ -34,10 +35,31 @@ Mix.install(
 
 ための導入用モデルです。
 
+## このnotebookで使う用語
+
+この章では「モデルを学習する」ときに頻出する言葉が増えます。コードを読む前に、用語同士の関係だけ確認しておきます。
+
+| 用語 | 英語・コード上の表記 | この章での意味 |
+|---|---|---|
+| コーパス | corpus | 学習に使う文章の集まり |
+| 語彙 | vocabulary / vocab | コーパスに現れるトークンと特殊トークンの一覧 |
+| 文頭／文末トークン | BOS / EOS | 文の始まり（Beginning of Sequence）と終わり（End of Sequence）を示す特殊トークン |
+| bigram | bigram（バイグラム） | 現在の1トークンだけを見て、次トークンを予測するモデル |
+| 学習ペア | training pair | `現在トークン -> 正解の次トークン` に分解した1問分のデータ |
+| tensor | tensor（テンソル） | 同じ型の数値を規則的な形状に並べた、Nxで計算するためのデータ |
+| one-hot表現 | one-hot encoding | 正解の位置だけを1、ほかを0にしたベクトル |
+| ロジット | logits | softmaxへ渡す前の、次トークン候補それぞれの生の点数 |
+| 損失 | loss | モデルの予測が正解からどれだけ外れているかを表す値 |
+| 勾配 | gradient | 損失を増減させるパラメータの方向と大きさ |
+| 学習率 | learning rate | 1回の更新でパラメータをどれだけ動かすか |
+| epoch | epoch（エポック） | 学習データ全体を使って更新する1回分の単位 |
+| フルバッチ学習 | full-batch training | すべての学習データをまとめて1回の更新に使う方法 |
+
 ## 準備
 
 ```elixir
 defmodule LLMScratch.Visuals do
+  # epochごとの損失など、連続した値の変化を表示する
   def line_chart(rows, title, x_field, y_field, opts \\ []) do
     width = Keyword.get(opts, :width, 620)
     height = Keyword.get(opts, :height, 280)
@@ -57,6 +79,7 @@ defmodule LLMScratch.Visuals do
     |> Kino.VegaLite.new()
   end
 
+  # 現在トークンと次トークンの全組み合わせを色の濃さで表示する
   def heatmap(rows, title, opts \\ []) do
     width = Keyword.get(opts, :width, 620)
     height = Keyword.get(opts, :height, 360)
@@ -81,15 +104,18 @@ defmodule TinyBigram do
   import Nx.Defn
 
   defn row_softmax(logits) do
+    # 行ごとの最大値を引き、指数関数のオーバーフローを避ける
     shifted = Nx.subtract(logits, Nx.reduce_max(logits, axes: [1], keep_axes: true))
     exps = Nx.exp(shifted)
     Nx.divide(exps, Nx.sum(exps, axes: [1], keep_axes: true))
   end
 
   defn loss(weights, input_ids, target_one_hot) do
+    # 各入力IDに対応する重み行を、次トークン候補のロジットとして取り出す
     logits = Nx.take(weights, input_ids)
     probs = row_softmax(logits)
 
+    # 正解トークンの-log(確率)を全学習ペアで平均する
     target_one_hot
     |> Nx.multiply(Nx.log(Nx.add(probs, 1.0e-9)))
     |> Nx.sum(axes: [1])
@@ -98,6 +124,7 @@ defmodule TinyBigram do
   end
 
   defn update(weights, input_ids, target_one_hot, learning_rate) do
+    # 自動微分で勾配を求め、損失が下がる向きへ重みを動かす
     grads = grad(weights, &loss(&1, input_ids, target_one_hot))
     weights - grads * learning_rate
   end
@@ -113,6 +140,7 @@ end
 今回は説明しやすいように、空白区切りの短い日本語文を小さく用意します。
 
 ```elixir
+# モデルに覚えさせる、ごく小さな学習用コーパス
 corpus_sentences = [
   "ねこ は ひるね が すき",
   "ねこ は さかな が すき",
@@ -130,8 +158,10 @@ Kino.DataTable.new(Enum.map(corpus_sentences, &%{sentence: &1}))
 文のはじめと終わりが分かるように、`<BOS>` と `<EOS>` も入れます。
 
 ```elixir
+# 文の境界も予測対象にするため、文頭と文末の特殊トークンを加える
 special_tokens = ["<BOS>", "<EOS>"]
 
+# 全文をトークンへ分け、特殊トークンと合わせて重複を除く
 vocab =
   corpus_sentences
   |> Enum.flat_map(&String.split(&1, " "))
@@ -139,11 +169,13 @@ vocab =
   |> Enum.uniq()
   |> Enum.sort()
 
+# トークン文字列から整数IDを引くための対応表
 token_to_id =
   vocab
   |> Enum.with_index()
   |> Map.new()
 
+# 生成したIDをトークン文字列へ戻すための逆引き表
 id_to_token =
   token_to_id
   |> Enum.map(fn {token, id} -> {id, token} end)
@@ -156,6 +188,7 @@ id_to_token =
 ```
 
 ```elixir
+# 語彙とIDの対応を確認する表示用データ
 token_rows =
   vocab
   |> Enum.with_index()
@@ -174,6 +207,7 @@ Kino.DataTable.new(token_rows, num_rows: 20)
 bigram モデルでは、`現在のトークン -> 次のトークン` のペアを学習します。
 
 ```elixir
+# 各文の前後へ<BOS>と<EOS>を付け、文の境界も系列に含める
 token_sequences =
   corpus_sentences
   |> Enum.map(fn sentence ->
@@ -184,6 +218,7 @@ Kino.DataTable.new(Enum.map(token_sequences, &%{sequence: Enum.join(&1, " ")}))
 ```
 
 ```elixir
+# 各系列を1トークンずつずらし、「現在 -> 次」の学習問題へ分解する
 training_pairs =
   token_sequences
   |> Enum.flat_map(fn sequence ->
@@ -215,10 +250,12 @@ Kino.DataTable.new(training_pairs, num_rows: 40)
 たとえば `ねこ` の行で `は` の列が濃ければ、学習データ中で `ねこ -> は` が何度も現れたことを表します。空白に見えるセルは、その組み合わせを一度も観察していないという意味です。
 
 ```elixir
+# 同じbigramがコーパス内に何回現れたかを数える
 pair_counts =
   training_pairs
   |> Enum.frequencies_by(fn pair -> {pair.source, pair.target} end)
 
+# 語彙の全組み合わせを作り、未出現の組み合わせは0回として埋める
 count_rows =
   for source <- vocab, target <- vocab do
     %{
@@ -234,6 +271,7 @@ LLMScratch.Visuals.heatmap(count_rows, "学習コーパスの bigram 出現回�
 ヒートマップ全体を一度に読むのが難しい場合は、1行だけ表にすると分かりやすくなります。
 
 ```elixir
+# 候補が複数ある「は」の行だけを抜き出して確認する
 focus_source = "は"
 
 focus_count_rows =
@@ -260,6 +298,7 @@ Kino.DataTable.new(focus_count_rows, keys: [:source, :target, :score])
 | one-hot | `[0, 0, ..., 1, ...]` | 正解の列だけを1にして、予測確率と比較する |
 
 ```elixir
+# 人が読める学習ペアから、現在トークンと正解トークンのID列を作る
 input_ids =
   training_pairs
   |> Enum.map(& &1.source_id)
@@ -272,6 +311,7 @@ target_ids =
 
 vocab_size = length(vocab)
 
+# 各正解IDを、語彙数と同じ幅のone-hot表現へ変換する
 target_one_hot =
   Nx.equal(Nx.new_axis(target_ids, 1), Nx.iota({vocab_size}))
   |> Nx.as_type(:f32)
@@ -287,6 +327,7 @@ target_one_hot =
 形状の先頭の数は学習ペア数です。`input_ids` と `target_ids` は1ペアにつき1個のID、`target_one_hot` は1ペアにつき語彙数個の0/1を持ちます。
 
 ```elixir
+# 先頭5件について、文字列、ID、one-hotの対応を1行ずつ確認する
 tensor_preview_rows =
   training_pairs
   |> Enum.take(5)
@@ -316,8 +357,10 @@ bigram モデルのパラメータは、`[語彙数 x 語彙数]` の行列で�
 行は「今のトークン」、列は「次トークン候補」を表します。
 
 ```elixir
+# 同じ初期値から実験を再現できるよう、乱数の初期状態を固定する
 :rand.seed(:exsss, {123, 456, 789})
 
+# {現在トークン, 次トークン候補}の全組み合わせに小さな乱数を置く
 initial_weights =
   1..(vocab_size * vocab_size)
   |> Enum.map(fn _ -> :rand.normal() * 0.01 end)
@@ -328,6 +371,7 @@ Nx.shape(initial_weights)
 ```
 
 ```elixir
+# 学習前の重みで、コーパス全体に対する損失を測る
 initial_loss =
   TinyBigram.loss(initial_weights, input_ids, target_one_hot)
   |> Nx.to_number()
@@ -337,6 +381,7 @@ initial_loss =
 
 ```elixir
 summarize_predictions = fn probabilities ->
+  # 各現在トークンについて、確率が高い次トークンを3件ずつ選ぶ
   vocab
   |> Enum.with_index()
   |> Enum.map(fn {source, source_id} ->
@@ -385,8 +430,10 @@ flowchart
 epochs = 400
 learning_rate = 1.2e-1
 
+# {現在の重み, 損失の履歴}をepochごとに更新する
 {trained_weights, loss_rows} =
   Enum.reduce(0..epochs, {initial_weights, []}, fn epoch, {weights, acc} ->
+    # 更新前の損失を記録してから、勾配降下を1回行う
     loss_value =
       TinyBigram.loss(weights, input_ids, target_one_hot)
       |> Nx.to_number()
@@ -396,6 +443,7 @@ learning_rate = 1.2e-1
 
     row = %{epoch: epoch, loss: loss_value}
 
+    # 先頭への追加は高速なので、最後に履歴全体を反転する
     {next_weights, [row | acc]}
   end)
 
@@ -418,11 +466,13 @@ LLMScratch.Visuals.line_chart(loss_rows, "学習中の損失", :epoch, :loss)
 学習後は、重み行列の各行を確率へ変換して読みます。次の表では、各現在トークンのあとにモデルが高い確率を付けた上位3候補を表示します。
 
 ```elixir
+# 学習後の各重み行を、合計1の次トークン確率へ変換する
 trained_probabilities = TinyBigram.probabilities(trained_weights)
 Kino.DataTable.new(summarize_predictions.(trained_probabilities), num_rows: 20)
 ```
 
 ```elixir
+# {現在トークン, 次トークン}ごとの学習後確率をヒートマップ用に並べる
 trained_rows =
   for {source, i} <- Enum.with_index(vocab),
       {target, j} <- Enum.with_index(vocab) do
@@ -445,12 +495,14 @@ LLMScratch.Visuals.heatmap(trained_rows, "学習後の next-token 確率")
 出現回数ヒートマップと似た濃淡になれば、モデルがデータの傾向を重みに写し取ったと判断できます。
 
 ```elixir
+# 特徴の分かりやすい3トークンに絞って、学習前後の1位候補を比べる
 comparison_sources = ["<BOS>", "ねこ", "は"]
 
 before_after_rows =
   for source <- comparison_sources do
     source_id = token_to_id[source]
 
+    # 1行分の確率から、最も確率が高い{確率, トークン}を返す
     best = fn probabilities ->
       probabilities[source_id]
       |> Nx.to_flat_list()
@@ -479,6 +531,7 @@ bigram なので、毎回「今の 1 語」だけを見て次トークンを選�
 
 ```elixir
 greedy_generate = fn probabilities, max_steps ->
+  # 現在トークンの行から、確率最大の次トークンを1つ選ぶ
   next_token = fn source ->
     source_id = token_to_id[source]
 
@@ -491,6 +544,7 @@ greedy_generate = fn probabilities, max_steps ->
     |> elem(0)
   end
 
+  # <BOS>から始め、<EOS>が出るか上限へ達するまで1語ずつ追加する
   1..max_steps
   |> Enum.reduce_while(["<BOS>"], fn _, acc ->
     source = List.last(acc)
@@ -505,6 +559,7 @@ greedy_generate = fn probabilities, max_steps ->
 end
 
 format_generated = fn tokens ->
+  # 人が読みやすいよう、特殊トークンを除いて空白で連結する
   tokens
   |> Enum.reject(&(&1 in ["<BOS>", "<EOS>"]))
   |> Enum.join(" ")

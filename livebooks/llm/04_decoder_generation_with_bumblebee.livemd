@@ -1,6 +1,7 @@
 # LLM を Elixir / Livebook で学ぶ 4
 
 ```elixir
+# 事前学習済みモデルの推論と可視化に使うライブラリを準備する
 Mix.install(
   [
     {:bumblebee, "~> 0.5"},
@@ -33,10 +34,32 @@ Mix.install(
 * 長時間学習はしない
 * 例文や解説はこの notebook 用の独自内容
 
+## このnotebookで使う用語
+
+この章では、学習済みモデルへ文章を入力して生成するときの用語を使います。
+
+| 用語 | 英語・コード上の表記 | この章での意味 |
+|---|---|---|
+| 事前学習済みモデル | pretrained model | 大量の文章で次トークン予測をあらかじめ学習したモデル |
+| GPT-2 | GPT-2 / `gpt2` | この章で動かす、デコーダーのみの英語向け言語モデル |
+| トークナイザー | tokenizer | 文章とトークンID列を相互に変換する処理 |
+| サブワード | subword | 単語より小さく、複数の単語で再利用できるトークンの部品 |
+| プロンプト | prompt | 生成を始めるためにモデルへ渡す入力文 |
+| コンテキスト | context | モデルが次トークン予測の手がかりとして読めるトークン列 |
+| 生成 | generation | 次トークンを選んで末尾へ追加する処理を繰り返すこと |
+| greedy search | greedy search | 毎回、確率が最も高いトークンを選ぶ方法 |
+| 多項分布サンプリング | multinomial sampling | 候補の確率に従って次トークンを抽選する方法 |
+| temperature | temperature | 確率分布の尖り方を変え、生成の安定性や多様性を調整する値 |
+| top-k | top-k | 確率上位k個だけを抽選候補として残す制限 |
+| top-p | top-p | 確率の合計がpへ達するまでの上位候補だけを残す制限 |
+| 最大生成トークン数 | `max_new_tokens` | プロンプトの後ろへ新しく追加できるトークン数の上限 |
+| 推論 | inference | 学習済みの重みを更新せず、予測や生成だけを行うこと |
+
 ## 準備
 
 ```elixir
 defmodule LLMScratch.Visuals do
+  # プロンプトごとのトークン数など、カテゴリ間の値を比較する
   def bar_chart(rows, title, x_field, y_field, opts \\ []) do
     width = Keyword.get(opts, :width, 560)
     height = Keyword.get(opts, :height, 280)
@@ -49,6 +72,7 @@ defmodule LLMScratch.Visuals do
     |> Kino.VegaLite.new()
   end
 
+  # 生成トークン数に対する実行時間など、連続値の変化を表示する
   def line_chart(rows, title, x_field, y_field) do
     VegaLite.new(width: 560, height: 280, title: title)
     |> VegaLite.data_from_values(rows)
@@ -79,11 +103,13 @@ flowchart
 ## モデルのダウンロード
 
 ```elixir
+# ダウンロード済みファイルを再利用できるよう、保存先を固定する
 cache_dir = "/tmp/bumblebee_cache"
 repo = {:hf, "gpt2", cache_dir: cache_dir}
 ```
 
 ```elixir
+# 同じリポジトリから、重み、トークナイザー、標準の生成設定を読み込む
 {:ok, gpt2} = Bumblebee.load_model(repo)
 {:ok, tokenizer} = Bumblebee.load_tokenizer(repo)
 {:ok, generation_config} = Bumblebee.load_generation_config(repo)
@@ -96,6 +122,7 @@ repo = {:hf, "gpt2", cache_dir: cache_dir}
 人が空白で数える単語と、モデルのトークンは別物です。頻出する文字列は1トークンになりやすい一方、長い語・派生語・珍しい綴りは、モデルが知っている小さな部品へ分割されることがあります。
 
 ```elixir
+# 入力を変えて再実行できるLivebookのテキスト欄を作る
 prompt_input =
   Kino.Input.textarea("PROMPT",
     default: "Tokenization is unexpectedly interesting."
@@ -103,14 +130,17 @@ prompt_input =
 ```
 
 ```elixir
+# テキスト欄の現在値を、この後のトークン化と生成に使う
 prompt = Kino.Input.read(prompt_input)
 prompt
 ```
 
 ```elixir
+# 文章をモデルが扱うトークンID列へ変換する
 tokenized = Bumblebee.apply_tokenizer(tokenizer, prompt)
 token_ids = tokenized["input_ids"][[0]] |> Nx.to_flat_list()
 
+# 各IDを1トークンずつ復号し、元の文字列のどの部品かを確認する
 token_rows =
   token_ids
   |> Enum.with_index()
@@ -131,6 +161,7 @@ Kino.DataTable.new(
 表の `piece` を上から読むと、たとえば `Tokenization` が `Token` と `ization` に分かれるはずです。先頭の空白が後ろの piece に含まれることもあります。
 
 ```elixir
+# 単語より小さなサブワードへ分かれやすい英単語を比べる
 tokenization_examples = [
   %{english: "Tokenization", japanese: "トークン化"},
   %{english: "tokenizer", japanese: "トークナイザー"},
@@ -141,6 +172,7 @@ tokenization_examples = [
 token_piece_rows =
   tokenization_examples
   |> Enum.flat_map(fn example ->
+    # 1単語をトークン化し、複数pieceなら複数行へ展開する
     ids =
       Bumblebee.apply_tokenizer(tokenizer, example.english)["input_ids"][[0]]
       |> Nx.to_flat_list()
@@ -171,6 +203,7 @@ Kino.DataTable.new(
 トークン数は、そのまま計算量やコンテキスト長の感覚につながります。
 
 ```elixir
+# 文字数や空白区切りの単語数と、モデルのトークン数が違う例
 prompt_examples = [
   "cat",
   "tokenizer",
@@ -181,6 +214,7 @@ prompt_examples = [
 prompt_length_rows =
   prompt_examples
   |> Enum.map(fn text ->
+    # 各文章を実際にトークン化し、ID列の長さを数える
     input_ids = Bumblebee.apply_tokenizer(tokenizer, text)["input_ids"][[0]] |> Nx.to_flat_list()
 
     %{
@@ -205,13 +239,17 @@ LLMScratch.Visuals.bar_chart(prompt_length_rows, "プロンプトごとのトー
 * `greedy`: 毎回もっとも確率の高い候補を選ぶ
 * `sampling`: 上位候補の確率に応じて抽選し、別の展開も選べるようにする
 
+違いを観察しやすくするため、**同じプロンプトをそれぞれ3回ずつ生成**します。samplingでは試行ごとに異なる乱数seedを使います。seedをコード内で固定することで、3種類の結果を作りながら、notebookを再実行したときには同じ比較を再現できます。
+
 ```elixir
+# 毎回1位を選ぶ、再現性の高い貪欲探索
 greedy_config =
   Bumblebee.configure(generation_config,
     max_new_tokens: 40,
     strategy: %{type: :greedy_search}
   )
 
+# 上位候補から確率的に選ぶ、多様性のあるサンプリング
 sampling_config =
   Bumblebee.configure(generation_config,
     max_new_tokens: 40,
@@ -223,30 +261,113 @@ sampling_config =
     }
   )
 
+# モデル、トークナイザー、生成設定を実行可能なServingへまとめる
 greedy_serving = Bumblebee.Text.generation(gpt2, tokenizer, greedy_config)
 sampling_serving = Bumblebee.Text.generation(gpt2, tokenizer, sampling_config)
 ```
 
 ```elixir
-greedy_result =
-  greedy_serving
-  |> Nx.Serving.run(prompt)
-  |> Map.get(:results)
+# 3つのseedを使い、同じプロンプトで独立した3試行を行う
+trial_seeds = [101, 202, 303]
 
-sampling_result =
-  sampling_serving
-  |> Nx.Serving.run(prompt)
-  |> Map.get(:results)
+run_trials = fn serving ->
+  trial_seeds
+  |> Enum.with_index(1)
+  |> Enum.flat_map(fn {seed, trial} ->
+    serving
+    |> Nx.Serving.run(%{text: prompt, seed: seed})
+    |> Map.fetch!(:results)
+    |> Enum.map(&Map.put(&1, :trial, trial))
+  end)
+end
 
-Kino.Layout.tabs([
-  greedy: Kino.DataTable.new(greedy_result),
-  sampling: Kino.DataTable.new(sampling_result)
-])
+# greedyは乱数を使わないため、seedが違っても同じ結果になる
+greedy_results = run_trials.(greedy_serving)
+
+# samplingは確率的に抽選するため、seedごとに異なる結果になりやすい
+sampling_results = run_trials.(sampling_serving)
+
+# 生成文は先頭が改行になる場合があるため、表ではなく全文表示できるKino.Textを使う
+generation_text = fn results ->
+  results
+  |> Enum.map(fn result ->
+    case String.trim_leading(result.text) do
+      "" -> "試行 #{result.trial}\n表示できる文字列は生成されませんでした"
+      text -> "試行 #{result.trial}\n#{text}"
+    end
+  end)
+  |> Enum.join("\n\n---\n\n")
+  |> Kino.Text.new()
+end
+
+generation_tabs =
+  Kino.Layout.tabs([
+    {"greedy（3回）", generation_text.(greedy_results)},
+    {"sampling（3回）", generation_text.(sampling_results)}
+  ])
+
+# 空白の違いを除いて、3回のうち何種類の文章が生成されたかを数える
+unique_generation_count = fn results ->
+  results
+  |> Enum.map(&String.trim(&1.text))
+  |> Enum.uniq()
+  |> length()
+end
+
+diversity_rows = [
+  %{
+    方式: "greedy",
+    試行数: length(greedy_results),
+    異なる生成結果数: unique_generation_count.(greedy_results)
+  },
+  %{
+    方式: "sampling",
+    試行数: length(sampling_results),
+    異なる生成結果数: unique_generation_count.(sampling_results)
+  }
+]
+
+# 生成文とは別に、入力・出力トークン数も比較できるよう残す
+generation_summary_rows =
+  [
+    {"greedy", greedy_results},
+    {"sampling", sampling_results}
+  ]
+  |> Enum.flat_map(fn {method, results} ->
+    Enum.map(results, fn result ->
+      %{
+        方式: method,
+        試行: result.trial,
+        入力トークン数: result.token_summary.input,
+        出力トークン数: result.token_summary.output,
+        パディング数: result.token_summary.padding
+      }
+    end)
+  end)
+
+Kino.Layout.grid(
+  [
+    Kino.DataTable.new(
+      diversity_rows,
+      keys: [:方式, :試行数, :異なる生成結果数]
+    ),
+    generation_tabs,
+    Kino.DataTable.new(
+      generation_summary_rows,
+      keys: [:方式, :試行, :入力トークン数, :出力トークン数, :パディング数]
+    )
+  ],
+  columns: 1
+)
 ```
+
+生成文が改行から始まると、1行の表では先頭の空行だけが表示され、`:text`が空に見えることがあります。ここでは先頭の空白を表示用に取り除き、`Kino.Text`で改行を含む全文を表示しています。
+
+最初の表では、`異なる生成結果数`を確認してください。greedyは通常`1`、samplingは`2`または`3`になり、同じ入力でもsamplingの方が複数の続きを選びやすいことが分かります。その下のタブでは、実際にどこから文章が分かれていったかを3試行分の全文で比較できます。
 
 初学者向けの観察ポイントは次の通りです。
 
-* `greedy` は同じ入力なら同じ経路を選びやすく、無難だが繰り返しも起きやすい
+* `greedy` は乱数を使わず毎回1位を選ぶので、同じ入力なら3回とも同じ結果になる
 * `sampling` は確率に応じて抽選するので、同じ入力でも実行ごとに続きが変わり得る
 * `temperature` を上げると確率差がなだらかになり、低確率だった候補も選ばれやすくなる
 * `top_k=40` と `top_p=0.9` は、可能性が極端に低い候補まで抽選対象にしないための制限
@@ -258,6 +379,7 @@ Kino.Layout.tabs([
 同じ中心場面 `A small robot arrived at the station` に、文体を示す短い書き出しを加えて比べます。英語生成ですが、比較の意図は日本語ラベルで確認できるようにします。
 
 ```elixir
+# 中心となる出来事はそろえ、書き出しだけで文体を指定する
 prompt_variants = [
   %{
     style: "ニュース調",
@@ -276,6 +398,7 @@ prompt_variants = [
 variant_results =
   prompt_variants
   |> Enum.map(fn example ->
+    # 確率的な生成なので、再実行すると結果が変わる場合がある
     output =
       sampling_serving
       |> Nx.Serving.run(example.prompt)
@@ -304,11 +427,13 @@ GPT-2 は指示に従うよう調整されたチャットモデルではない�
 トークンを 1 つずつ足すので、`max_new_tokens` を増やすと時間も伸びやすくなります。
 
 ```elixir
+# 生成上限だけを変え、処理時間との関係を測る
 benchmark_prompt = "Elixir notebooks are useful because"
 
 timing_rows =
   [10, 20, 40, 60]
   |> Enum.map(fn max_new_tokens ->
+    # 比較対象ごとに最大生成トークン数を設定し直す
     config =
       Bumblebee.configure(generation_config,
         max_new_tokens: max_new_tokens,
@@ -316,6 +441,8 @@ timing_rows =
       )
 
     serving = Bumblebee.Text.generation(gpt2, tokenizer, config)
+
+    # :timer.tcは実行時間をマイクロ秒で返す
     {microseconds, _result} = :timer.tc(Nx.Serving, :run, [serving, benchmark_prompt])
 
     %{
