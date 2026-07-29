@@ -1,0 +1,774 @@
+# LLM を Elixir / Livebook で学ぶ 4
+
+```elixir
+# ミニGPTの学習と可視化に使うライブラリを準備する
+Mix.install(
+  [
+    {:nx, "~> 0.9"},
+    {:exla, "~> 0.9"},
+    {:kino, "~> 0.15"},
+    {:kino_vega_lite, "~> 0.1"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend, default_defn_options: [compiler: EXLA]]]
+)
+```
+
+## ミニ GPT を組み立てて、端から端まで学習する
+
+この章がこのシリーズの山場です。これまでの章で用意した部品を全部つなげます。
+
+* 第1章: トークン ID と埋め込み
+* 第2章: `損失を下げるように重みを更新する` という学習の流れ
+* 第3章: アテンション・因果マスク・位置エンコーディング
+
+これらを組み合わせた**デコーダーのみのミニ GPT** を実装し、第2章とまったく同じコーパスで、埋め込みからアテンションまで全パラメータを学習します。
+
+ゴールは、第2章の bigram が原理的に解けなかったこの問題を解くことです。
+
+| プレフィックス | bigram の予測 | ミニ GPT に期待する予測 |
+|---|---|---|
+| ねこ は | 「は」の行の混ざった分布（主語を見られない） | ひるね / さかな / まどべ |
+| いぬ は | 上とまったく同じ分布 | さんぽ / にわ |
+| とり は | 上とまったく同じ分布 | そら |
+
+## モデルの全体像
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  A["トークンID列"] --> B["トークン埋め込み + 位置エンコーディング"]
+  B --> C1["GPTブロック 1"]
+  C1 --> C2["GPTブロック 2"]
+  C2 --> D["出力層（語彙への線形変換）"]
+  D --> E["各位置の次トークンのロジット"]
+
+  subgraph GPTブロックの中身
+    G1["因果マスク付きマルチヘッド自己アテンション"] --> G2["残差接続 + レイヤー正規化"]
+    G2 --> G3["フィードフォワード層"]
+    G3 --> G4["残差接続 + レイヤー正規化"]
+  end
+""")
+```
+
+第3章で学んだアテンションに、この章で初めて登場する部品が4つ加わります。
+
+| 部品 | 役割のイメージ |
+|---|---|
+| マルチヘッドアテンション | アテンションを複数の「見方」に分けて並列に計算し、最後に結合する |
+| フィードフォワード層 | アテンションで集めた情報を、各位置ごとに個別に加工する |
+| 残差接続 | 層の入力を出力へ足し戻し、元の情報が消えないようにする |
+| レイヤー正規化 | 各位置のベクトルのスケールを整え、学習を安定させる |
+
+## このnotebookで使う用語
+
+| 用語 | 英語・コード上の表記 | この章での意味 |
+|---|---|---|
+| GPTブロック | GPT block / decoder block | 自己アテンションとフィードフォワード層を1組にした、積み重ねる単位 |
+| マルチヘッドアテンション | multi-head attention | 複数の異なる見方でアテンションを並列計算し、最後に結合する仕組み |
+| ヘッド | attention head | マルチヘッドアテンションを構成する、1つの独立した見方 |
+| フィードフォワード層 | feed-forward layer | 各位置のベクトルを、同じ小さなネットワークで個別に変換する層 |
+| 残差接続 | residual connection | 層の入力を層の出力へ足し戻し、元の情報を流れやすくする接続 |
+| レイヤー正規化 | layer normalization | 各位置のベクトルの平均や分散を整え、計算を安定させる処理 |
+| モデル次元 | `d_model` | 各トークン位置を表すベクトルの要素数 |
+| パラメータ | parameters | 学習で更新される重みの総称。埋め込み・アテンション・出力層など全部 |
+| ロジット | logits | 出力語彙の各トークンへ付ける、確率へ変換する前の点数 |
+| バッチ | batch | 複数の系列をまとめて1回で処理する単位 |
+| 勾配降下法 | gradient descent | 勾配の向きへ少しずつパラメータを動かして損失を下げる方法 |
+
+## 準備: 可視化ヘルパー
+
+```elixir
+defmodule LLMScratch.Visuals do
+  # 学習回数に対する損失など、連続値の推移を折れ線で表示する
+  def line_chart(rows, title, x_field, y_field) do
+    VegaLite.new(width: 620, height: 280, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:line, point: true, tooltip: true)
+    |> VegaLite.encode_field(:x, Atom.to_string(x_field),
+      type: :quantitative,
+      title: Atom.to_string(x_field)
+    )
+    |> VegaLite.encode_field(:y, Atom.to_string(y_field),
+      type: :quantitative,
+      title: Atom.to_string(y_field)
+    )
+    |> Kino.VegaLite.new()
+  end
+
+  # 2つのカテゴリ軸と数値を、色の濃さで読めるヒートマップにする
+  def heatmap(rows, title, x_field, y_field, color_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 560)
+    height = Keyword.get(opts, :height, 320)
+    x_title = Keyword.get(opts, :x_title, Atom.to_string(x_field))
+    y_title = Keyword.get(opts, :y_title, Atom.to_string(y_field))
+
+    VegaLite.new(width: width, height: height, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:rect, tooltip: true)
+    |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :nominal, title: x_title)
+    |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :nominal, title: y_title)
+    |> VegaLite.encode_field(:color, Atom.to_string(color_field),
+      type: :quantitative,
+      scale: [scheme: "tealblues"]
+    )
+    |> Kino.VegaLite.new()
+  end
+end
+```
+
+## 準備: ミニ GPT 本体
+
+モデル全体を 1 つのモジュールにまとめます。長く見えますが、`self_attention` と `causal_mask` と `positional_encoding` は第3章で学んだ計算そのものです。初見の部分は `split_heads / combine_heads`（マルチヘッド化）、`feed_forward`、`layer_norm`、そしてそれらを組み合わせる `gpt_block` です。
+
+```elixir
+defmodule LLMScratch.MiniGPT do
+  # 最後の次元へ重み行列を掛け、バイアスを加える
+  def linear(x, w, b) do
+    x
+    |> Nx.dot([Nx.rank(x) - 1], w, [0])
+    |> Nx.add(b)
+  end
+
+  # 各位置のベクトルを、最後の次元について平均0・分散1付近へ整える
+  def layer_norm(x, gamma, beta, eps \\ 1.0e-5) do
+    mean = Nx.mean(x, axes: [-1], keep_axes: true)
+
+    variance =
+      x
+      |> Nx.subtract(mean)
+      |> Nx.pow(2)
+      |> Nx.mean(axes: [-1], keep_axes: true)
+
+    x
+    |> Nx.subtract(mean)
+    |> Nx.divide(Nx.sqrt(Nx.add(variance, eps)))
+    |> Nx.multiply(gamma)
+    |> Nx.add(beta)
+  end
+
+  # 最後の次元を合計1の確率へ変換する
+  def softmax(x) do
+    exps =
+      x
+      |> Nx.subtract(Nx.reduce_max(x, axes: [-1], keep_axes: true))
+      |> Nx.exp()
+
+    Nx.divide(exps, Nx.sum(exps, axes: [-1], keep_axes: true))
+  end
+
+  # softmaxの対数を、数値的に安定な形で直接計算する
+  def log_softmax(x) do
+    shifted = Nx.subtract(x, Nx.reduce_max(x, axes: [-1], keep_axes: true))
+    Nx.subtract(shifted, Nx.log(Nx.sum(Nx.exp(shifted), axes: [-1], keep_axes: true)))
+  end
+
+  # 位置と次元の組ごとに、周期の異なるsin/cos信号を作る（第3章と同じ）
+  def positional_encoding(seq_len, d_model) do
+    for pos <- 0..(seq_len - 1) do
+      for dim <- 0..(d_model - 1) do
+        angle = pos / :math.pow(10_000, (2 * div(dim, 2)) / d_model)
+
+        if rem(dim, 2) == 0 do
+          :math.sin(angle)
+        else
+          :math.cos(angle)
+        end
+      end
+    end
+    |> Nx.tensor(type: {:f, 32})
+  end
+
+  # j > i、つまり自分より右（未来）の位置だけが1になるマスク（第3章と同じ）
+  def causal_mask(seq_len) do
+    for i <- 0..(seq_len - 1) do
+      for j <- 0..(seq_len - 1) do
+        j > i
+      end
+    end
+    |> Nx.tensor(type: {:u, 8})
+  end
+
+  # {バッチ, 系列長, d_model}を{バッチ, ヘッド数, 系列長, ヘッド次元}へ並べ替える
+  def split_heads(x, num_heads) do
+    {batch, seq_len, d_model} = Nx.shape(x)
+    head_dim = div(d_model, num_heads)
+
+    x
+    |> Nx.reshape({batch, seq_len, num_heads, head_dim})
+    |> Nx.transpose(axes: [0, 2, 1, 3])
+  end
+
+  # 分割したヘッドを結合し、元の{バッチ, 系列長, d_model}へ戻す
+  def combine_heads(x) do
+    {batch, num_heads, seq_len, head_dim} = Nx.shape(x)
+
+    x
+    |> Nx.transpose(axes: [0, 2, 1, 3])
+    |> Nx.reshape({batch, seq_len, num_heads * head_dim})
+  end
+
+  # 因果マスク付きのマルチヘッド自己アテンション
+  def self_attention(x, params, num_heads, mask) do
+    # 同じ入力を別々の線形変換に通し、Query／Key／Valueを作る
+    q = x |> linear(params.wq, params.bq) |> split_heads(num_heads)
+    k = x |> linear(params.wk, params.bk) |> split_heads(num_heads)
+    v = x |> linear(params.wv, params.bv) |> split_heads(num_heads)
+
+    head_dim = q |> Nx.shape() |> elem(3)
+
+    # QueryとKeyの内積を、バッチとヘッドを保ったまま一括計算する
+    scores =
+      Nx.dot(q, [3], [0, 1], k, [3], [0, 1])
+      |> Nx.divide(:math.sqrt(head_dim))
+
+    # 未来の位置の点数を非常に小さくし、softmax後の重みをほぼ0にする
+    masked_scores =
+      Nx.select(
+        Nx.broadcast(mask, Nx.shape(scores)),
+        Nx.broadcast(-1.0e9, Nx.shape(scores)),
+        scores
+      )
+
+    weights = softmax(masked_scores)
+
+    # 重みでValueを混ぜ、各位置へ集めた情報をヘッド結合後に線形変換する
+    output =
+      Nx.dot(weights, [3], [0, 1], v, [2], [0, 1])
+      |> combine_heads()
+      |> linear(params.wo, params.bo)
+
+    {output, weights}
+  end
+
+  # 各位置を独立にd_model -> d_ff -> d_modelと変換する
+  def feed_forward(x, params) do
+    x
+    |> linear(params.w1, params.b1)
+    |> Nx.max(0.0)
+    |> linear(params.w2, params.b2)
+  end
+
+  # 自己アテンションとフィードフォワード層を、残差接続と正規化で包む
+  def gpt_block(x, params, num_heads, mask) do
+    {attention_output, attention_weights} =
+      self_attention(x, params.attention, num_heads, mask)
+
+    x1 = layer_norm(Nx.add(x, attention_output), params.ln1.gamma, params.ln1.beta)
+    ff_output = feed_forward(x1, params.feed_forward)
+    x2 = layer_norm(Nx.add(x1, ff_output), params.ln2.gamma, params.ln2.beta)
+
+    {x2, attention_weights}
+  end
+
+  # 埋め込みから次トークンのロジットまで、モデル全体の順伝播
+  def forward(params, token_ids, num_heads) do
+    {_batch, seq_len} = Nx.shape(token_ids)
+    d_model = params.token_embedding |> Nx.shape() |> elem(1)
+
+    # トークン埋め込みへ位置エンコーディングを足し、最初のブロックへの入力を作る
+    x =
+      params.token_embedding
+      |> Nx.take(token_ids)
+      |> Nx.add(positional_encoding(seq_len, d_model))
+
+    mask = causal_mask(seq_len)
+
+    # 前のブロックの出力を次のブロックの入力として順番に渡す
+    {x, attention_weights} =
+      params.blocks
+      |> Tuple.to_list()
+      |> Enum.reduce({x, []}, fn block_params, {acc, weights} ->
+        {output, block_weights} = gpt_block(acc, block_params, num_heads, mask)
+        {output, weights ++ [block_weights]}
+      end)
+
+    # 各位置のベクトルを、語彙の各トークンへのロジットに変換する
+    logits = linear(x, params.output.w, params.output.b)
+
+    %{logits: logits, attention_weights: attention_weights}
+  end
+
+  # 各位置の正解トークンに対する負の対数確率を平均する
+  def loss(params, token_ids, target_one_hot, num_heads) do
+    logits = forward(params, token_ids, num_heads).logits
+    log_probs = log_softmax(logits)
+
+    target_one_hot
+    |> Nx.multiply(log_probs)
+    |> Nx.sum(axes: [-1])
+    |> Nx.negate()
+    |> Nx.mean()
+  end
+end
+```
+
+## 準備: パラメータ更新の仕組み
+
+第2章では重みが 1 枚の行列だったので、更新は `weights - grads * learning_rate` の 1 行でした。ミニ GPT のパラメータは「map と tuple を入れ子にした木」になるので、木のすべての葉（tensor）へ同じ更新を適用する関数を用意します。
+
+```elixir
+defmodule LLMScratch.SGD do
+  # tensorに到達したら、勾配に学習率を掛けて引く
+  def apply_gradients(%Nx.Tensor{} = param, %Nx.Tensor{} = gradient, learning_rate) do
+    Nx.subtract(param, Nx.multiply(gradient, learning_rate))
+  end
+
+  # mapは同じキーの勾配と組にして再帰する
+  def apply_gradients(params, gradients, learning_rate) when is_map(params) do
+    Map.new(params, fn {key, value} ->
+      {key, apply_gradients(value, Map.fetch!(gradients, key), learning_rate)}
+    end)
+  end
+
+  # tupleは位置をそろえて再帰する
+  def apply_gradients(params, gradients, learning_rate) when is_tuple(params) do
+    params
+    |> Tuple.to_list()
+    |> Enum.zip(Tuple.to_list(gradients))
+    |> Enum.map(fn {param, gradient} -> apply_gradients(param, gradient, learning_rate) end)
+    |> List.to_tuple()
+  end
+end
+```
+
+## 1. データ: 第2章とまったく同じコーパス
+
+比較のために、第2章と同じ 6 文を使います。
+
+```elixir
+corpus_sentences = [
+  "ねこ は ひるね が すき",
+  "ねこ は さかな が すき",
+  "ねこ は まどべ で ひるね",
+  "いぬ は さんぽ が すき",
+  "いぬ は にわ を かける",
+  "とり は そら を とぶ"
+]
+
+special_tokens = ["<BOS>", "<EOS>"]
+
+# 全文をトークンへ分け、特殊トークンと合わせて重複を除く
+vocab =
+  corpus_sentences
+  |> Enum.flat_map(&String.split(&1, " "))
+  |> Kernel.++(special_tokens)
+  |> Enum.uniq()
+  |> Enum.sort()
+
+token_to_id = vocab |> Enum.with_index() |> Map.new()
+vocab_size = length(vocab)
+
+%{vocab_size: vocab_size, vocab: vocab}
+```
+
+第2章の bigram は `現在の1トークン -> 次の1トークン` のペアに分解しました。ミニ GPT では**文全体を1つの系列**として渡し、各位置で同時に次トークンを予測します。
+
+入力は文の先頭側（`<BOS>` から最後の単語まで）、正解はそれを 1 つ左へずらした列（最初の単語から `<EOS>` まで）です。
+
+```elixir
+token_sequences =
+  Enum.map(corpus_sentences, fn sentence ->
+    ["<BOS>"] ++ String.split(sentence, " ") ++ ["<EOS>"]
+  end)
+
+# 入力と正解のずれ方を、文ごとに確認する
+shift_rows =
+  Enum.map(token_sequences, fn sequence ->
+    %{
+      モデルへの入力: sequence |> Enum.drop(-1) |> Enum.join(" "),
+      各位置の正解: sequence |> Enum.drop(1) |> Enum.join(" ")
+    }
+  end)
+
+Kino.DataTable.new(shift_rows, keys: [:モデルへの入力, :各位置の正解])
+```
+
+たとえば1文目では、位置0の入力 `<BOS>` の正解は `ねこ`、位置1の入力 `ねこ` の正解は `は`、というように、**1つの文から6個の次トークン問題**が生まれます。6文で36問です。
+
+```elixir
+# 各文の先頭6トークンを入力、後ろ6トークンを正解とするtensorを作る
+input_ids =
+  token_sequences
+  |> Enum.map(fn sequence ->
+    sequence |> Enum.drop(-1) |> Enum.map(&token_to_id[&1])
+  end)
+  |> Nx.tensor(type: :s64)
+
+target_ids =
+  token_sequences
+  |> Enum.map(fn sequence ->
+    sequence |> Enum.drop(1) |> Enum.map(&token_to_id[&1])
+  end)
+  |> Nx.tensor(type: :s64)
+
+# 正解IDを、語彙数と同じ幅のone-hot表現へ変換する
+target_one_hot =
+  Nx.equal(Nx.new_axis(target_ids, 2), Nx.iota({vocab_size}))
+  |> Nx.as_type(:f32)
+
+%{
+  input_shape: Nx.shape(input_ids),
+  target_shape: Nx.shape(target_ids),
+  target_one_hot_shape: Nx.shape(target_one_hot)
+}
+```
+
+`{6, 6}` は `6文 × 6位置`、`{6, 6, 18}` はさらに各位置へ語彙数18のone-hotが付いた形です。
+
+## 2. モデルの設計を決める
+
+```elixir
+# 学習される重みではなく、モデル内部の幅・分割数・深さをここで決める
+config = %{d_model: 16, num_heads: 2, d_ff: 32, num_blocks: 2}
+```
+
+| 設定 | 値 | 何を決めるか |
+|---|---:|---|
+| モデル次元 `d_model` | 16 | 1つのトークン位置を何個の数値で表すか |
+| ヘッド数 `num_heads` | 2 | アテンションを何個の見方に分けるか（1ヘッドあたり 16 ÷ 2 = 8次元） |
+| フィードフォワード層の中間次元 `d_ff` | 32 | 各位置の情報を一時的に何次元まで広げるか |
+| ブロック数 `num_blocks` | 2 | GPTブロックを何段重ねるか |
+
+データが流れるときの形状は次のように変化します。
+
+| 段階 | 形状 |
+|---|---|
+| トークンID | `{6文, 6位置}` |
+| 埋め込み + 位置エンコーディング | `{6, 6, 16}` |
+| ヘッド分割後のQuery/Key/Value | `{6, 2ヘッド, 6, 8}` |
+| アテンション重み | `{6, 2, 6位置, 6位置}` |
+| ブロック出力 | `{6, 6, 16}`（入力と同じ形に戻る） |
+| ロジット | `{6, 6, 18語彙}` |
+
+ブロックは入力と同じ形を出力するので、何段でも積み重ねられます。実物の GPT はこのブロックを数十段重ねただけの構造です。
+
+## 3. パラメータを初期化する
+
+第1章で「埋め込みは学習で決まる」と述べました。ここではその通りに、埋め込みも含めた全パラメータを小さな乱数で初期化します。
+
+```elixir
+# 同じ構成の実験を再現できるよう、乱数の初期状態を固定する
+:rand.seed(:exsss, {2024, 7, 29})
+
+# 指定された形状を持つ、小さなランダム値のtensorを作る
+random_tensor = fn shape, scale ->
+  shape
+  |> Tuple.to_list()
+  |> Enum.product()
+  |> then(fn total -> Enum.map(1..total, fn _ -> :rand.normal() * scale end) end)
+  |> Nx.tensor(type: {:f, 32})
+  |> Nx.reshape(shape)
+end
+
+zeros = fn size -> Nx.broadcast(Nx.tensor(0.0, type: {:f, 32}), {size}) end
+ones = fn size -> Nx.broadcast(Nx.tensor(1.0, type: {:f, 32}), {size}) end
+
+# GPTブロック1段分: アテンション4組の線形変換 + FFN + 2つのレイヤー正規化
+block_params = fn ->
+  %{
+    attention: %{
+      wq: random_tensor.({config.d_model, config.d_model}, 0.1),
+      bq: zeros.(config.d_model),
+      wk: random_tensor.({config.d_model, config.d_model}, 0.1),
+      bk: zeros.(config.d_model),
+      wv: random_tensor.({config.d_model, config.d_model}, 0.1),
+      bv: zeros.(config.d_model),
+      wo: random_tensor.({config.d_model, config.d_model}, 0.1),
+      bo: zeros.(config.d_model)
+    },
+    feed_forward: %{
+      w1: random_tensor.({config.d_model, config.d_ff}, 0.1),
+      b1: zeros.(config.d_ff),
+      w2: random_tensor.({config.d_ff, config.d_model}, 0.1),
+      b2: zeros.(config.d_model)
+    },
+    ln1: %{gamma: ones.(config.d_model), beta: zeros.(config.d_model)},
+    ln2: %{gamma: ones.(config.d_model), beta: zeros.(config.d_model)}
+  }
+end
+
+# 埋め込み表・2段のブロック・出力層をモデル全体としてまとめる
+initial_params = %{
+  token_embedding: random_tensor.({vocab_size, config.d_model}, 0.1),
+  blocks: {block_params.(), block_params.()},
+  output: %{
+    w: random_tensor.({config.d_model, vocab_size}, 0.1),
+    b: zeros.(vocab_size)
+  }
+}
+
+%{
+  token_embedding_shape: Nx.shape(initial_params.token_embedding),
+  output_shape: Nx.shape(initial_params.output.w)
+}
+```
+
+このモデルの学習対象がいくつの数値でできているか、数えてみます。
+
+```elixir
+# パラメータの木構造を走査し、全tensorの要素数を合計する
+parameter_count =
+  Nx.Defn.Composite.reduce(initial_params, 0, fn tensor, acc -> acc + Nx.size(tensor) end)
+
+Kino.DataTable.new([
+  %{モデル: "この章のミニGPT", パラメータ数: parameter_count},
+  %{モデル: "GPT-2（第5章で使用）", パラメータ数: 124_000_000},
+  %{モデル: "近年の大規模LLM", パラメータ数: 1_000_000_000_000}
+])
+```
+
+約 5 千個です。GPT-2 はこの約 2.5 万倍ですが、**構造はこの章のミニ GPT とほぼ同じ**で、ブロックの段数と各次元が大きいだけです。
+
+## 4. 学習前の状態を観察する
+
+学習前のモデルはどのくらい「何も知らない」のでしょうか。まず損失を測ります。
+
+```elixir
+initial_loss =
+  LLMScratch.MiniGPT.loss(initial_params, input_ids, target_one_hot, config.num_heads)
+  |> Nx.to_number()
+
+%{学習前の損失: initial_loss, 完全にランダムな場合の理論値: :math.log(vocab_size)}
+```
+
+語彙が18個あるので、完全な当てずっぽうだと各正解の確率は 1/18、損失は `-log(1/18) ≒ 2.89` になります。学習前の損失がこの付近にあれば、「まだ何も学んでいない」状態です。
+
+次に、この章の主役である「は」の次の予測を、学習前に確認しておきます。
+
+```elixir
+# プレフィックスを与えて、その続きの確率上位を返すヘルパー
+next_token_probs = fn params, prefix_tokens ->
+  ids = Nx.tensor([Enum.map(prefix_tokens, &token_to_id[&1])], type: :s64)
+  out = LLMScratch.MiniGPT.forward(params, ids, config.num_heads)
+
+  # 最後の位置のロジットが「次トークン」の予測にあたる
+  out.logits[0][-1]
+  |> LLMScratch.MiniGPT.softmax()
+  |> Nx.to_flat_list()
+  |> Enum.zip(vocab)
+  |> Enum.map(fn {probability, token} -> {token, probability} end)
+  |> Enum.sort_by(fn {_token, probability} -> -probability end)
+end
+
+format_top3 = fn params, prefix ->
+  next_token_probs.(params, prefix)
+  |> Enum.take(3)
+  |> Enum.map(fn {token, probability} -> "#{token}(#{Float.round(probability, 3)})" end)
+  |> Enum.join(" / ")
+end
+
+test_prefixes = [
+  ["<BOS>", "ねこ", "は"],
+  ["<BOS>", "いぬ", "は"],
+  ["<BOS>", "とり", "は"]
+]
+
+before_rows =
+  Enum.map(test_prefixes, fn prefix ->
+    %{
+      プレフィックス: Enum.join(prefix, " "),
+      学習前の上位3候補: format_top3.(initial_params, prefix)
+    }
+  end)
+
+Kino.DataTable.new(before_rows, keys: [:プレフィックス, :学習前の上位3候補])
+```
+
+学習前はどのプレフィックスでもほぼ一様なランダム分布です。ここからの変化を見ていきます。
+
+## 5. 学習を回す
+
+学習の流れは第2章と同じです。違いは、更新されるのが 1 枚の行列ではなく、**埋め込み・アテンション・フィードフォワード層・出力層のすべて**である点です。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  A["6文をまとめて入力"] --> B["順伝播: 36位置の次トークンのロジット"]
+  B --> C["正解one-hotとの交差エントロピー損失"]
+  C --> D["自動微分で全パラメータの勾配を計算"]
+  D --> E["勾配降下法で全パラメータを更新"]
+  E --> A
+""")
+```
+
+`Nx.Defn.value_and_grad` は、損失の値と、パラメータの木と同じ形をした勾配の木を一度に返します。入力データの勾配は学習に使わないため、受け取って捨てています。
+
+```elixir
+value_and_grad =
+  Nx.Defn.value_and_grad(fn {params, ids, targets} ->
+    LLMScratch.MiniGPT.loss(params, ids, targets, config.num_heads)
+  end)
+
+epochs = 300
+learning_rate = 0.5
+
+{trained_params, loss_rows} =
+  Enum.reduce(0..epochs, {initial_params, []}, fn epoch, {params, rows} ->
+    # 損失と、全パラメータ分の勾配を一度に計算する
+    {loss, {gradients, _ids_grad, _targets_grad}} =
+      value_and_grad.({params, input_ids, target_one_hot})
+
+    # 木のすべての葉へ勾配降下を適用する
+    next_params = LLMScratch.SGD.apply_gradients(params, gradients, learning_rate)
+
+    {next_params, [%{epoch: epoch, loss: Nx.to_number(loss)} | rows]}
+  end)
+
+loss_rows = Enum.reverse(loss_rows)
+
+%{
+  学習前の損失: hd(loss_rows).loss,
+  学習後の損失: List.last(loss_rows).loss
+}
+```
+
+```elixir
+LLMScratch.Visuals.line_chart(loss_rows, "ミニGPTの学習中の損失", :epoch, :loss)
+```
+
+### 損失が 0 にならないのはなぜか
+
+グラフを見ると、損失は 2.9 付近から下がり、**0.3 付近で止まります**。これは失敗ではありません。このコーパスには、文脈を完全に読んでも当てられない場所があるからです。
+
+| 位置 | 文脈 | 正解の候補 |
+|---|---|---|
+| 文頭 | `<BOS>` のみ | ねこ(3/6)・いぬ(2/6)・とり(1/6) が混在 |
+| 主語の次 | `ねこ は` | ひるね・さかな・まどべ の3通り |
+| 主語の次 | `いぬ は` | さんぽ・にわ の2通り |
+| それ以外 | 例: `ねこ は さかな` | 文脈から一意に決まる |
+
+一意に決まる位置の損失は 0 に近づきますが、本質的に複数の候補がある位置では、最良でも「候補へ均等に確率を配る」ことしかできません。その残りを平均した理論下限が約 0.30 です。**損失の下限はモデルの能力ではなく、データの曖昧さで決まる**——これは実物の LLM でも同じです。
+
+## 6. bigram が解けなかった問題は解けたか
+
+いよいよ本題です。学習後のモデルに、同じ 3 つのプレフィックスを与えます。
+
+```elixir
+comparison_rows =
+  Enum.map(test_prefixes, fn prefix ->
+    %{
+      プレフィックス: Enum.join(prefix, " "),
+      コーパス上の正解候補:
+        case Enum.at(prefix, 1) do
+          "ねこ" -> "ひるね / さかな / まどべ（各1/3）"
+          "いぬ" -> "さんぽ / にわ（各1/2）"
+          "とり" -> "そら（必ず）"
+        end,
+      学習前の上位3候補: format_top3.(initial_params, prefix),
+      学習後の上位3候補: format_top3.(trained_params, prefix)
+    }
+  end)
+
+Kino.DataTable.new(
+  comparison_rows,
+  keys: [:プレフィックス, :コーパス上の正解候補, :学習前の上位3候補, :学習後の上位3候補]
+)
+```
+
+3 行とも、直前のトークンは同じ `は` です。第2章の bigram はこの 3 行に**同じ分布**しか出せませんでした。
+
+学習後のミニ GPT は、
+
+* `ねこ は` には ねこ の文にだけ現れる 3 候補へ約 1/3 ずつ
+* `いぬ は` には いぬ の文にだけ現れる 2 候補へ約 1/2 ずつ
+* `とり は` には `そら` へほぼ確率 1
+
+を出します。確率の値がコーパス内の出現割合とほぼ一致していることにも注目してください。モデルは「2つ前の `ねこ` を見て次を変える」ことを、因果マスク付き自己アテンションによって実現しています。
+
+## 7. アテンションは何を見るようになったか
+
+学習でアテンション重みがどう変わったかを、1文目 `<BOS> ねこ は ひるね が すき <EOS>` で観察します。
+
+```elixir
+observe_tokens = hd(token_sequences)
+
+observe_ids =
+  Nx.tensor([Enum.map(observe_tokens, &token_to_id[&1])], type: :s64)
+
+attention_tabs = fn params, stage_label ->
+  out = LLMScratch.MiniGPT.forward(params, observe_ids, config.num_heads)
+
+  for {block_weights, block_index} <- Enum.with_index(out.attention_weights),
+      head <- 0..(config.num_heads - 1) do
+    rows =
+      for {query, q} <- Enum.with_index(observe_tokens),
+          {key, k} <- Enum.with_index(observe_tokens) do
+        %{
+          現在位置: "#{q}:#{query}",
+          参照先: "#{k}:#{key}",
+          重み: Float.round(Nx.to_number(block_weights[[0, head, q, k]]), 4)
+        }
+      end
+
+    {"#{stage_label} ブロック#{block_index} ヘッド#{head}",
+     LLMScratch.Visuals.heatmap(
+       rows,
+       "#{stage_label}: ブロック#{block_index} ヘッド#{head} のアテンション重み",
+       :参照先,
+       :現在位置,
+       :重み,
+       x_title: "参照先（Key）",
+       y_title: "現在位置（Query）"
+     )}
+  end
+end
+
+Kino.Layout.tabs(
+  attention_tabs.(initial_params, "学習前") ++ attention_tabs.(trained_params, "学習後")
+)
+```
+
+観察ポイントは次の通りです。
+
+* どのタブでも、右上（未来への参照）は 0 のまま —— 因果マスクは学習と無関係に常に効く
+* 学習前は、見える範囲へ比較的のっぺりと重みが広がる
+* 学習後は、ヘッドごとに重みの偏り方が変わり、特定の位置を強く見るパターンが現れる
+
+このモデルは小さいので、「このヘッドは主語を見る係」のようなきれいな役割分担になるとは限りません。それでも、**予測に役立つ参照パターンが学習によって作られる**こと、そして `は` の位置の行が自分より左（主語側）へ重みを配れることは確認できます。
+
+## 8. 文章を生成する
+
+学習したミニ GPT で、`<BOS>` から文章を生成してみます。第2章と同じく、毎回確率最大の候補を選ぶ greedy 方式です。
+
+```elixir
+generate = fn params, max_steps ->
+  Enum.reduce_while(1..max_steps, ["<BOS>"], fn _, acc ->
+    # ここまでの系列全体をモデルへ渡し、次の1トークンを選ぶ
+    [{next, _probability} | _] = next_token_probs.(params, acc)
+
+    if next == "<EOS>" or length(acc) >= max_steps do
+      {:halt, acc ++ [next]}
+    else
+      {:cont, acc ++ [next]}
+    end
+  end)
+end
+
+generated = generate.(trained_params, 8)
+
+Kino.DataTable.new([
+  %{
+    生成されたトークン列: Enum.join(generated, " "),
+    表示用: generated |> Enum.reject(&(&1 in ["<BOS>", "<EOS>"])) |> Enum.join(" ")
+  }
+])
+```
+
+bigram の生成と違い、各ステップで**ここまでの系列全体**をモデルへ渡し直しています。実物の GPT の生成ループもこれと同じ形です（計算の使い回しなど高速化の工夫はありますが、原理は同じです）。
+
+greedy なので毎回同じ文になります。確率に従って抽選する sampling 方式にすると生成が多様になることは、次の章で実物の GPT-2 を使って確かめます。
+
+## 9. まとめ
+
+### この章の要点
+
+* ミニ GPT は `埋め込み + 位置エンコーディング -> GPTブロック × N -> 出力層` という単純な積み重ね
+* GPTブロックは、因果マスク付きマルチヘッド自己アテンションとフィードフォワード層を、残差接続とレイヤー正規化で包んだもの
+* 学習の流れ（順伝播 -> 損失 -> 勾配 -> 更新）は第2章の bigram と同じで、対象が全パラメータに広がっただけ
+* 学習後は、bigram には原理的に不可能だった「同じ直前トークンでも文脈で予測を変える」ことができた
+* 損失の下限はデータの曖昧さで決まり、0 にはならない
+* 実物の GPT も、このモデルの次元とブロック数を大きくした構造
+
+<!-- livebook:{"break_markdown":true} -->
+
+次のノートブックでは、事前学習済みの GPT-2 を動かします。この章で作った仕組みが大規模になると、サブワードのトークン化や生成設定（greedy / sampling）がどう見えるかを観察します。

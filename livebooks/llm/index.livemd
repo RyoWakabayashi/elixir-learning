@@ -2,7 +2,9 @@
 
 ## 概要
 
-このディレクトリーには、LLM の基本を `Elixir` と `Livebook` で学ぶための教材をまとめています。
+このディレクトリーには、LLM と Transformer の基本を `Elixir` と `Livebook` で学ぶための教材をまとめています。
+
+対象は、LLM や Transformer をまだ理解していない人です。数式を読むより先に、小さなコードを実行して表・グラフ・ヒートマップで挙動を確かめる構成にしています。
 
 ## 学び方
 
@@ -10,26 +12,48 @@
 
 `モデルは、何を手がかりに次のトークンを予測するのか？`
 
-1. `01_tokens_embeddings_attention.livemd`: GPTの全体像を見てから、トークン・埋め込み・位置・アテンションを分解する
-2. `02_tiny_bigram_language_model_training.livemd`: 直前の1トークンだけを見るモデルを学習し、損失と予測が変わる様子を見る
-3. `03_transformer_from_building_blocks.livemd`: 入力文全体も読めるTransformerを組み、複数例で学習前後を比べる
-4. `04_decoder_generation_with_bumblebee.livemd`: 事前学習済み GPT-2 を動かし、サブワード分割と生成の分岐を観察する
-5. `05_alignment_data_and_preferences.livemd`: 極小モデルでSFTとDPOを実行し、損失・応答確率・選好マージンの変化を見る
+本編は6章です。上から順に読み、実行しながら進めてください。
+
+1. `01_llm_overview_tokens_embeddings.livemd`: GPTの全体像を見てから、トークン化・one-hot・埋め込みで「文章を計算できる形」に直す
+2. `02_tiny_bigram_language_model_training.livemd`: 直前の1トークンだけを見るモデルを学習し、損失と予測が変わる様子を見る。同時に bigram の限界（同じ「は」には同じ予測しかできない）を確認する
+3. `03_attention_causal_mask_position.livemd`: bigram の限界を解決するアテンションを、因果マスク・位置エンコーディングと合わせて可視化する
+4. `04_mini_gpt_from_scratch.livemd`: 部品を組み合わせたミニGPTを実装し、第2章と同じコーパスで全パラメータを学習する。bigram に解けなかった問題が解ける瞬間を見る
+5. `05_decoder_generation_with_bumblebee.livemd`: 事前学習済み GPT-2 を動かし、サブワード分割と生成の分岐を観察する
+6. `06_alignment_data_and_preferences.livemd`: 極小モデルでSFTとDPOを実行し、損失・応答確率・選好マージンの変化を見る
+
+発展編は、本編を読み終えたあとに興味があれば進んでください。
+
+* `07_advanced_encoder_decoder_transformer.livemd`: 元祖 Transformer のエンコーダー・デコーダー構成を組み立て、翻訳タスクでクロスアテンションの働きを見る
 
 途中で用語が分からなくなった場合は、コードより先に各節の「表の見方」「観察ポイント」を読んでください。数式を完全に理解してから進む必要はありません。
 
+## 各章のつながり
+
+| 章 | 積み上がるもの | 前の章から引き継ぐもの |
+|---|---|---|
+| 1 | トークンID・埋め込み・内積で相性を測る感覚 | - |
+| 2 | 損失・勾配・学習ループ | トークンIDとone-hot |
+| 3 | アテンション・因果マスク・位置エンコーディング | 内積の感覚（第1章）、bigramの限界（第2章） |
+| 4 | ミニGPT全体の学習 | 第2章のコーパスと学習ループ、第3章の全部品 |
+| 5 | 実物のGPT-2での生成 | 第4章の生成ループの原理 |
+| 6 | SFT / DPO によるアラインメント | 第2章・第4章の損失と学習 |
+| 発展編 | エンコーダー・クロスアテンション | 第4章のデコーダー構造 |
+
 ## ノートブック一覧
 
-* [01_tokens_embeddings_attention.livemd](01_tokens_embeddings_attention.livemd)
+* [01_llm_overview_tokens_embeddings.livemd](01_llm_overview_tokens_embeddings.livemd)
 * [02_tiny_bigram_language_model_training.livemd](02_tiny_bigram_language_model_training.livemd)
-* [03_transformer_from_building_blocks.livemd](03_transformer_from_building_blocks.livemd)
-* [04_decoder_generation_with_bumblebee.livemd](04_decoder_generation_with_bumblebee.livemd)
-* [05_alignment_data_and_preferences.livemd](05_alignment_data_and_preferences.livemd)
+* [03_attention_causal_mask_position.livemd](03_attention_causal_mask_position.livemd)
+* [04_mini_gpt_from_scratch.livemd](04_mini_gpt_from_scratch.livemd)
+* [05_decoder_generation_with_bumblebee.livemd](05_decoder_generation_with_bumblebee.livemd)
+* [06_alignment_data_and_preferences.livemd](06_alignment_data_and_preferences.livemd)
+* [07_advanced_encoder_decoder_transformer.livemd](07_advanced_encoder_decoder_transformer.livemd)（発展編）
 
 ## この教材の方針
 
 * 初学者が追いやすいように、数式だけでなく表・ヒートマップ・フローチャートを多めに入れています
 * 長時間の GPU 学習を前提にせず、Livebook 上で試しやすい内容を優先しています
+* 同じコーパス（第2章・第4章）と同じ問い（「は」の次に何が来るか）を章をまたいで使い回し、モデルの進化を比較できるようにしています
 
 ## 用語の表記
 
@@ -47,10 +71,11 @@
 | フィードフォワード層 | feed-forward layer |
 | 残差接続 | residual connection |
 | レイヤー正規化 | layer normalization |
+| GPTブロック | GPT block / decoder block |
 | エンコーダー／デコーダー | encoder / decoder |
 | ロジット | logits |
 | 損失 | loss |
 
 ## 補足
 
-このシリーズは実用規模のLLMを一から再現するものではなく、`入力 -> 予測 -> 損失 -> 学習 -> 生成 -> 調整` の関係を手元で確かめる導入コースです。第3章の学習では観察しやすさを優先し、Transformer本体を固定して最後の出力層を学習します。
+このシリーズは実用規模のLLMを一から再現するものではなく、`入力 -> 予測 -> 損失 -> 学習 -> 生成 -> 調整` の関係を手元で確かめる導入コースです。第4章のミニGPTは埋め込みからアテンションまで全パラメータを実際に学習します。発展編の学習では観察しやすさを優先し、Transformer本体を固定して最後の出力層を学習します。

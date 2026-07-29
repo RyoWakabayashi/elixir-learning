@@ -263,19 +263,23 @@ LLM を `Elixir` / `Livebook` で学ぶための教材シリーズを追加し�
 
 主なノート:
 
-* [01_tokens_embeddings_attention.livemd](livebooks/llm/01_tokens_embeddings_attention.livemd)
+* [01_llm_overview_tokens_embeddings.livemd](livebooks/llm/01_llm_overview_tokens_embeddings.livemd)
 * [02_tiny_bigram_language_model_training.livemd](livebooks/llm/02_tiny_bigram_language_model_training.livemd)
-* [03_transformer_from_building_blocks.livemd](livebooks/llm/03_transformer_from_building_blocks.livemd)
-* [04_decoder_generation_with_bumblebee.livemd](livebooks/llm/04_decoder_generation_with_bumblebee.livemd)
-* [05_alignment_data_and_preferences.livemd](livebooks/llm/05_alignment_data_and_preferences.livemd)
+* [03_attention_causal_mask_position.livemd](livebooks/llm/03_attention_causal_mask_position.livemd)
+* [04_mini_gpt_from_scratch.livemd](livebooks/llm/04_mini_gpt_from_scratch.livemd)
+* [05_decoder_generation_with_bumblebee.livemd](livebooks/llm/05_decoder_generation_with_bumblebee.livemd)
+* [06_alignment_data_and_preferences.livemd](livebooks/llm/06_alignment_data_and_preferences.livemd)
+* [07_advanced_encoder_decoder_transformer.livemd](livebooks/llm/07_advanced_encoder_decoder_transformer.livemd)（発展編）
 
 学習の流れ:
 
-1. トークン化、埋め込み、アテンションを可視化で理解する
-2. 極小の言語モデルを実際に学習して、損失と生成結果の変化を見る
-3. Transformerの主要部品を実装し、エンコーダー／デコーダー全体の順伝播を追う
-4. 事前学習済み GPT 系モデルで次トークン予測を体感する
-5. 極小モデルでSFTとDPOを実行し、損失と応答確率の変化を見る
+1. LLM の全体像をつかみ、トークン化と埋め込みで文章を計算できる形に直す
+2. 極小の言語モデル（bigram）を実際に学習して、損失と生成結果の変化と限界を見る
+3. アテンション・因果マスク・位置エンコーディングを可視化で理解する
+4. ミニGPTを組み立てて全パラメータを学習し、bigramに解けなかった問題が解けることを確認する
+5. 事前学習済み GPT 系モデルで次トークン予測と生成を体感する
+6. 極小モデルでSFTとDPOを実行し、損失と応答確率の変化を見る
+7. （発展編）エンコーダー・デコーダー構成とクロスアテンションを組み立てる
 
 ## Phoenix LiveView の起動
 

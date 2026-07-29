@@ -1,0 +1,370 @@
+# LLM を Elixir / Livebook で学ぶ 1
+
+```elixir
+# 数値計算、表、グラフの表示に使うライブラリを準備する
+Mix.install([
+  {:nx, "~> 0.9"},
+  {:kino, "~> 0.15"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## このシリーズについて
+
+このシリーズは、次の 1 本の問いを少しずつ広げながら、LLM と Transformer の仕組みを Livebook 上で確かめていきます。
+
+`モデルは、何を手がかりに次のトークンを予測するのか？`
+
+| 章 | 内容 | この問いへの答え方 |
+|---|---|---|
+| 1（この章） | 全体像・トークン化・埋め込み | 文章を「計算できる形」に直す |
+| 2 | 極小モデルの学習 | 「学習で予測が変わる」を最小構成で体験する |
+| 3 | アテンション・因果マスク・位置情報 | 直前の 1 語ではなく「文脈全体」を見る仕組みを知る |
+| 4 | ミニ GPT の組み立てと学習 | 部品を組み合わせ、文脈を読むモデルを実際に学習する |
+| 5 | 事前学習済み GPT-2 | 実物のモデルでトークン化と生成を観察する |
+| 6 | アラインメント（SFT / DPO） | モデルを人の好みに合わせる調整を体験する |
+| 発展編 | エンコーダー・デコーダー構成 | 翻訳型 Transformer とクロスアテンションを知る |
+
+## この章で分かること
+
+この章では、LLM のいちばん最初の入口である「文章を数値へ変換する部分」に絞ります。
+
+* GPT 系モデルは全体として何をしているか
+* トークン化すると何が起きるか
+* one-hot 表現には何が足りないか
+* 埋め込みベクトルは何をしているか
+
+アテンションや学習はまだ登場しません。まず「モデルに渡るデータの形」を手で確かめます。
+
+## このnotebookで使う用語
+
+最初からすべて暗記する必要はありません。分からない言葉が出てきたときに、この表へ戻って確認してください。
+
+| 用語 | 英語・コード上の表記 | この章での意味 |
+|---|---|---|
+| LLM | Large Language Model | 大量の文章から言葉の続き方を学んだ大規模言語モデル |
+| 次トークン予測 | next-token prediction | ここまでのトークンから、次の1トークンを当てる問題 |
+| トークン | token | モデルが文章を処理するときの単位。単語・単語の一部・記号など |
+| 語彙 | vocabulary / vocab | モデルが区別できるトークンの一覧 |
+| トークンID | token ID | 各トークンへ割り当てた整数番号 |
+| one-hot表現 | one-hot encoding | そのトークンの位置だけを1、ほかを0にしたベクトル |
+| 埋め込み | embedding | トークンIDを、計算に使える実数ベクトルへ変換したもの |
+| 内積 | dot product | 2つのベクトルの各要素を掛けて足した値。向きが近いほど大きくなる |
+| デコーダーのみのモデル | decoder-only model | 左側の文脈から次トークンを予測する構成のモデル。GPT系がこれにあたる |
+
+## 準備
+
+```elixir
+defmodule LLMScratch.Visuals do
+  # 行データを、カテゴリごとの大きさを比べる棒グラフへ変換する
+  def bar_chart(rows, title, x_field, y_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 520)
+    height = Keyword.get(opts, :height, 260)
+
+    VegaLite.new(width: width, height: height, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:bar, tooltip: true)
+    |> VegaLite.encode_field(
+      :x, Atom.to_string(x_field),
+      type: :nominal,
+      title: Atom.to_string(x_field)
+    )
+    |> VegaLite.encode_field(
+      :y, Atom.to_string(y_field),
+      type: :quantitative,
+      title: Atom.to_string(y_field)
+    )
+    |> Kino.VegaLite.new()
+  end
+
+  # 各トークンの埋め込みを2次元の平面に置き、近さを目で確かめる散布図
+  def labeled_scatter(rows, title, x_field, y_field, label_field) do
+    VegaLite.new(width: 420, height: 340, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.layers([
+      VegaLite.new()
+      |> VegaLite.mark(:circle, size: 140, tooltip: true)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :quantitative)
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative),
+      VegaLite.new()
+      |> VegaLite.mark(:text, dy: -14)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :quantitative)
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative)
+      |> VegaLite.encode_field(:text, Atom.to_string(label_field), type: :nominal)
+    ])
+    |> Kino.VegaLite.new()
+  end
+end
+```
+
+## まず GPT 系モデルの全体像
+
+細かい部品を見る前に、最終的に何を作ろうとしているのかを確認します。
+
+GPT 系モデルがしていることを一言で表すと、`ここまでのトークンを読み、次の 1 トークンを予測する` です。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  A["入力: ねこ は ひるね が"] --> B["a. トークンに分ける"]
+  B --> C["b. 各トークンをベクトルにする"]
+  C --> D["c. 位置情報を足す"]
+  D --> E["d. 左側の文脈をアテンションで読む"]
+  E --> F["e. 次トークンの確率を出す"]
+  F --> G["候補: すき 0.72 / 得意 0.08 / ..."]
+  G --> H["選んだ「すき」を入力末尾へ追加"]
+  H --> E
+""")
+```
+
+| 部品 | まず持っておきたい役割のイメージ | 学ぶ章 |
+|---|---|---|
+| トークン化 | 文章をモデルが扱う部品へ分ける | この章 |
+| 埋め込み | 各部品を計算できるベクトルへ変える | この章 |
+| 位置情報 | 同じトークンでも、何番目にあるかを区別する手がかりを足す | 第3章 |
+| アテンション | 今の位置に必要な情報を、前の各位置から集める | 第3章 |
+| 出力層 | 集めた情報から次トークン候補へ点数を付ける | 第2章・第4章 |
+
+この章で扱うのは、図の `a` と `b`、つまり入口の2つです。
+
+### デコーダーのみ（decoder-only）とは
+
+Transformer には、文章を読み取るエンコーダーと、1トークンずつ出力するデコーダーという構成要素があります。GPTは、そのうち **デコーダー側の仕組みを中心に積み重ねたモデル**なので、デコーダーのみ（decoder-only）モデルと呼ばれます。
+
+いまの時点では、次の2点だけ覚えておけば十分です。
+
+* GPT は、入力の続きを左から右へ 1 トークンずつ予測する
+* その予測に、まだ答えとして与えていない右側のトークンを使ってはいけない
+
+「右側を見ない」を実現する因果マスクは第3章で、エンコーダーとデコーダーを組み合わせた翻訳型の構成は発展編で扱います。
+
+## 1. トークン化
+
+ここでは説明しやすいように、空白で区切られた簡単な文を使います。
+
+```elixir
+# この章では、説明しやすい空白区切りを簡易トークナイザーとして使う
+sentence = "ねこ は ひるね が すき"
+tokens = String.split(sentence, " ")
+```
+
+実際の LLM は、単語より細かい「サブワード」という単位を使います（第5章で実物を観察します）。分け方は違っても、`文章 -> トークンの列` に直すという目的は同じです。
+
+```elixir
+# 重複を除いたトークン一覧を、この小さな例の語彙とする
+vocab =
+  tokens
+  |> Enum.uniq()
+  |> Enum.sort()
+
+# 文字列を計算可能な整数IDへ変換する対応表
+token_to_id =
+  vocab
+  |> Enum.with_index()
+  |> Map.new()
+
+# 予測したIDを文字列へ戻すため、逆向きの対応表も用意する
+id_to_token =
+  token_to_id
+  |> Enum.map(fn {token, id} -> {id, token} end)
+  |> Map.new()
+
+token_ids = Enum.map(tokens, &token_to_id[&1])
+
+%{
+  vocab: vocab,
+  token_to_id: token_to_id,
+  token_ids: token_ids
+}
+```
+
+```elixir
+# 各位置について、元のトークンと割り当てられたIDを並べる
+token_rows =
+  tokens
+  |> Enum.with_index()
+  |> Enum.map(fn {token, position} ->
+    %{
+      position: position,
+      token: token,
+      token_id: token_to_id[token]
+    }
+  end)
+
+Kino.DataTable.new(token_rows)
+```
+
+LLM にとって、最初から「ねこ」の意味が分かっているわけではありません。まずは単に `ID` に置き換えて、計算できる形に直しています。
+
+## 2. one-hot 表現とその限界
+
+ID はただの番号なので、そのまま足したり掛けたりしても意味のある計算になりません。そこで最初に思いつくのが、one-hot 表現です。one-hot は「その語が語彙の何番目か」だけを表すベクトルです。
+
+```elixir
+vocab_size = length(vocab)
+
+# IDと同じ位置だけが1になるone-hotベクトルを、系列順に積み重ねる
+sequence_one_hot =
+  token_ids
+  |> Enum.map(fn id ->
+    Nx.equal(Nx.iota({vocab_size}), Nx.tensor(id))
+  end)
+  |> Nx.stack()
+```
+
+one-hot には大きな弱点があります。**どの2語を比べても「まったく似ていない」ことになる**点です。
+
+ベクトル同士の近さは内積（各要素を掛けて足した値）で測れます。one-hot 同士の内積を全組み合わせで計算してみます。
+
+```elixir
+# 語彙の全トークン分のone-hotを作り、全組み合わせの内積を求める
+vocab_one_hot =
+  Nx.equal(
+    Nx.new_axis(Nx.iota({vocab_size}), 1),
+    Nx.iota({vocab_size})
+  )
+  |> Nx.as_type(:f32)
+
+one_hot_similarity = Nx.dot(vocab_one_hot, [1], vocab_one_hot, [1])
+
+one_hot_similarity_rows =
+  for {token_a, i} <- Enum.with_index(vocab),
+      {token_b, j} <- Enum.with_index(vocab) do
+    %{
+      token_a: token_a,
+      token_b: token_b,
+      dot: Nx.to_number(one_hot_similarity[[i, j]])
+    }
+  end
+
+Kino.DataTable.new(one_hot_similarity_rows, num_rows: 25)
+```
+
+表を見ると、内積は `自分自身となら 1、他のどの語とも 0` です。つまり one-hot の世界では、「ねこ」と「ひるね」の関係も、「ねこ」と「が」の関係も、まったく同じ「無関係」になってしまいます。
+
+また、実際の LLM の語彙は数万〜十数万トークンあるため、1トークンを表すのに数万個の 0 と 1 個の 1 を使うのは無駄が多すぎます。
+
+## 3. 埋め込み: 意味の近さを持てるベクトル
+
+そこで LLM では、one-hot の代わりに、より低次元で密な実数ベクトルである**埋め込み**を使います。
+
+ここでは説明用に、2 次元の手作り埋め込みを置きます。
+
+```elixir
+# 説明用に、人手で2次元の埋め込みを割り当てる
+# 実際のLLMでは、この値も学習によって更新される
+embedding_map = %{
+  "ねこ" => [0.90, 0.15],
+  "は" => [0.10, 0.05],
+  "ひるね" => [0.95, 0.85],
+  "が" => [0.12, 0.10],
+  "すき" => [0.88, 0.70]
+}
+
+# 表で値を確認できるよう、埋め込みを行データへ整形する
+embedding_rows =
+  vocab
+  |> Enum.map(fn token ->
+    [x, y] = embedding_map[token]
+
+    %{
+      token: token,
+      dim_1: x,
+      dim_2: y
+    }
+  end)
+
+Kino.DataTable.new(
+  embedding_rows,
+  keys: [:token, :dim_1, :dim_2]
+)
+```
+
+2次元なので、そのまま平面に置いて眺められます。
+
+```elixir
+LLMScratch.Visuals.labeled_scatter(
+  embedding_rows,
+  "手作り埋め込みの平面図",
+  :dim_1,
+  :dim_2,
+  :token
+)
+```
+
+この図では、内容を持つ語（ねこ・ひるね・すき）を右上寄りに、機能的な助詞（は・が）を左下寄りに置いてあります。one-hot と違って、埋め込みなら「この語とこの語は近い」を座標として表現できます。
+
+```elixir
+# 文中の各トークンを埋め込みへ置き換え、{系列長, 埋め込み次元}のtensorにする
+embedding_tensor =
+  tokens
+  |> Enum.map(&embedding_map[&1])
+  |> Nx.tensor(type: {:f, 32})
+
+embedding_tensor
+```
+
+### 内積で「近さ」を数値にする
+
+one-hot のときと同じように、埋め込み同士の内積を全組み合わせで計算してみます。
+
+```elixir
+embedding_similarity = Nx.dot(embedding_tensor, [1], embedding_tensor, [1])
+
+embedding_similarity_rows =
+  for {token_a, i} <- Enum.with_index(tokens),
+      {token_b, j} <- Enum.with_index(tokens) do
+    %{
+      token_a: token_a,
+      token_b: token_b,
+      dot: Float.round(Nx.to_number(embedding_similarity[[i, j]]), 3)
+    }
+  end
+
+Kino.DataTable.new(embedding_similarity_rows, num_rows: 25)
+```
+
+```elixir
+# 「すき」から見た各トークンとの内積を棒グラフで比べる
+query_index = Enum.find_index(tokens, &(&1 == "すき"))
+
+similarity_bar_rows =
+  tokens
+  |> Enum.with_index()
+  |> Enum.map(fn {token, index} ->
+    %{
+      token: token,
+      dot: Nx.to_number(embedding_similarity[[query_index, index]])
+    }
+  end)
+
+LLMScratch.Visuals.bar_chart(similarity_bar_rows, "`すき` と各トークンの内積", :token, :dot)
+```
+
+one-hot ではどの組み合わせも 0 でしたが、埋め込みでは `すき` と `ひるね` の内積が大きく、`すき` と `は` の内積は小さくなります。**ベクトルの向きが近いほど内積が大きい**ためです。
+
+この「内積で相性を測る」という操作は、この章だけの小技ではありません。第3章で学ぶアテンションは、まさにこの内積を使って「どの位置のトークンを参照するか」を決めます。ここで感覚をつかんでおいてください。
+
+## 4. 埋め込みは学習で決まる
+
+この章では埋め込みを人手で置きましたが、実際の LLM では次のように扱われます。
+
+* 埋め込みは `{語彙数, 埋め込み次元}` の大きな表として持つ
+* 最初は乱数で初期化する
+* 学習が進むにつれて、「似た働きをするトークン」や「一緒に現れやすいトークン」が近いベクトルへ動いていく
+
+第4章でミニ GPT を学習するとき、この埋め込み表もモデルの一部として実際に更新されます。
+
+## 5. まとめ
+
+### この章の要点
+
+* LLM の仕事は「ここまでのトークンから次の 1 トークンを予測する」こと
+* トークン化は、文章を計算可能な部品（トークン ID の列）へ分解する作業
+* one-hot は語を区別できるが、語同士の近さを表せない
+* 埋め込みは、意味の近さを内積や距離として扱える実数ベクトル
+* 内積で「相性」を測る考え方は、第3章のアテンションへ直接つながる
+
+<!-- livebook:{"break_markdown":true} -->
+
+次のノートブックでは、「学習とは何か」を最小構成で体験します。直前の 1 トークンだけを見る極小の言語モデル（bigram）を実際に学習し、損失が下がると予測がどう変わるかを観察します。
