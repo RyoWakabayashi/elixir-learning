@@ -5,3 +5,4 @@
 ## 主要シリーズ
 
 * [LLM](llm/index.livemd)
+* [Llamex](llamex/llamex_minimal_engine_tour.livemd)

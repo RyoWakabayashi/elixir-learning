@@ -1,0 +1,1399 @@
+# Llamex: Elixir 製 LLM 推論エンジンの中身を覗く
+
+```elixir
+Mix.install([
+  {:llamex, github: "piacerex/llamex"},
+  {:nx, "~> 0.12.1"},
+  {:kino, "~> 0.15"},
+  {:kino_vega_lite, "~> 0.1"},
+  # 最後の節で GGUF モデルをダウンロードするために使う
+  {:req, "~> 0.5"}
+])
+```
+
+## このノートブックについて
+
+[Llamex](https://github.com/piacerex/llamex) は、Elixir で書かれた実験的な **LLM 推論エンジン**です。このノートブックでは Llamex を動かしながら、その内部を表とグラフで可視化します。
+
+Llamex は LLM の API クライアントではありません。llama.cpp のような**推論パイプラインそのもの**を Elixir で最小構成に書いたものです。
+
+| 構成要素 | 内容 |
+|---|---|
+| モデル形式 | JSON / GGUF（llama / mistral / gemma3） |
+| トークナイザー | whitespace / BPE |
+| 位置情報 | RoPE（回転位置エンコーディング） |
+| 正規化 | RMS 正規化 |
+| フィードフォワード | SwiGLU |
+| キャッシュ | KV キャッシュ（スライディングウィンドウ対応） |
+| サンプラー | greedy / temperature / top-k / top-p / min-p |
+| バックエンド | 純 Elixir（List）/ Nx / EXLA / FPGA |
+
+前半では、**手作りの極小モデルを Llamex のデータ構造で組み立てて**動かします。そうすることで、エンジンの内部を数値で追えます。最後の節では、**実際の学習済みモデル（GGUF）をダウンロードして動かします**。
+
+扱う内容は次の通りです。
+
+1. トークナイザーを作る
+2. 埋め込みだけのモデルを動かし、ロジットの正体を見る
+3. 出力層を足して、意味のある文を生成させる
+4. サンプラー（temperature / top-k / top-p）を可視化する
+5. Llama 系の部品（RMS 正規化 / RoPE / SwiGLU）を1つずつ動かす
+6. Transformer ブロックを積み、KV キャッシュの伸び方を見る
+7. バックエンドを切り替えて速度を比べる
+8. 1トークンずつ生成を進める
+9. 学習済みの GGUF モデルをダウンロードして動かす
+
+<!-- livebook:{"break_markdown":true} -->
+
+### 実行前の注意
+
+`Llamex` は **Elixir 1.19 以上**を要求します（`mix.exs` の `elixir: "~> 1.19"`）。お使いの Livebook が古い Elixir で動いている場合、次のセルの `Mix.install` が失敗します。
+
+Livebook のセルで `System.version()` を実行するとバージョンを確認できます。1.19 未満の場合は、Livebook 本体を新しいものへ更新してください。
+
+また `Llamex` は Hex には公開されていないため、GitHub から直接取得します。初回は clone とコンパイルで少し時間がかかります。
+
+## 準備
+
+```elixir
+# 実際に読み込まれたバージョンを確認する
+Kino.DataTable.new([
+  %{項目: "Elixir", バージョン: System.version()},
+  %{項目: "Llamex", バージョン: to_string(Application.spec(:llamex, :vsn))},
+  %{項目: "Nx", バージョン: to_string(Application.spec(:nx, :vsn))}
+])
+```
+
+```elixir
+defmodule LlamexTour.Visuals do
+  # カテゴリごとの大きさを比べる棒グラフ
+  def bar_chart(rows, title, x_field, y_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 560)
+    height = Keyword.get(opts, :height, 280)
+    color_field = Keyword.get(opts, :color_field)
+
+    chart =
+      VegaLite.new(width: width, height: height, title: title)
+      |> VegaLite.data_from_values(rows)
+      |> VegaLite.mark(:bar, tooltip: true)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field),
+        type: :nominal,
+        title: Atom.to_string(x_field)
+      )
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field),
+        type: :quantitative,
+        title: Atom.to_string(y_field)
+      )
+
+    chart =
+      if color_field do
+        VegaLite.encode_field(chart, :color, Atom.to_string(color_field), type: :nominal)
+      else
+        chart
+      end
+
+    Kino.VegaLite.new(chart)
+  end
+
+  # 値の推移を追う折れ線グラフ
+  def line_chart(rows, title, x_field, y_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 560)
+    height = Keyword.get(opts, :height, 280)
+    color_field = Keyword.get(opts, :color_field)
+
+    chart =
+      VegaLite.new(width: width, height: height, title: title)
+      |> VegaLite.data_from_values(rows)
+      |> VegaLite.mark(:line, point: true, tooltip: true)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field),
+        type: :quantitative,
+        title: Atom.to_string(x_field)
+      )
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field), y_encoding(y_field, opts))
+
+    chart =
+      if color_field do
+        VegaLite.encode_field(chart, :color, Atom.to_string(color_field), type: :nominal)
+      else
+        chart
+      end
+
+    Kino.VegaLite.new(chart)
+  end
+
+  # タブを切り替えても軸が動かないよう、縦軸の範囲を固定できるようにする
+  defp y_encoding(y_field, opts) do
+    base = [type: :quantitative, title: Atom.to_string(y_field)]
+
+    case Keyword.get(opts, :y_domain) do
+      nil -> base
+      domain -> Keyword.put(base, :scale, domain: domain)
+    end
+  end
+
+  # 2つのカテゴリ軸と数値を、色の濃さで読めるヒートマップにする
+  def heatmap(rows, title, x_field, y_field, color_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 560)
+    height = Keyword.get(opts, :height, 460)
+    x_title = Keyword.get(opts, :x_title, Atom.to_string(x_field))
+    y_title = Keyword.get(opts, :y_title, Atom.to_string(y_field))
+
+    VegaLite.new(width: width, height: height, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:rect, tooltip: true)
+    |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :nominal, title: x_title)
+    |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :nominal, title: y_title)
+    |> VegaLite.encode_field(:color, Atom.to_string(color_field),
+      type: :quantitative,
+      scale: [scheme: "blues"]
+    )
+    |> Kino.VegaLite.new()
+  end
+
+  # 2次元の点の軌跡をたどる散布図
+  def labeled_scatter(rows, title, x_field, y_field, label_field) do
+    VegaLite.new(width: 420, height: 400, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.layers([
+      VegaLite.new()
+      |> VegaLite.mark(:line, point: true, tooltip: true)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :quantitative)
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative),
+      VegaLite.new()
+      |> VegaLite.mark(:text, dy: -12)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :quantitative)
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative)
+      |> VegaLite.encode_field(:text, Atom.to_string(label_field), type: :nominal)
+    ])
+    |> Kino.VegaLite.new()
+  end
+end
+```
+
+## Llamex の推論パイプライン
+
+LLM の文章生成は、`次の1トークンを予測して末尾に足す` の繰り返しです。Llamex もその流れをそのまま実装しています。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  A["プロンプト"] --> B["Tokenizer: 文字列 -> トークンID列"]
+  B --> C["Context: KVキャッシュを持つ推論状態"]
+  C --> D["Engine: 埋め込み -> ブロック -> ロジット"]
+  D --> E["Sampler: ロジット -> 次の1トークン"]
+  E --> F["Tokenizer: トークンID -> 文字列"]
+  F --> C
+""")
+```
+
+`ロジット` とは、確率へ変換する前の「次トークン候補ごとの生の点数」です。この点数の並びから1つを選ぶのがサンプラーの役目になります。
+
+Llamex を構成する主なモジュールは次の通りです。
+
+| モジュール | 役割 |
+|---|---|
+| `Llamex` | 公開 API（`new_model` / `generate` / `stream` / `eval` など） |
+| `Llamex.Config` | 語彙数・埋め込み次元・ヘッド数などモデルの設計値 |
+| `Llamex.Model` | 埋め込み表・層・出力層・トークナイザーをまとめた入れ物 |
+| `Llamex.Context` | 推論中の状態（読んだトークン列と KV キャッシュ） |
+| `Llamex.Engine` | 1トークン分の順伝播 |
+| `Llamex.Sampler` | ロジットから次トークンを選ぶ戦略 |
+| `Llamex.KVCache` | 過去の Key / Value の保存 |
+| `Llamex.Backend.*` | 数値計算の実体（List / Nx / NxEXLA / FPGA） |
+
+## 1. 語彙とトークナイザーを作る
+
+モデルは文字列をそのまま扱えません。まず文章を**トークン**という単位へ切り分け、それぞれに整数の ID を振ります。
+
+ここでは小さな日本語の語彙を用意します。Llamex のトークナイザーは `語彙マップ` と `未知語トークン` から作れます。
+
+```elixir
+vocab_tokens = [
+  "<unk>",
+  "<eos>",
+  "ねこ",
+  "いぬ",
+  "は",
+  "ひるね",
+  "さかな",
+  "さんぽ",
+  "が",
+  "すき"
+]
+
+# トークン文字列 -> ID の対応表
+vocab = vocab_tokens |> Enum.with_index() |> Map.new()
+vocab_size = length(vocab_tokens)
+
+# 空白区切りのトークナイザー
+tokenizer = Llamex.Tokenizer.whitespace(vocab, "<unk>")
+
+vocab
+|> Enum.map(fn {token, id} -> %{トークン番号: id, トークン: token} end)
+|> Enum.sort_by(& &1.トークン番号)
+|> Kino.DataTable.new(keys: [:トークン番号, :トークン])
+```
+
+`<unk>` は語彙にない語を受け止める未知語トークン、`<eos>` は文の終わりを表すトークンです。
+
+トークナイザーは、この後モデルへ渡します。まずは単体で `encode` / `decode` の往復を見ます。
+
+```elixir
+sample_text = "ねこ は ひるね"
+
+encoded = Llamex.Tokenizer.encode(tokenizer, sample_text)
+decoded = Llamex.Tokenizer.decode(tokenizer, encoded)
+
+Kino.DataTable.new([
+  %{段階: "入力", 内容: sample_text},
+  %{段階: "encode", 内容: inspect(encoded)},
+  %{段階: "decode", 内容: decoded}
+])
+```
+
+`<unk>` の働きも確認しておきます。語彙にない語は未知語トークンへ落ちます。
+
+```elixir
+unknown_rows =
+  ["ねこ", "うさぎ", "は"]
+  |> Enum.map(fn word ->
+    ids = Llamex.Tokenizer.encode(tokenizer, word)
+
+    %{
+      入力: word,
+      トークン番号: inspect(ids),
+      復元: Llamex.Tokenizer.decode(tokenizer, ids)
+    }
+  end)
+
+Kino.DataTable.new(unknown_rows, keys: [:入力, :トークン番号, :復元])
+```
+
+なお実際の LLM は、単語より細かい「サブワード」へ分割する BPE トークナイザーを使います。Llamex も GGUF から BPE トークナイザーを読み込めますが、ここでは中身を追いやすい空白区切りを使います。
+
+## 2. 最小モデル: 埋め込みだけのモデル
+
+Llamex のモデルは `Llamex.new_model/1` で組み立てます。最低限必要なのは `config`（語彙数と埋め込み次元）と `token_embeddings`（トークンIDごとのベクトル）だけです。
+
+**埋め込み**とは、トークンID を計算できる実数ベクトルへ変換したものです。ここでは中身を表として読めるように、埋め込みを **one-hot**（自分の位置だけが 1 で、残りが 0 のベクトル）にします。実際のモデルは密なベクトルですが、one-hot にしておくと後で「出力層＝遷移表」がそのまま読めます。
+
+```elixir
+# トークンIDと同じ位置だけが1になる埋め込み
+one_hot_embeddings =
+  0..(vocab_size - 1)
+  |> Map.new(fn id ->
+    {id, for(j <- 0..(vocab_size - 1), do: if(j == id, do: 1.0, else: 0.0))}
+  end)
+
+embeddings_only_model =
+  Llamex.new_model(%{
+    config: %{vocab_size: vocab_size, embedding_size: vocab_size},
+    token_embeddings: one_hot_embeddings,
+    tokenizer: tokenizer
+  })
+
+%{
+  vocab_size: embeddings_only_model.config.vocab_size,
+  embedding_size: embeddings_only_model.config.embedding_size,
+  layers: embeddings_only_model.layers,
+  output: embeddings_only_model.output
+}
+```
+
+`layers` は空、`output` は `nil` です。この状態で Llamex は何を「次トークンのスコア」として使うのでしょうか。
+
+`lib/llamex/engine.ex` を読むと、出力層がない場合は **現在のベクトルと各候補トークンの埋め込みとの内積**をロジットにしています。内積は、2つのベクトルの各要素を掛けて足した値で、**向きが近いほど大きくなる**ため、「相性の良さ」の指標として使えます。
+
+`Llamex.new_context/2` で推論状態を作り、`Llamex.eval/2` に1トークン渡すとロジットが返ります。
+
+```elixir
+# 1トークンを入力したときのロジット（＝各候補との内積）を取り出す
+logits_for = fn model, token_id ->
+  context = Llamex.new_context(model, Llamex.Backend.List)
+  {_context, logits} = Llamex.eval(context, token_id)
+  Llamex.Backend.List.to_list(logits)
+end
+
+logits_for.(embeddings_only_model, vocab["ねこ"])
+```
+
+`ねこ` の位置だけが `1.0`、あとは `0.0` です。全トークンについて同じことをして、ヒートマップにしてみます。
+
+```elixir
+embedding_logit_rows =
+  for {current, current_id} <- Enum.with_index(vocab_tokens),
+      {candidate, candidate_id} <- Enum.with_index(vocab_tokens) do
+    %{
+      現在のトークン: "#{current_id}:#{current}",
+      次トークンの候補: "#{candidate_id}:#{candidate}",
+      ロジット: Enum.at(logits_for.(embeddings_only_model, current_id), candidate_id)
+    }
+  end
+
+LlamexTour.Visuals.heatmap(
+  embedding_logit_rows,
+  "埋め込みだけのモデルのロジット（＝埋め込み同士の内積）",
+  :次トークンの候補,
+  :現在のトークン,
+  :ロジット
+)
+```
+
+対角線しか光りません。one-hot の埋め込みは自分自身としか重ならないため、**どの2語を比べても「まったく似ていない」**ことになるからです。
+
+この状態で生成するとどうなるでしょうか。
+
+```elixir
+embeddings_only_result =
+  Llamex.generate(embeddings_only_model, "ねこ", %{
+    backend: Llamex.Backend.List,
+    max_new_tokens: 5,
+    sampler: :greedy
+  })
+
+Kino.DataTable.new([
+  %{項目: "プロンプト", 値: "ねこ"},
+  %{項目: "生成結果", 値: embeddings_only_result.text},
+  %{項目: "終了理由", 値: inspect(embeddings_only_result.finish_reason)}
+])
+```
+
+自分自身との内積がいちばん大きいので、同じ語を繰り返すだけになります。次に進みましょう。
+
+## 3. 出力層を足す: 遷移表を持ったモデル
+
+実際の言語モデルは、最後に「隠れ状態 → 語彙のスコア」へ変換する**出力層**を持ちます。Llamex では `output: %{weight: 行列}` で渡します。
+
+いま埋め込みは one-hot なので、出力層の重み `W` は次のように読めます。
+
+```text
+ロジット[次トークン j] = W[j] ・ one_hot(現在トークン i) = W[j][i]
+```
+
+つまり `W[j][i]` は「現在が `i` のとき、次に `j` を出す点数」です。直前の1語だけから次を決めるこの形は **bigram モデル**と呼ばれ、言語モデルのいちばん単純な形にあたります。
+
+```elixir
+# 「現在トークン -> 次トークン」に点数を付ける
+transitions = %{
+  {"ねこ", "は"} => 4.0,
+  {"いぬ", "は"} => 4.0,
+  {"は", "ひるね"} => 3.0,
+  {"は", "さかな"} => 2.4,
+  {"は", "さんぽ"} => 2.0,
+  {"ひるね", "が"} => 4.0,
+  {"さかな", "が"} => 4.0,
+  {"さんぽ", "が"} => 4.0,
+  {"が", "すき"} => 4.0,
+  {"すき", "<eos>"} => 4.0
+}
+
+# 出力層の重み: 行 = 次トークン、列 = 現在トークン
+output_weight =
+  for next_token <- vocab_tokens do
+    for current_token <- vocab_tokens do
+      Map.get(transitions, {current_token, next_token}, 0.0)
+    end
+  end
+
+transition_rows =
+  for {current, current_id} <- Enum.with_index(vocab_tokens),
+      {next, next_id} <- Enum.with_index(vocab_tokens) do
+    %{
+      現在のトークン: "#{current_id}:#{current}",
+      次トークンの候補: "#{next_id}:#{next}",
+      点数: Map.get(transitions, {current, next}, 0.0)
+    }
+  end
+
+LlamexTour.Visuals.heatmap(
+  transition_rows,
+  "出力層の重み（＝遷移表）",
+  :次トークンの候補,
+  :現在のトークン,
+  :点数
+)
+```
+
+`は` の行だけ、`ひるね` / `さかな` / `さんぽ` の3か所に点数が分かれていることに注目してください。ここが後でサンプラーの実験に効いてきます。
+
+```elixir
+bigram_model =
+  Llamex.new_model(%{
+    config: %{vocab_size: vocab_size, embedding_size: vocab_size},
+    token_embeddings: one_hot_embeddings,
+    tokenizer: tokenizer,
+    output: %{weight: output_weight}
+  })
+
+# 貪欲法（毎回1位を選ぶ）で生成する
+generate_greedy = fn model, prompt ->
+  Llamex.generate(model, prompt, %{
+    backend: Llamex.Backend.List,
+    max_new_tokens: 8,
+    sampler: :greedy,
+    stop_token: vocab["<eos>"]
+  })
+end
+
+greedy_rows =
+  ["ねこ", "いぬ"]
+  |> Enum.map(fn prompt ->
+    result = generate_greedy.(bigram_model, prompt)
+
+    %{
+      プロンプト: prompt,
+      生成結果: result.text,
+      生成トークン: inspect(result.generated_pieces),
+      終了理由: inspect(result.finish_reason)
+    }
+  end)
+
+Kino.DataTable.new(greedy_rows, keys: [:プロンプト, :生成結果, :生成トークン, :終了理由])
+```
+
+文が最後まで生成され、`<eos>` に達したので `finish_reason` が `:stop` になりました。`stop_token` を渡さない場合は `max_new_tokens` まで生成し続け、`:length` で終わります。
+
+なお `ねこ` から始めても `いぬ` から始めても、続きは同じ `は ひるね が すき` になります。このモデルは**直前の1語しか見ない**ので、`は` の前に何があったかを予測へ活かせないためです。文脈を使い分けるには、次の節以降で見る Transformer ブロックが必要になります。
+
+生成結果には、プロンプト側と生成側のトークンが分解されて入っています。
+
+```elixir
+detail = generate_greedy.(bigram_model, "ねこ")
+
+Kino.DataTable.new([
+  %{項目: "prompt_tokens", 値: inspect(detail.prompt_tokens)},
+  %{項目: "prompt_pieces", 値: inspect(detail.prompt_pieces)},
+  %{項目: "generated_tokens", 値: inspect(detail.generated_tokens)},
+  %{項目: "generated_pieces", 値: inspect(detail.generated_pieces)},
+  %{項目: "requested_max_new_tokens", 値: inspect(detail.requested_max_new_tokens)},
+  %{項目: "finish_reason", 値: inspect(detail.finish_reason)}
+])
+```
+
+## 4. サンプラーを可視化する
+
+ここが Llamex を触っていて一番おもしろいところです。`Llamex.Sampler.candidates/4` を使うと、**ロジットが確率分布へ変わる過程**をそのまま取り出せます。
+
+分岐のある `は` のロジットを材料にします。
+
+```elixir
+branch_logits = logits_for.(bigram_model, vocab["は"])
+
+vocab_tokens
+|> Enum.with_index()
+|> Enum.map(fn {token, id} ->
+  %{トークン: token, ロジット: Enum.at(branch_logits, id)}
+end)
+|> Enum.sort_by(& &1.ロジット, :desc)
+|> Kino.DataTable.new(keys: [:トークン, :ロジット])
+```
+
+### temperature: 分布の尖り方を変える
+
+`temperature` は、ロジットを確率へ変換する前に割る値です。小さくすると差が強調され、大きくすると差がならされます。
+
+```elixir
+# temperature を変えて、確率分布の形を比べる
+temperature_rows =
+  [0.5, 1.0, 2.0]
+  |> Enum.flat_map(fn temperature ->
+    branch_logits
+    |> Llamex.Sampler.candidates(Llamex.Backend.List, %{temperature: temperature}, vocab_size)
+    |> Enum.map(fn candidate ->
+      %{
+        トークン: Enum.at(vocab_tokens, candidate.token),
+        確率: candidate.probability,
+        temperature: "temperature=#{temperature}"
+      }
+    end)
+  end)
+
+LlamexTour.Visuals.bar_chart(
+  temperature_rows,
+  "temperature による確率分布の変化",
+  :トークン,
+  :確率,
+  color_field: :temperature,
+  width: 640
+)
+```
+
+`temperature` が小さいほど1位へ確率が集中し、大きいほど候補全体へ広がります。生成文の「堅さ」と「多様さ」を調整するつまみが、そのまま数値として見えています。
+
+### top-k / top-p: 候補そのものを絞る
+
+`temperature` は分布の形を変えるだけで候補は減りません。`top_k`（上位 k 個だけ残す）と `top_p`（確率の合計が p に達するまで残す）は候補そのものを切り落とします。
+
+```elixir
+filter_rows =
+  [
+    {"制限なし", %{temperature: 1.0}},
+    {"top_k=2", %{temperature: 1.0, top_k: 2}},
+    {"top_p=0.6", %{temperature: 1.0, top_p: 0.6}}
+  ]
+  |> Enum.flat_map(fn {label, opts} ->
+    branch_logits
+    |> Llamex.Sampler.candidates(Llamex.Backend.List, opts, vocab_size)
+    |> Enum.map(fn candidate ->
+      %{
+        トークン: Enum.at(vocab_tokens, candidate.token),
+        確率: candidate.probability,
+        設定: label
+      }
+    end)
+  end)
+
+LlamexTour.Visuals.bar_chart(
+  filter_rows,
+  "top-k / top-p は候補そのものを絞る",
+  :トークン,
+  :確率,
+  color_field: :設定,
+  width: 640
+)
+```
+
+```elixir
+# 残った候補の数を数える
+count_rows =
+  [
+    {"制限なし", %{temperature: 1.0}},
+    {"top_k=2", %{temperature: 1.0, top_k: 2}},
+    {"top_p=0.6", %{temperature: 1.0, top_p: 0.6}},
+    {"min_p=0.5", %{temperature: 1.0, min_p: 0.5}}
+  ]
+  |> Enum.map(fn {label, opts} ->
+    candidates =
+      Llamex.Sampler.candidates(branch_logits, Llamex.Backend.List, opts, vocab_size)
+
+    %{
+      設定: label,
+      残った候補数: length(candidates),
+      候補: candidates |> Enum.map(&Enum.at(vocab_tokens, &1.token)) |> Enum.join(" / ")
+    }
+  end)
+
+Kino.DataTable.new(count_rows, keys: [:設定, :残った候補数, :候補])
+```
+
+制限なしでは語彙10個すべてが候補ですが、`top_k=2` では2個、`top_p=0.6` では累積確率が 0.6 を超えるまでの候補だけが残ります。`min_p` は「1位の確率の何割以上か」で足切りする方式です。
+
+切り落とした後は残った候補だけで確率を計算し直すため、合計はきちんと 1 になります。
+
+### 実際に抽選して生成する
+
+サンプラーに `seed` を渡すと、乱数を固定して再現できます。`ねこ は` まで与えて、その先の分岐を何度も引いてみます。
+
+```elixir
+sampling_rows =
+  1..6
+  |> Enum.map(fn seed ->
+    result =
+      Llamex.generate(bigram_model, "ねこ は", %{
+        backend: Llamex.Backend.List,
+        max_new_tokens: 8,
+        sampler: %{temperature: 1.0, top_k: 3, seed: seed},
+        stop_token: vocab["<eos>"]
+      })
+
+    %{seed: seed, 生成結果: result.text}
+  end)
+
+greedy_reference =
+  Llamex.generate(bigram_model, "ねこ は", %{
+    backend: Llamex.Backend.List,
+    max_new_tokens: 8,
+    sampler: :greedy,
+    stop_token: vocab["<eos>"]
+  })
+
+Kino.Layout.grid(
+  [
+    Kino.DataTable.new([%{方式: "greedy（参考）", 生成結果: greedy_reference.text}]),
+    Kino.DataTable.new(sampling_rows, keys: [:seed, :生成結果])
+  ],
+  columns: 1
+)
+```
+
+`greedy` は必ず点数1位の `ひるね` を選びますが、サンプリングでは `さかな` や `さんぽ` も選ばれます。「同じ入力でも実行のたびに違う文章が出る」という LLM の挙動は、この抽選から生まれています。
+
+## 5. Llama 系の部品を覗く
+
+Transformer の解説でよく見る GPT 系（レイヤー正規化 + sin/cos 位置エンコーディング + ReLU）に対し、Llamex が実装しているのは Llama 系です。3つの部品が違います。バックエンド経由で個別に呼べるので、1つずつ動かします。
+
+| 部品 | GPT 系（GPT-2 など） | Llama 系（Llamex） |
+|---|---|---|
+| 正規化 | レイヤー正規化 | RMS 正規化 |
+| 位置情報 | sin / cos を埋め込みへ足す | RoPE で回転させる |
+| フィードフォワード | ReLU | SwiGLU（SiLU でゲート） |
+
+### RMS 正規化: 平均を引かない正規化
+
+```elixir
+sample_vector = [1.0, 0.5, -0.5, 2.0]
+norm_weight = [1.0, 1.0, 1.0, 1.0]
+
+rms_normalized = Llamex.Backend.List.rms_norm(sample_vector, norm_weight, 1.0e-6)
+
+rms_of = fn values ->
+  :math.sqrt(Enum.sum(Enum.map(values, &(&1 * &1))) / length(values))
+end
+
+mean_of = fn values -> Enum.sum(values) / length(values) end
+
+Kino.DataTable.new([
+  %{
+    段階: "正規化前",
+    値: inspect(sample_vector),
+    平均: Float.round(mean_of.(sample_vector), 4),
+    二乗平均平方根: Float.round(rms_of.(sample_vector), 4)
+  },
+  %{
+    段階: "RMS正規化後",
+    値: inspect(Enum.map(rms_normalized, &Float.round(&1, 4))),
+    平均: Float.round(mean_of.(rms_normalized), 4),
+    二乗平均平方根: Float.round(rms_of.(rms_normalized), 4)
+  }
+])
+```
+
+レイヤー正規化は「平均を引いて分散で割る」処理ですが、RMS 正規化は **平均を引きません**。表を見ると、正規化後も平均は 0 になっていない一方、二乗平均平方根はきっちり `1.0` になります。引き算を1つ省くぶん計算が軽く、実用上の精度も落ちにくいことから、Llama 系ではこちらが使われます。
+
+### RoPE: 位置を「回転」として入れる
+
+アテンションの計算は、そのままでは「どのトークンが何番目か」を持ちません。GPT 系では sin / cos の波を埋め込みに**足して**位置を伝えます。Llama 系の RoPE は、ベクトルを位置に応じて **回転** させます。
+
+```elixir
+# Llamexの実装では、前半と後半が対になって回転する
+# 4次元なら (0,2) と (1,3) がペア
+rope_base = [1.0, 0.0, 0.0, 0.0]
+
+rope_rows =
+  0..11
+  |> Enum.map(fn position ->
+    rotated = Llamex.Backend.List.rope(rope_base, position, 10_000.0, nil)
+
+    %{
+      位置: position,
+      x: Float.round(Enum.at(rotated, 0), 4),
+      y: Float.round(Enum.at(rotated, 2), 4)
+    }
+  end)
+
+LlamexTour.Visuals.labeled_scatter(
+  rope_rows,
+  "RoPE: 位置が進むとベクトルが回転する",
+  :x,
+  :y,
+  :位置
+)
+```
+
+同じベクトルが、位置が進むにつれて円周上を回っていきます。長さは変わらず、向きだけが変わります。
+
+RoPE の重要な性質は、**Query と Key の内積が「絶対位置」ではなく「相対距離」だけで決まる**ことです。アテンションは Query と Key の内積で「どこを見るか」を決めるので、この性質はそのまま「位置関係の捉え方」に効きます。実際に確かめます。
+
+実験の組み立てはこうです。Key を置く位置（`基準位置`）を 0 から 4 まで変えながら、Query をそこから `相対距離` だけ右に置いて内積を測ります。もし内積が絶対位置に依存するなら、基準位置ごとに違うグラフになるはずです。
+
+```elixir
+rope = fn vector, position ->
+  Llamex.Backend.List.rope(vector, position, 10_000.0, nil)
+end
+
+query_vector = [0.9, 0.2, -0.4, 0.7]
+key_vector = [0.3, -0.6, 0.8, 0.1]
+
+base_positions = Enum.to_list(0..4)
+distances = Enum.to_list(0..4)
+
+# Key を base_position に、Query をそこから distance だけ右に置いて内積を測る
+dot_at = fn base_position, distance ->
+  q = rope.(query_vector, base_position + distance)
+  k = rope.(key_vector, base_position)
+
+  Float.round(Llamex.Backend.List.dot(q, k), 6)
+end
+
+# 基準位置ごとに1枚ずつグラフを作り、タブで切り替えられるようにする
+rope_tabs =
+  Enum.map(base_positions, fn base_position ->
+    rows =
+      Enum.map(distances, fn distance ->
+        %{相対距離: distance, 内積: dot_at.(base_position, distance)}
+      end)
+
+    chart =
+      LlamexTour.Visuals.line_chart(
+        rows,
+        "Key を位置 #{base_position} に置いたときの内積",
+        :相対距離,
+        :内積,
+        # 縦軸を固定しないと、タブごとに軸が伸縮して比較できなくなる
+        y_domain: [-1.0, 1.0],
+        width: 560
+      )
+
+    {"基準位置=#{base_position}", chart}
+  end)
+
+Kino.Layout.tabs(rope_tabs)
+```
+
+タブを切り替えてみてください。**折れ線がまったく動きません**。Key を系列のどこに置いても、相対距離が同じなら内積は同じ値になるということです。
+
+グラフだけでは「本当に同じ値か」が分かりにくいので、数値でも確かめます。
+
+```elixir
+# 相対距離ごとに、5つの基準位置で得られた内積を集めて重複を除く
+relative_check_rows =
+  Enum.map(distances, fn distance ->
+    values = Enum.map(base_positions, &dot_at.(&1, distance))
+    unique_values = Enum.uniq(values)
+
+    %{
+      相対距離: distance,
+      異なる値の数: length(unique_values),
+      内積: unique_values |> Enum.map(&to_string/1) |> Enum.join(" / ")
+    }
+  end)
+
+Kino.DataTable.new(relative_check_rows, keys: [:相対距離, :異なる値の数, :内積])
+```
+
+`異なる値の数` がすべて `1` になりました。5つの基準位置から計算した内積が、丸め誤差もなく完全に一致しているということです。
+
+この性質のおかげで、学習時より長い系列でも位置の扱いが破綻しにくくなります。位置を足し込む方式では、学習時に見たことのない大きな位置の値がそのまま入力へ混ざりますが、RoPE では回転角が変わるだけで、内積は常に相対距離の関数のままだからです。
+
+### SwiGLU: ゲート付きフィードフォワード
+
+GPT 系のフィードフォワード層は `ReLU` を使いますが、Llama 系は `SiLU`（Swish）でゲートをかけます。`Llamex.Backend.List.silu_multiply/2` は `SiLU(gate) * up` を計算します。
+
+```elixir
+# up をすべて1にすると、SiLU そのものの形が見える
+xs = for i <- -60..60, do: i / 10.0
+ones = for _ <- xs, do: 1.0
+
+silu_values = Llamex.Backend.List.silu_multiply(xs, ones)
+
+activation_rows =
+  Enum.zip(xs, silu_values)
+  |> Enum.flat_map(fn {x, silu} ->
+    [
+      %{入力: x, 出力: silu, 活性化関数: "SiLU（Llama系）"},
+      %{入力: x, 出力: max(x, 0.0), 活性化関数: "ReLU（GPT系）"}
+    ]
+  end)
+
+LlamexTour.Visuals.line_chart(
+  activation_rows,
+  "SiLU と ReLU の比較",
+  :入力,
+  :出力,
+  color_field: :活性化関数,
+  width: 640
+)
+```
+
+`ReLU` は 0 で折れ曲がり、負の入力を完全に捨てます。`SiLU` はなめらかに曲がり、負の側もわずかに値を残します。この「なめらかさ」が学習の安定に効くとされています。
+
+```elixir
+# SwiGLU は gate 側で up 側の通り具合を調節する
+gate_values = [-2.0, -1.0, 0.0, 1.0, 2.0]
+up_values = [1.0, 2.0, 3.0, 4.0, 5.0]
+
+gated = Llamex.Backend.List.silu_multiply(gate_values, up_values)
+
+Enum.zip([gate_values, up_values, gated])
+|> Enum.map(fn {gate, up, out} ->
+  %{gate: gate, up: up, 出力: Float.round(out, 4)}
+end)
+|> Kino.DataTable.new(keys: [:gate, :up, :出力])
+```
+
+`gate` が負のときは出力がほぼ止まり、正のときは `up` の値がそのまま通ります。文字通り「ゲート（門）」として働いていることが分かります。
+
+## 6. Transformer ブロックと KV キャッシュ
+
+ここまでのモデルには層がありませんでした。`layers` を渡すと、Llamex は各ブロックで「RMS 正規化 → 因果マスク付き自己アテンション → 残差 → RMS 正規化 → SwiGLU → 残差」を実行します。
+
+`因果マスク` は、各位置から自分より右（未来）のトークンを見えなくする制限です。生成時には右側がまだ存在しないため、この制限がないと学習時と条件が合わなくなります。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  A["入力ベクトル"] --> B["RMS正規化"]
+  B --> C["自己アテンション（RoPE + KVキャッシュ）"]
+  C --> D["残差接続"]
+  A --> D
+  D --> E["RMS正規化"]
+  E --> F["SwiGLU"]
+  F --> G["残差接続"]
+  D --> G
+  G --> H["次のブロックへ"]
+""")
+```
+
+ここで作るブロックは、**アテンションとフィードフォワードの寄与が 0 になるよう** `wo` と `w_down` をゼロ行列にしています。手作りの重みでは意味のある文脈処理は起きないため、遷移表の結果を保ったまま、KV キャッシュの動きだけを観察する狙いです。
+
+```elixir
+zero_matrix = fn rows, cols -> for _ <- 1..rows, do: for(_ <- 1..cols, do: 0.0) end
+
+identity_matrix = fn n ->
+  for i <- 0..(n - 1), do: for(j <- 0..(n - 1), do: if(i == j, do: 1.0, else: 0.0))
+end
+
+ones_vector = fn n -> for _ <- 1..n, do: 1.0 end
+
+build_block = fn sliding_window ->
+  block = %{
+    head_count: 2,
+    kv_head_count: 2,
+    attention_norm: ones_vector.(vocab_size),
+    feed_forward_norm: ones_vector.(vocab_size),
+    wq: identity_matrix.(vocab_size),
+    wk: identity_matrix.(vocab_size),
+    wv: identity_matrix.(vocab_size),
+    # 出力側をゼロにして、アテンションの寄与を打ち消す
+    wo: zero_matrix.(vocab_size, vocab_size),
+    w_gate: identity_matrix.(vocab_size),
+    w_up: identity_matrix.(vocab_size),
+    w_down: zero_matrix.(vocab_size, vocab_size)
+  }
+
+  if sliding_window do
+    Map.put(block, :sliding_window, sliding_window)
+  else
+    block
+  end
+end
+
+build_layered_model = fn sliding_window, block_count ->
+  Llamex.new_model(%{
+    config: %{
+      vocab_size: vocab_size,
+      embedding_size: vocab_size,
+      block_count: block_count,
+      attention_head_count: 2,
+      attention_head_count_kv: 2,
+      rope_theta: 10_000.0,
+      epsilon: 1.0e-6
+    },
+    token_embeddings: one_hot_embeddings,
+    tokenizer: tokenizer,
+    layers: for(_ <- 1..block_count, do: build_block.(sliding_window)),
+    output: %{weight: output_weight}
+  })
+end
+
+layered_model = build_layered_model.(nil, 2)
+layered_result = generate_greedy.(layered_model, "ねこ")
+
+Kino.DataTable.new([
+  %{項目: "ブロック数", 値: inspect(length(layered_model.layers))},
+  %{項目: "ヘッド数", 値: inspect(layered_model.config.attention_head_count)},
+  %{項目: "生成結果", 値: layered_result.text}
+])
+```
+
+### KV キャッシュはどう伸びるか
+
+自己回帰生成では、過去のトークンの Key / Value を毎回計算し直すのは無駄です。そこで KV キャッシュに貯めます。`Llamex.KVCache.entry_count/1` で貯まった数を数えられます。
+
+```elixir
+# 1トークンずつ入力し、そのたびにKVキャッシュの大きさを測る
+measure_kv_cache = fn model, steps ->
+  context = Llamex.new_context(model, Llamex.Backend.List)
+
+  {_context, rows} =
+    Enum.reduce(1..steps, {context, []}, fn step, {context, acc} ->
+      token_id = rem(step, vocab_size)
+      {context, _logits} = Llamex.eval(context, token_id)
+
+      row = %{
+        入力したトークン数: step,
+        キャッシュのエントリ数: Llamex.KVCache.entry_count(context.kv_cache)
+      }
+
+      {context, acc ++ [row]}
+    end)
+
+  rows
+end
+
+kv_rows =
+  [
+    {"制限なし", build_layered_model.(nil, 2)},
+    {"sliding_window=3", build_layered_model.(3, 2)}
+  ]
+  |> Enum.flat_map(fn {label, model} ->
+    model
+    |> measure_kv_cache.(8)
+    |> Enum.map(&Map.put(&1, :設定, label))
+  end)
+
+LlamexTour.Visuals.line_chart(
+  kv_rows,
+  "KVキャッシュの伸び方",
+  :入力したトークン数,
+  :キャッシュのエントリ数,
+  color_field: :設定,
+  width: 640
+)
+```
+
+`制限なし` では、トークンを1つ読むたびにキャッシュが増え続けます（2ブロックあるので1トークンにつき2エントリ）。長い文章を生成するほどメモリを食う、というのがそのまま形に出ています。
+
+`sliding_window=3` を指定したブロックでは、直近3件だけを残して古いものを捨てるため、途中から**頭打ち**になります。これは Mistral などが採用している仕組みで、Llamex では層ごとの設定として持っています。
+
+```elixir
+# 層ごとの内訳も確認できる
+window_model = build_layered_model.(3, 2)
+
+window_context =
+  Enum.reduce(1..6, Llamex.new_context(window_model, Llamex.Backend.List), fn step, context ->
+    {context, _logits} = Llamex.eval(context, rem(step, vocab_size))
+    context
+  end)
+
+window_context.kv_cache
+|> Llamex.KVCache.entry_counts()
+|> Enum.map(fn {layer_index, count} -> %{ブロック番号: layer_index, エントリ数: count} end)
+|> Kino.DataTable.new(keys: [:ブロック番号, :エントリ数])
+```
+
+## 7. バックエンドを切り替える
+
+Llamex は数値計算の実体を差し替えられます。同じモデル・同じプロンプトで速度を比べます。
+
+| バックエンド | 実体 | 想定用途 |
+|---|---|---|
+| `Llamex.Backend.List` | 純 Elixir のリスト演算 | AtomVM など制約の多い環境 |
+| `Llamex.Backend.Nx` | Nx テンソル | 標準的な BEAM 環境 |
+| `Llamex.Backend.NxEXLA` | XLA コンパイル | 大きなモデルでの高速化 |
+| `Llamex.Backend.FPGA` | FPGA 境界（未対応時は List へ） | ハードウェア実験 |
+
+```elixir
+benchmark = fn model_or_prepared, backend, runs ->
+  options =
+    %{max_new_tokens: 8, sampler: :greedy, stop_token: vocab["<eos>"]}
+    |> then(fn opts -> if backend, do: Map.put(opts, :backend, backend), else: opts end)
+
+  # 1回目はウォームアップとして捨てる
+  Llamex.generate(model_or_prepared, "ねこ", options)
+
+  {microseconds, _results} =
+    :timer.tc(fn ->
+      for _ <- 1..runs, do: Llamex.generate(model_or_prepared, "ねこ", options)
+    end)
+
+  Float.round(microseconds / 1000 / runs, 3)
+end
+
+prepared_model = Llamex.prepare_model(layered_model, Llamex.Backend.Nx)
+
+backend_rows = [
+  %{構成: "Backend.List", 平均ミリ秒: benchmark.(layered_model, Llamex.Backend.List, 5)},
+  %{構成: "Backend.Nx", 平均ミリ秒: benchmark.(layered_model, Llamex.Backend.Nx, 5)},
+  %{構成: "Backend.Nx + prepare_model", 平均ミリ秒: benchmark.(prepared_model, nil, 5)}
+]
+
+Kino.Layout.grid(
+  [
+    Kino.DataTable.new(backend_rows, keys: [:構成, :平均ミリ秒]),
+    LlamexTour.Visuals.bar_chart(
+      backend_rows,
+      "バックエンドごとの生成時間",
+      :構成,
+      :平均ミリ秒,
+      width: 640
+    )
+  ],
+  columns: 1
+)
+```
+
+結果を見て意外に思うかもしれませんが、**この極小モデルでは `Backend.List` がいちばん速くなります**。語彙10・埋め込み10次元では、Nx のテンソル1回ごとのオーバーヘッドのほうが計算そのものより大きいためです。
+
+`prepare_model/2` は、モデルの重みをバックエンドの形式へあらかじめ変換しておく関数です。同じモデルへ何度も推論するときに毎回の変換を省けます。ただしこの規模では変換コスト自体が小さいため、`Backend.Nx` 単体との差は実行ごとのばらつきに埋もれます（実行するたびに大小が入れ替わることもあります）。
+
+つまり、**バックエンドの選択と `prepare_model` が効いてくるのは、行列が十分に大きくなってから**です。第9節では実際の学習済みモデル（埋め込み64次元）でも同じ比較をしますが、そこでも `Backend.List` が優位のままです。Nx / EXLA が本領を発揮するのは、埋め込み次元が数百〜数千になる規模からになります。
+
+## 8. 1トークンずつ進める
+
+`Llamex.generate/3` は最後までまとめて生成しますが、`Llamex.step/3` を使うと1トークンずつ手で進められます。生成ループの中身を確かめるのに便利です。
+
+```elixir
+# 「ねこ」から始めて、1トークンずつ進める
+initial_context = Llamex.new_context(bigram_model, Llamex.Backend.List)
+
+{_context, _token, step_rows} =
+  Enum.reduce(1..5, {initial_context, vocab["ねこ"], []}, fn step, {context, current_token, acc} ->
+    result = Llamex.step(context, current_token, %{sampler: :greedy})
+
+    row = %{
+      ステップ: step,
+      入力トークン: Enum.at(vocab_tokens, current_token),
+      選ばれたトークン番号: result.token,
+      選ばれたトークン: result.text
+    }
+
+    {result.context, result.token, acc ++ [row]}
+  end)
+
+Kino.DataTable.new(step_rows,
+  keys: [:ステップ, :入力トークン, :選ばれたトークン番号, :選ばれたトークン]
+)
+```
+
+前のステップで選ばれたトークンが、次のステップの入力になっています。これが自己回帰生成の実体です。
+
+`Llamex.stream/3` を使うと、同じ処理を `Stream` として受け取れます。1トークン出るたびに画面へ流し込めます。
+
+```elixir
+stream_frame = Kino.Frame.new()
+Kino.render(stream_frame)
+
+prepared_model
+|> Llamex.stream("ねこ", %{max_new_tokens: 8, sampler: :greedy, stop_token: vocab["<eos>"]})
+|> Enum.reduce([], fn chunk, pieces ->
+  # チャンクは1トークンずつ届くので、表示用に空白で連結する
+  updated = if chunk.text == "", do: pieces, else: pieces ++ [chunk.text]
+
+  Kino.Frame.render(
+    stream_frame,
+    Kino.Text.new("""
+    生成中: #{Enum.join(updated, " ")}
+    受け取ったトークン数: #{length(updated)}
+    終了理由: #{inspect(chunk.finish_reason)}
+    """)
+  )
+
+  Process.sleep(200)
+  updated
+end)
+```
+
+`chunk.text` は**そのチャンク1トークンだけ**を復号した文字列です。文章として表示したいときは、上のように自分で連結します。
+
+ストリームの最後のチャンクは `token: nil`、`text: ""` で、`finish_reason` だけを持ちます。生成が「なぜ終わったか」を受け取るためのものです。
+
+## 9. 実際のモデル（GGUF）を動かす
+
+ここまでは手作りの極小モデルでしたが、Llamex は **GGUF ファイル**（llama.cpp などで使われる量子化済みモデル形式）を読めます。ここからは**実際に学習済みモデルをダウンロードして動かします**。
+
+| 対応項目 | 内容 |
+|---|---|
+| アーキテクチャ | llama / mistral / gemma3 |
+| 量子化形式 | F32 / F16 / BF16 / Q2_K〜Q8_K |
+| トークナイザー | whitespace / BPE |
+
+使うのは `stories260K.gguf` です。TinyStories（子ども向けの短い物語）データセットで訓練された、**パラメータ数 26 万・ファイルサイズ約 1.1MB** の Llama モデルです。実用品ではありませんが、アーキテクチャは本物の Llama で、英語の物語らしい続きを生成します。
+
+小さいモデルを選んでいるのは、Llamex がテンソルを Elixir の数値リストへ展開して保持するためです。1500 万パラメータ級になると展開に数分〜、生成にも相当な時間がかかります（このあと補足します）。
+
+```elixir
+# モデルの保存先。すでにダウンロード済みなら再取得しない
+models_dir = Path.join(System.tmp_dir!(), "llamex_models")
+File.mkdir_p!(models_dir)
+
+model_path = Path.join(models_dir, "stories260K.gguf")
+
+model_url =
+  "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf"
+
+unless File.exists?(model_path) do
+  Req.get!(model_url, into: File.stream!(model_path), redirect: true)
+end
+
+Kino.DataTable.new([
+  %{項目: "保存先", 値: model_path},
+  %{項目: "ファイルサイズ", 値: "#{File.stat!(model_path).size} バイト"}
+])
+```
+
+### モデルを読む前に中身を調べる
+
+Llamex は、読み込む前に GGUF の中身を診断できます。「そもそも Llamex で動かせるモデルか」を確かめるための機能です。
+
+```elixir
+summary = Llamex.GGUF.Diagnostic.inspect_summary_file(model_path)
+
+# 診断結果は項目が多いので、要点だけ取り出す
+diagnostic_rows =
+  [
+    :architecture,
+    :loadable?,
+    :compatibility_issues,
+    :architecture_runtime_status,
+    :tokenizer_model,
+    :tokenizer_kind,
+    :tokenizer_token_count,
+    :rope_variant,
+    :attention_variant,
+    :chat_usable
+  ]
+  |> Enum.map(fn key ->
+    %{項目: Atom.to_string(key), 値: inspect(Map.get(summary, key))}
+  end)
+
+Kino.DataTable.new(diagnostic_rows, keys: [:項目, :値])
+```
+
+`loadable?` が `true`、`compatibility_issues` が空なら、そのまま読み込めます。対応していないアーキテクチャや量子化形式のモデルを渡すと、ここに理由が並びます。
+
+`chat_usable` が `false` なのは、このモデルがチャットテンプレートを持たない素の言語モデルだからです。`true` のモデルなら `Llamex.generate_chat/3` で `%{role: "user", content: "..."}` 形式のやり取りができます。
+
+診断結果には他にも多くの項目が入っています。すべて見たい場合は `summary` をそのまま評価してください。
+
+```elixir
+# モデルの設計値（config）だけを取り出す
+config_map = Llamex.GGUF.ModelLoader.model_config_summary_file(model_path)
+
+config_map
+|> Enum.map(fn {key, value} -> %{設定: key, 値: inspect(value)} end)
+|> Enum.sort_by(& &1.設定)
+|> Kino.DataTable.new(keys: [:設定, :値])
+```
+
+自分で組み立てたモデルと見比べてみてください。`attention_head_count` と `attention_head_count_kv` が違う値になっているはずです。これは **GQA（Grouped Query Attention）** といって、Key と Value のヘッド数を Query より減らして KV キャッシュを節約する仕組みです。第6節で `kv_head_count` を指定できたのは、この構成に対応するためでした。
+
+### 読み込んで生成する
+
+```elixir
+{load_microseconds, gguf_model} =
+  :timer.tc(fn -> Llamex.GGUF.ModelLoader.load(model_path) end)
+
+Kino.DataTable.new([
+  %{項目: "読み込み時間", 値: "#{Float.round(load_microseconds / 1_000_000, 2)} 秒"},
+  %{項目: "アーキテクチャ", 値: gguf_model.architecture},
+  %{項目: "語彙数", 値: inspect(gguf_model.config.vocab_size)},
+  %{項目: "埋め込み次元", 値: inspect(gguf_model.config.embedding_size)},
+  %{項目: "ブロック数", 値: inspect(length(gguf_model.layers))},
+  %{項目: "ヘッド数", 値: inspect(gguf_model.config.attention_head_count)},
+  %{項目: "KVヘッド数", 値: inspect(gguf_model.config.attention_head_count_kv)}
+])
+```
+
+### 本物のサブワード分割を見る
+
+第1節では空白区切りのトークナイザーを自作しましたが、このモデルは SentencePiece 形式の語彙を持っています。単語が細かい部品へ分割される様子を確認します。
+
+```elixir
+gguf_pieces = fn text ->
+  ids = Llamex.encode(gguf_model, text)
+  pieces = Enum.map(ids, &Map.fetch!(gguf_model.tokenizer.id_to_token, &1))
+
+  %{
+    入力: text,
+    分割数: length(ids),
+    トークン: Enum.join(pieces, " | "),
+    復元: Llamex.decode(gguf_model, ids)
+  }
+end
+
+["Once upon a time", "dragon", "happily", "unbelievable"]
+|> Enum.map(gguf_pieces)
+|> Kino.DataTable.new(keys: [:入力, :分割数, :トークン, :復元])
+```
+
+`▁`（アンダースコアに似た記号）は**単語の先頭に空白があった**ことを表します。`Once` のようによく出る語は1トークンですが、`dragon` や `unbelievable` は語彙にないため、モデルが知っている小さな部品へ分解されます。語彙がわずか 512 個しかないモデルなので、分割はかなり細かくなります。
+
+### 本物のモデルの「次トークン確率」を見る
+
+第4節ではサンプラーを手作りの遷移表で試しましたが、同じことを本物のモデルのロジットに対して行えます。
+
+`Llamex.prefill/3` はプロンプトを読み込んだ状態の `Context` を返します。そこから `Llamex.eval/2` を呼べば、プロンプト直後のロジットが手に入ります。
+
+```elixir
+gguf_prompt = "Once upon a time"
+
+prefilled = Llamex.prefill(gguf_model, gguf_prompt, %{backend: Llamex.Backend.List})
+{_context, gguf_logits} = Llamex.eval(prefilled.context, prefilled.current_token)
+
+gguf_candidates =
+  Llamex.Sampler.candidates(gguf_logits, Llamex.Backend.List, %{temperature: 1.0}, 10)
+
+gguf_candidate_rows =
+  Enum.map(gguf_candidates, fn candidate ->
+    %{
+      次トークン: Map.fetch!(gguf_model.tokenizer.id_to_token, candidate.token),
+      確率: candidate.probability
+    }
+  end)
+
+Kino.Layout.grid(
+  [
+    LlamexTour.Visuals.bar_chart(
+      gguf_candidate_rows,
+      "「#{gguf_prompt}」の次に来るトークンの確率（上位10件）",
+      :次トークン,
+      :確率,
+      width: 640
+    ),
+    Kino.DataTable.new(gguf_candidate_rows, keys: [:次トークン, :確率])
+  ],
+  columns: 1
+)
+```
+
+「昔むかしあるところに」の続きとして、カンマや `she` / `they` / `he` が上位に来ます。26 万パラメータのモデルでも、物語の書き出しらしい続きを確率として持っていることが分かります。
+
+`temperature` を実モデルのロジットへ適用すると、第4節で見たのと同じ変化が起きます。
+
+```elixir
+gguf_temperature_rows =
+  [0.5, 1.0, 1.5]
+  |> Enum.flat_map(fn temperature ->
+    gguf_logits
+    |> Llamex.Sampler.candidates(Llamex.Backend.List, %{temperature: temperature}, 6)
+    |> Enum.map(fn candidate ->
+      %{
+        次トークン: Map.fetch!(gguf_model.tokenizer.id_to_token, candidate.token),
+        確率: candidate.probability,
+        temperature: "temperature=#{temperature}"
+      }
+    end)
+  end)
+
+LlamexTour.Visuals.bar_chart(
+  gguf_temperature_rows,
+  "実モデルのロジットに temperature を適用する",
+  :次トークン,
+  :確率,
+  color_field: :temperature,
+  width: 640
+)
+```
+
+### 文章を生成する
+
+```elixir
+gguf_backend_rows =
+  [Llamex.Backend.List, Llamex.Backend.Nx]
+  |> Enum.map(fn backend ->
+    {microseconds, result} =
+      :timer.tc(fn ->
+        Llamex.generate(gguf_model, gguf_prompt, %{
+          backend: backend,
+          max_new_tokens: 10,
+          sampler: :greedy
+        })
+      end)
+
+    %{
+      バックエンド: inspect(backend),
+      秒: Float.round(microseconds / 1_000_000, 2),
+      生成結果: result.text
+    }
+  end)
+
+Kino.DataTable.new(gguf_backend_rows, keys: [:バックエンド, :秒, :生成結果])
+```
+
+どちらのバックエンドでも `greedy` なので生成結果は同じです。速度は第7節と同じ傾向で、この規模では純 Elixir の `Backend.List` が優位です。
+
+サンプリングにすると、同じプロンプトから毎回違う物語が始まります。
+
+```elixir
+1..3
+|> Enum.map(fn seed ->
+  result =
+    Llamex.generate(gguf_model, gguf_prompt, %{
+      backend: Llamex.Backend.List,
+      max_new_tokens: 20,
+      sampler: %{temperature: 0.9, top_k: 40, top_p: 0.9, seed: seed}
+    })
+
+  %{seed: seed, 生成結果: result.text}
+end)
+|> Kino.DataTable.new(keys: [:seed, :生成結果])
+```
+
+文法が崩れているのは、モデルが 26 万パラメータしかないためです。それでも「物語の続きを1トークンずつ選んでいる」という動きは実物と変わりません。
+
+### ストリーミング表示
+
+実モデルでもストリーミングできます。ただし1トークンずつ復号すると `▁`（単語先頭の空白）の情報が落ちるため、**そこまでの全トークンをまとめて復号**します。
+
+```elixir
+gguf_frame = Kino.Frame.new()
+Kino.render(gguf_frame)
+
+gguf_model
+|> Llamex.stream(gguf_prompt, %{
+  backend: Llamex.Backend.List,
+  max_new_tokens: 20,
+  sampler: %{temperature: 0.9, top_k: 40, seed: 7}
+})
+|> Enum.each(fn chunk ->
+  # チャンク単体ではなく、生成済みトークン列全体を復号する
+  text = Llamex.decode(gguf_model, chunk.generated_tokens)
+
+  Kino.Frame.render(
+    gguf_frame,
+    Kino.Text.new("""
+    #{gguf_prompt}#{text}
+
+    生成トークン数: #{length(chunk.generated_tokens)}
+    終了理由: #{inspect(chunk.finish_reason)}
+    """)
+  )
+
+  Process.sleep(100)
+end)
+```
+
+### もっと大きなモデルを動かすには
+
+同じリポジトリには `stories15M-q4_0.gguf`（約 19MB、1500 万パラメータ、Q4_0 量子化）もあります。URL のファイル名を差し替えれば試せますが、時間の見積もりが大きく変わります。
+
+| 項目 | stories260K（この節で使用） | stories15M |
+|---|---|---|
+| ファイルサイズ | 約 1.1MB | 約 19MB |
+| ダウンロード | 数秒 | 数秒 |
+| 診断（`inspect_summary_file`） | 一瞬 | 一瞬。`loadable?` は `true` |
+| 読み込み（`load`） | 約 0.25 秒 | **非常に長い** |
+
+`inspect_summary_file/1` の時点では 15M 版も `loadable?: true` と出ますが、`load/1` は量子化されたテンソルを Elixir の数値リストへ展開するため、パラメータ数に比例して時間とメモリを消費します。筆者の環境では 5 分待っても読み込みが完了しませんでした。
+
+`Llamex.GGUF.ModelLoader.load/2` には `tensor_format: :compact` オプションがあり、量子化されたまま保持することもできます。ただし対応する演算が限られるため、まずは小さいモデルで挙動を確かめるのが確実です。
+
+コマンドラインからは `mix llamex.generate` などのタスクも用意されています。手元に llama / mistral / gemma3 系の GGUF がある場合は、`inspect_summary_file/1` で `loadable?` を確認してから試してください。
+
+チャット形式のモデルであれば `Llamex.generate_chat/3` も使えます。ただしトークナイザーがチャットテンプレート（ChatML / Llama ヘッダー / Gemma ターン）を持っている必要があり、今回の手作りトークナイザーでは使えません。
+
+## 10. まとめ
+
+### このノートブックで見たこと
+
+* Llamex は「LLM API のクライアント」ではなく、Elixir で書かれた**推論エンジンそのもの**
+* 出力層がないモデルでは、ロジットは**埋め込み同士の内積**になる
+* 出力層の重みは「現在トークン → 次トークン」の**遷移表**として読める
+* `Llamex.Sampler.candidates/4` を使うと、`temperature` / `top_k` / `top_p` / `min_p` が確率分布に与える影響を数値で見られる
+* Llama 系の3つの部品は、GPT 系とここが違う
+  * **RMS 正規化**: 平均を引かない。二乗平均平方根だけを 1 にそろえる
+  * **RoPE**: 位置を足すのではなく回転で入れる。内積が相対距離だけで決まる
+  * **SwiGLU**: ReLU の代わりに、なめらかな SiLU でゲートをかける
+* KV キャッシュはトークンを読むたびに伸び、`sliding_window` を設定すると頭打ちになる
+* バックエンドは差し替え可能。ただし小さいモデルでは純 Elixir の `Backend.List` が最速で、Nx / EXLA が効くのは埋め込み次元が数百〜数千になってから
+* 学習済みの GGUF モデル（`stories260K.gguf`、約 1.1MB）を読み込むと、手作りモデルで見てきた仕組みがそのまま実物で動く
+  * サブワード分割（`dragon` → `▁d | r | a | g | on`）
+  * 「Once upon a time」の次に来るトークンの確率分布
+  * `temperature` を実モデルのロジットへ適用したときの変化
+  * GQA（Query 8ヘッドに対して Key/Value 4ヘッド）
+
+<!-- livebook:{"break_markdown":true} -->
+
+### 次に読むと面白いところ
+
+Llamex はモジュールが小さく分かれているので、コードを読み進めやすい構成になっています。
+
+| ファイル | 見どころ |
+|---|---|
+| `lib/llamex/engine.ex` | 1トークン分の順伝播。出力層がないときの内積フォールバックもここ |
+| `lib/llamex/sampler.ex` | temperature / top-k / top-p / min-p / 繰り返しペナルティの実装 |
+| `lib/llamex/layers/rope.ex` | RoPE の回転が数十行で書かれている |
+| `lib/llamex/kv_cache.ex` | キャッシュの追加とスライディングウィンドウでの切り詰め |
+| `lib/llamex/backend/list.ex` | 純 Elixir だけで書かれたテンソル演算の全体像 |
+
+* リポジトリ: https://github.com/piacerex/llamex

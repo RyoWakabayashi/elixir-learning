@@ -281,6 +281,22 @@ LLM を `Elixir` / `Livebook` で学ぶための教材シリーズを追加し�
 6. 極小モデルでSFTとDPOを実行し、損失と応答確率の変化を見る
 7. （発展編）エンコーダー・デコーダー構成とクロスアテンションを組み立てる
 
+## Llamex
+
+Elixir 製の LLM 推論エンジン [Llamex](https://github.com/piacerex/llamex) を動かし、内部を可視化する教材です。上の LLM 教材とは独立しています。
+
+* [livebooks/llamex/llamex_minimal_engine_tour.livemd](livebooks/llamex/llamex_minimal_engine_tour.livemd)
+
+手作りの極小モデルを Llamex のデータ構造で組み立て、次の内容を表とグラフで確認します。
+
+* トークナイザー、埋め込み、出力層（遷移表）
+* サンプラー（temperature / top-k / top-p / min-p）が確率分布へ与える影響
+* Llama 系の部品（RMS 正規化 / RoPE / SwiGLU）の挙動
+* KV キャッシュの伸び方とスライディングウィンドウ
+* バックエンド（純 Elixir / Nx / EXLA）の切り替え
+
+`Llamex` は Elixir 1.19 以上が必要です。
+
 ## Phoenix LiveView の起動
 
 ### リポジトリーのクローン

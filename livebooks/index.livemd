@@ -4,6 +4,7 @@
 
 * [Distributed Image Processing](distributed_image_processing/index.livemd)
 * [LLM](llm/index.livemd)
+* [Llamex](llamex/llamex_minimal_engine_tour.livemd)
 
 * Modules
   * [Kino](kino/index.livemd)
