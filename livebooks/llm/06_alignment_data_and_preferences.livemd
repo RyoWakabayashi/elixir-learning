@@ -733,7 +733,7 @@ DPO開始時は方策モデルと基準モデルが同じなので、両者の�
 `対数確率マージン = log P(chosen) - log P(rejected)` とし、値が大きいほどchosenがrejectedより優勢だと読みます。
 
 ```elixir
-summarize_policy = fn policy_logits, stage ->
+summarize_policy = fn policy_logits, stage, policy_id ->
   # 1つの学習段階のロジット表を、応答候補の確率へ変換する
   probabilities =
     LLMScratch.AlignmentTraining.probabilities(policy_logits)
@@ -757,6 +757,7 @@ summarize_policy = fn policy_logits, stage ->
     %{
       段階: stage,
       トピック: pair.topic,
+      policy_id: policy_id,
       採用応答の確率: chosen_probability,
       不採用応答の確率: rejected_probability,
       対数確率マージン:
@@ -768,9 +769,9 @@ end
 
 # 学習前、SFT後、DPO後を同じ表で比較できるよう連結する
 policy_comparison_rows =
-  summarize_policy.(initial_policy_logits, "学習前") ++
-    summarize_policy.(sft_policy_logits, "SFT後") ++
-    summarize_policy.(dpo_policy_logits, "DPO後")
+  summarize_policy.(initial_policy_logits, "学習前", 0) ++
+    summarize_policy.(sft_policy_logits, "SFT後", 1) ++
+    summarize_policy.(dpo_policy_logits, "DPO後", 2)
 
 Kino.DataTable.new(
   policy_comparison_rows,
@@ -789,7 +790,7 @@ Kino.DataTable.new(
 margin_chart_rows =
   Enum.map(policy_comparison_rows, fn row ->
     %{
-      比較: "#{row.トピック} / #{row.段階}",
+      比較: "#{row.トピック} / #{row.policy_id}.#{row.段階}",
       対数確率マージン: row.対数確率マージン
     }
   end)

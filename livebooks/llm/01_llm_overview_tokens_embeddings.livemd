@@ -94,6 +94,20 @@ defmodule LLMScratch.Visuals do
     ])
     |> Kino.VegaLite.new()
   end
+
+  # 2つのトークン軸と数値を、色の濃さで読めるヒートマップにする
+  def heatmap(rows, title, x_field, y_field, color_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 520)
+    height = Keyword.get(opts, :height, 480)
+
+    VegaLite.new(width: width, height: height, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:rect, tooltip: true)
+    |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :nominal, title: Atom.to_string(x_field))
+    |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :nominal, title: Atom.to_string(y_field))
+    |> VegaLite.encode_field(:color, Atom.to_string(color_field), type: :quantitative, scale: [scheme: "blues"])
+    |> Kino.VegaLite.new()
+  end
 end
 ```
 
@@ -237,10 +251,16 @@ one_hot_similarity_rows =
     }
   end
 
-Kino.DataTable.new(one_hot_similarity_rows, num_rows: 25)
+LLMScratch.Visuals.heatmap(
+  one_hot_similarity_rows,
+  "one-hot 表現の内積（全組み合わせ）",
+  :token_b,
+  :token_a,
+  :dot
+)
 ```
 
-表を見ると、内積は `自分自身となら 1、他のどの語とも 0` です。つまり one-hot の世界では、「ねこ」と「ひるね」の関係も、「ねこ」と「が」の関係も、まったく同じ「無関係」になってしまいます。
+ヒートマップを見ると、色が付くのは対角線（自分自身、内積 `1`）だけで、それ以外はすべて内積 `0` の同じ色になっていることが一目で分かります。つまり one-hot の世界では、「ねこ」と「ひるね」の関係も、「ねこ」と「が」の関係も、まったく同じ「無関係」になってしまいます。
 
 また、実際の LLM の語彙は数万〜十数万トークンあるため、1トークンを表すのに数万個の 0 と 1 個の 1 を使うのは無駄が多すぎます。
 
@@ -306,7 +326,7 @@ embedding_tensor
 
 ### 内積で「近さ」を数値にする
 
-one-hot のときと同じように、埋め込み同士の内積を全組み合わせで計算してみます。
+one-hot のときと同じように、埋め込み同士の内積を全組み合わせで計算し、同じ配色のヒートマップで表示してみます。
 
 ```elixir
 embedding_similarity = Nx.dot(embedding_tensor, [1], embedding_tensor, [1])
@@ -321,7 +341,13 @@ embedding_similarity_rows =
     }
   end
 
-Kino.DataTable.new(embedding_similarity_rows, num_rows: 25)
+LLMScratch.Visuals.heatmap(
+  embedding_similarity_rows,
+  "埋め込みの内積（全組み合わせ）",
+  :token_b,
+  :token_a,
+  :dot
+)
 ```
 
 ```elixir
