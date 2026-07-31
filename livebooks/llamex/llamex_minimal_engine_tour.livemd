@@ -149,20 +149,66 @@ defmodule LlamexTour.Visuals do
     |> Kino.VegaLite.new()
   end
 
-  # 2次元の点の軌跡をたどる散布図
-  def labeled_scatter(rows, title, x_field, y_field, label_field) do
-    VegaLite.new(width: 420, height: 400, title: title)
-    |> VegaLite.data_from_values(rows)
+  # 原点から各ベクトルの先端へ線を引き、位置ごとに重ねて表示する
+  def vector_fan(rows, title, x_field, y_field, label_field, opts \\ []) do
+    size = Keyword.get(opts, :size, 440)
+    domain = Keyword.get(opts, :domain, [-1.15, 1.15])
+
+    x_name = Atom.to_string(x_field)
+    y_name = Atom.to_string(y_field)
+    label_name = Atom.to_string(label_field)
+
+    # 1本のベクトルを「原点 -> 先端」の2点に展開する
+    segments =
+      Enum.flat_map(rows, fn row ->
+        label = to_string(Map.fetch!(row, label_field))
+
+        [
+          %{x_name => 0.0, y_name => 0.0, label_name => label},
+          %{
+            x_name => Map.fetch!(row, x_field),
+            y_name => Map.fetch!(row, y_field),
+            label_name => label
+          }
+        ]
+      end)
+
+    tips =
+      Enum.map(rows, fn row ->
+        %{
+          x_name => Map.fetch!(row, x_field),
+          y_name => Map.fetch!(row, y_field),
+          label_name => to_string(Map.fetch!(row, label_field))
+        }
+      end)
+
+    # 縦横を同じ大きさ・同じ範囲にしないと、円がつぶれた楕円に見えてしまう
+    axis = fn name ->
+      [type: :quantitative, scale: [domain: domain], title: name]
+    end
+
+    color = [type: :ordinal, scale: [scheme: "viridis"], title: label_name]
+
+    VegaLite.new(width: size, height: size, title: title)
     |> VegaLite.layers([
       VegaLite.new()
-      |> VegaLite.mark(:line, point: true, tooltip: true)
-      |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :quantitative)
-      |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative),
+      |> VegaLite.data_from_values(segments)
+      |> VegaLite.mark(:line, tooltip: true)
+      |> VegaLite.encode_field(:x, x_name, axis.(x_name))
+      |> VegaLite.encode_field(:y, y_name, axis.(y_name))
+      |> VegaLite.encode_field(:color, label_name, color),
       VegaLite.new()
-      |> VegaLite.mark(:text, dy: -12)
-      |> VegaLite.encode_field(:x, Atom.to_string(x_field), type: :quantitative)
-      |> VegaLite.encode_field(:y, Atom.to_string(y_field), type: :quantitative)
-      |> VegaLite.encode_field(:text, Atom.to_string(label_field), type: :nominal)
+      |> VegaLite.data_from_values(tips)
+      |> VegaLite.mark(:point, filled: true, size: 90, tooltip: true)
+      |> VegaLite.encode_field(:x, x_name, axis.(x_name))
+      |> VegaLite.encode_field(:y, y_name, axis.(y_name))
+      |> VegaLite.encode_field(:color, label_name, color),
+      VegaLite.new()
+      |> VegaLite.data_from_values(tips)
+      |> VegaLite.mark(:text, dy: -12, font_size: 11)
+      |> VegaLite.encode_field(:x, x_name, axis.(x_name))
+      |> VegaLite.encode_field(:y, y_name, axis.(y_name))
+      |> VegaLite.encode_field(:text, label_name, type: :nominal)
     ])
     |> Kino.VegaLite.new()
   end
@@ -680,16 +726,39 @@ rope_rows =
     }
   end)
 
-LlamexTour.Visuals.labeled_scatter(
+# 原点から各位置のベクトルへ線を引き、12本を重ねて表示する
+LlamexTour.Visuals.vector_fan(
   rope_rows,
-  "RoPE: 位置が進むとベクトルが回転する",
+  "RoPE: 位置ごとのベクトル（原点からの矢印を重ねたもの）",
   :x,
   :y,
   :位置
 )
 ```
 
-同じベクトルが、位置が進むにつれて円周上を回っていきます。長さは変わらず、向きだけが変わります。
+原点から放射状に 12 本のベクトルが伸びています。
+
+**どの線も長さが同じで、向きだけが違う**ことが見て取れます。これが「回転」です。先端をつないでいくと円になります。
+
+ここで注意したいのは、**位置が 1 進むごとの回転角がかなり大きい**ことです。この設定では 1 ステップあたり約 1 ラジアン（約 57 度）回ります。そのため位置 0 → 1 → 2 と順番に先端だけを線でつなぐと、円というよりジグザグに見えてしまいます。原点からの矢印として描くほうが、回転していることが直感的に分かります。
+
+「長さが変わっていない」ことは数値でも確かめられます。
+
+```elixir
+# 各位置のベクトルの長さ（原点からの距離）を測る
+rope_rows
+|> Enum.map(fn row ->
+  %{
+    位置: row.位置,
+    x: row.x,
+    y: row.y,
+    長さ: Float.round(:math.sqrt(row.x * row.x + row.y * row.y), 4)
+  }
+end)
+|> Kino.DataTable.new(keys: [:位置, :x, :y, :長さ])
+```
+
+`長さ` がすべて `1.0` です。RoPE は値の大きさを変えず、向きだけを位置に応じて回していることが確認できます。
 
 RoPE の重要な性質は、**Query と Key の内積が「絶対位置」ではなく「相対距離」だけで決まる**ことです。アテンションは Query と Key の内積で「どこを見るか」を決めるので、この性質はそのまま「位置関係の捉え方」に効きます。実際に確かめます。
 
