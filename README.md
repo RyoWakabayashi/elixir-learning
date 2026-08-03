@@ -285,7 +285,9 @@ LLM を `Elixir` / `Livebook` で学ぶための教材シリーズを追加し�
 
 Elixir 製の LLM 推論エンジン [Llamex](https://github.com/piacerex/llamex) を動かし、内部を可視化する教材です。上の LLM 教材とは独立しています。
 
-* [livebooks/llamex/llamex_minimal_engine_tour.livemd](livebooks/llamex/llamex_minimal_engine_tour.livemd)
+* [livebooks/llamex/llamex_minimal_engine_tour.livemd](livebooks/llamex/llamex_minimal_engine_tour.livemd) — 通常版の全体ツアー
+* [livebooks/llamex/llamex_sol_compact_quantization.livemd](livebooks/llamex/llamex_sol_compact_quantization.livemd) — Sol 版: 圧縮量子化テンソルの直接実行と GGUF 検証タスク
+* [livebooks/llamex/llamex_luna_atomvm_portability.livemd](livebooks/llamex/llamex_luna_atomvm_portability.livemd) — Luna 版: 組込向け AtomVM 化とポータブル境界
 
 手作りの極小モデルを Llamex のデータ構造で組み立て、次の内容を表とグラフで確認します。
 

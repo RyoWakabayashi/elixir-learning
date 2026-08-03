@@ -1466,3 +1466,14 @@ Llamex はモジュールが小さく分かれているので、コードを読�
 | `lib/llamex/backend/list.ex` | 純 Elixir だけで書かれたテンソル演算の全体像 |
 
 * リポジトリ: https://github.com/piacerex/llamex
+
+<!-- livebook:{"break_markdown":true} -->
+
+### シリーズの続編
+
+Llamex には方向性の異なる派生バージョンがあり、それぞれ続編ノートブックで扱っています。
+
+| ノートブック | 内容 |
+|---|---|
+| [Llamex Sol版: 圧縮量子化テンソルと GGUF 検証](llamex_sol_compact_quantization.livemd) | 量子化バイナリを展開せずに実行する仕組み。このノートブックで断念した 15M モデルが動く |
+| [Llamex Luna版: AtomVM 化とポータブル設計](llamex_luna_atomvm_portability.livemd) | マイコン向け AtomVM へ持ち込むためのポータブル境界とバンドル作成 |

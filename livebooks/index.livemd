@@ -4,7 +4,10 @@
 
 * [Distributed Image Processing](distributed_image_processing/index.livemd)
 * [LLM](llm/index.livemd)
-* [Llamex](llamex/llamex_minimal_engine_tour.livemd)
+* Llamex
+  * [通常版の全体ツアー](llamex/llamex_minimal_engine_tour.livemd)
+  * [Sol版: 圧縮量子化テンソルと GGUF 検証](llamex/llamex_sol_compact_quantization.livemd)
+  * [Luna版: AtomVM 化とポータブル設計](llamex/llamex_luna_atomvm_portability.livemd)
 
 * Modules
   * [Kino](kino/index.livemd)

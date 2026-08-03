@@ -1,0 +1,650 @@
+# Llamex Sol版: 圧縮量子化テンソルと GGUF 検証を学ぶ
+
+```elixir
+Mix.install([
+  {:llamex, github: "piacerex/llamex-gpt-5.6-sol-medium"},
+  {:nx, "~> 0.12.1"},
+  {:kino, "~> 0.15"},
+  {:kino_vega_lite, "~> 0.1"},
+  # GGUF モデルのダウンロードに使う
+  {:req, "~> 0.5"}
+])
+```
+
+## このノートブックについて
+
+このノートブックは、[Llamex: Elixir 製 LLM 推論エンジンの中身を覗く](llamex_minimal_engine_tour.livemd) の続編です。
+
+Llamex には、異なる方向へ発展させた実験的な派生バージョンが公開されています。
+
+| バージョン | リポジトリ | フォーカス |
+|---|---|---|
+| 通常版（前作で使用） | [piacerex/llamex](https://github.com/piacerex/llamex) | 最小構成の推論エンジン |
+| **Sol 版（このノートブック）** | [piacerex/llamex-gpt-5.6-sol-medium](https://github.com/piacerex/llamex-gpt-5.6-sol-medium) | **圧縮量子化テンソルの直接実行・GGUF 検証タスク** |
+| Luna 版 | [piacerex/llamex-gpt-5.6-luna-xhigh](https://github.com/piacerex/llamex-gpt-5.6-luna-xhigh) | 組込向け AtomVM 化 |
+
+前作には宿題が残っていました。1500 万パラメータの `stories15M-q4_0.gguf` は、量子化テンソルを **Elixir の数値リストへ全展開する**設計のせいで、5 分待っても読み込みが終わりませんでした。
+
+Sol 版の中心は、まさにこの問題への回答です。**量子化されたバイナリを展開せずそのまま保持し（compact）、計算のたびに必要なブロックだけを復元する**仕組みが入っています。このノートブックでは次を確認します。
+
+1. Q4_0 / Q8_0 量子化ブロックの中身（バイト単位で手作りする）
+2. `Llamex.CompactTensor` — 展開しないテンソルの契約
+3. 展開せずに行列×ベクトルを計算する仕組み
+4. バックエンド契約 — `direct` と `blockwise_compact` という2つの実行経路
+5. GGUF 検証ツール群（`mix llamex.gguf.inspect` など）の中身
+6. **前作の宿題だった 15M モデルを実際に動かす**
+7. `{:ok, _}` タプルベースに刷新された新 API
+
+<!-- livebook:{"break_markdown":true} -->
+
+### 実行前の注意
+
+Sol 版の Elixir 要件は `>= 1.15` に緩和されています（通常版は 1.19 以上でした）。Hex には公開されていないため、GitHub から直接取得します。
+
+第6節以降で 19MB のモデルをダウンロードし、第7節には**数十秒〜1分程度かかるセル**があります。
+
+## 準備
+
+```elixir
+Kino.DataTable.new([
+  %{項目: "Elixir", 値: System.version()},
+  %{項目: "Llamex (Sol)", 値: to_string(Application.spec(:llamex, :vsn))},
+  %{項目: "Nx", 値: to_string(Application.spec(:nx, :vsn))}
+])
+```
+
+```elixir
+defmodule LlamexSol.Visuals do
+  # カテゴリごとの大きさを比べる棒グラフ（系列の色分け対応）
+  def bar_chart(rows, title, x_field, y_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 640)
+    height = Keyword.get(opts, :height, 300)
+    color_field = Keyword.get(opts, :color_field)
+
+    chart =
+      VegaLite.new(width: width, height: height, title: title)
+      |> VegaLite.data_from_values(rows)
+      |> VegaLite.mark(:bar, tooltip: true)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field),
+        type: :nominal,
+        title: Atom.to_string(x_field)
+      )
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field),
+        type: :quantitative,
+        title: Atom.to_string(y_field)
+      )
+
+    chart =
+      if color_field do
+        chart
+        |> VegaLite.encode_field(:color, Atom.to_string(color_field), type: :nominal)
+        |> VegaLite.encode_field(:x_offset, Atom.to_string(color_field))
+      else
+        chart
+      end
+
+    Kino.VegaLite.new(chart)
+  end
+end
+```
+
+## 1. 量子化ブロックの解剖
+
+前作で触れた通り、GGUF の量子化は **32 個（K 系は 256 個）の値を1ブロック**にまとめ、ブロックごとに f16 のスケール値と縮めた量子値を持ちます。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  A["F32 の重み 32 個 = 128 バイト"] --> B["ブロック量子化"]
+  B --> C["Q8_0 ブロック = 34 バイト<br/>f16 スケール 2B + int8 × 32"]
+  B --> D["Q4_0 ブロック = 18 バイト<br/>f16 スケール 2B + 4bit × 32 = 16B"]
+  C --> E["復元: 量子値 × スケール"]
+  D --> E
+""")
+```
+
+Sol 版はこのブロック構造を `Llamex.CompactTensor` という**依存ゼロの構造体**として定義しています。対応する全型のレイアウトを一覧にしてみます。
+
+```elixir
+Llamex.CompactTensor.supported_types()
+|> Enum.map(fn type ->
+  {:ok, layout} = Llamex.CompactTensor.layout(type)
+
+  %{
+    型: to_string(type),
+    ブロックあたりの値数: layout.block_size,
+    ブロックのバイト数: layout.block_bytes,
+    スケールの型: inspect(layout.scale_type),
+    "1値あたりビット数": Float.round(layout.block_bytes * 8 / layout.block_size, 1)
+  }
+end)
+|> Kino.DataTable.new(
+  keys: [:型, :ブロックあたりの値数, :ブロックのバイト数, :スケールの型, :"1値あたりビット数"]
+)
+```
+
+F32 は 1 値 32 ビットですが、Q8_0 は 8.5 ビット、Q4_0 は 4.5 ビットです。端数の 0.5 ビットはブロック共有のスケール値の分です。
+
+## 2. CompactTensor を手作りする（Q8_0）
+
+仕組みを本当に理解したか確かめる一番の方法は、**バイナリを自分で組んで、期待通りの計算結果が出るか見る**ことです。
+
+Q8_0 の 1 ブロックは `f16 スケール（2バイト、リトルエンディアン） + int8 の量子値 × 32` です。f16 の `1.0` は `0x3C00`、`0.5` は `0x3800` なので、バイト列は次のように書けます。
+
+```elixir
+# f16 をリトルエンディアンのバイト列で直書きする
+scale_1_0 = <<0x00, 0x3C>>
+scale_0_5 = <<0x00, 0x38>>
+
+# 1行目: スケール1.0 × 量子値 1..32 -> 復元値は 1.0..32.0
+row_1 = scale_1_0 <> :binary.list_to_bin(Enum.to_list(1..32))
+
+# 2行目: スケール0.5 × 量子値 2 が32個 -> 復元値はすべて 1.0
+row_2 = scale_0_5 <> :binary.list_to_bin(List.duplicate(2, 32))
+
+# shape は [入力次元, 出力行数]
+{:ok, q8_tensor} =
+  Llamex.CompactTensor.new(%{shape: [32, 2], type: :q8_0, payload: row_1 <> row_2})
+
+q8_tensor.type
+```
+
+このテンソルに、要素がすべて `1.0` の32次元ベクトルを掛けます。期待値は手計算できます。
+
+* 1行目: `1.0 + 2.0 + ... + 32.0 = 528.0`
+* 2行目: `1.0 × 32 = 32.0`
+
+```elixir
+ones = List.duplicate(1.0, 32)
+
+Llamex.Backend.List.matvec_tensor(q8_tensor, ones)
+```
+
+`[528.0, 32.0]` — 手で組んだ 68 バイトのバイナリが、正しく行列として振る舞いました。
+
+`CompactTensor.contract/1` を使うと、このテンソルの「契約情報」——F32 に展開した場合との比較——が取れます。
+
+```elixir
+contract = Llamex.CompactTensor.contract(q8_tensor)
+
+Kino.DataTable.new([
+  %{項目: "型", 値: inspect(contract.type)},
+  %{項目: "形状", 値: inspect(contract.shape)},
+  %{項目: "圧縮ペイロード", 値: "#{contract.payload_bytes} バイト"},
+  %{項目: "F32 に展開した場合", 値: "#{contract.dense_f32_bytes} バイト"},
+  %{項目: "展開倍率", 値: "#{Float.round(contract.f32_expansion_ratio, 2)} 倍"}
+])
+```
+
+## 3. Q4_0 も手作りする
+
+Q4_0 は 1 バイトに **4 ビット値を2個**詰めます。復元は `(量子値 - 8) × スケール` で、下位ニブル 16 個 → 上位ニブル 16 個の順に並びます。
+
+全バイトを `0x98` にすると、下位ニブルは `8`（復元値 0）、上位ニブルは `9`（復元値 1）になります。
+
+```elixir
+# スケール1.0 + 0x98 × 16バイト = 18バイトで1ブロック
+q4_row = scale_1_0 <> :binary.copy(<<0x98>>, 16)
+
+{:ok, q4_tensor} = Llamex.CompactTensor.new(%{shape: [32, 1], type: :q4_0, payload: q4_row})
+
+# 復元値は [0.0 × 16, 1.0 × 16] なので、1ベクトルとの内積は 16.0
+Llamex.Backend.List.matvec_tensor(q4_tensor, ones)
+```
+
+2つの手作りテンソルの圧縮率を並べると、量子化の効果が見えます。
+
+```elixir
+[
+  {q8_tensor, "Q8_0（手作り）"},
+  {q4_tensor, "Q4_0（手作り）"}
+]
+|> Enum.map(fn {tensor, label} ->
+  contract = Llamex.CompactTensor.contract(tensor)
+
+  %{
+    テンソル: label,
+    圧縮バイト: contract.payload_bytes,
+    展開後バイト: contract.dense_f32_bytes,
+    展開倍率: Float.round(contract.f32_expansion_ratio, 2)
+  }
+end)
+|> Kino.DataTable.new(keys: [:テンソル, :圧縮バイト, :展開後バイト, :展開倍率])
+```
+
+## 4. 展開せずに計算する仕組み
+
+前作の通常版は、量子化テンソルを読み込み時に**全部 F32 リストへ展開**していました。Sol 版の `Llamex.Backend.List.Math` は違います。`matvec` の実装（抜粋）を見てください。
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+def matvec(%CompactTensor{} = tensor, vector) do
+  [input_size, output_size] = tensor.shape
+  row_bytes = div(input_size, 32) * compact_block_bytes(tensor.type)
+
+  for row <- 0..(output_size - 1) do
+    # この行のバイナリだけを切り出し、
+    payload = binary_part(tensor.payload, row * row_bytes, row_bytes)
+    # ブロックごとに 32 値だけ復元しながら部分内積を足し込む
+    compact_dot(payload, tensor.type, vector, 0, 0.0)
+  end
+end
+
+defp compact_dot(payload, type, vector, offset, sum) do
+  <<block::binary-size(compact_block_bytes(type)), rest::binary>> = payload
+  values = compact_values(block, type, [])          # 32 値だけ一時的に復元
+  block_sum = dot(values, slice_n(vector, offset, 32))
+  compact_dot(rest, type, vector, offset + 32, sum + block_sum)
+end
+```
+
+ポイントは3つです。
+
+* **モデル全体の F32 行列は一度も作られない** — メモリに存在するのは GGUF から切り出した圧縮バイナリそのもの
+* 復元されるのは常に **1 ブロック＝32 値だけ**。使い終わればすぐ GC される
+* この直接カーネルを持つのは `Q4_0` / `Q8_0`。それ以外の量子化形式（Q5_0、Q2_K〜Q8_K など）は保持はできるが、バックエンド準備時に一度だけ展開される
+
+Nx / NxEXLA バックエンドも同じ圧縮ペイロードを受け取り、**ブロック単位の Nx 演算**として処理します（`blockwise_compact`）。README はこれを「カスタム CUDA カーネルではない」と明記しています。GPU 直行はまだ未完了で、これが「圧縮Q対応（直GPU未完了）」の意味です。
+
+## 5. バックエンド契約 — 実行経路を宣言する
+
+Sol 版は「どのバックエンドが、どの量子化形式を、どの方式で実行できるか」を `Llamex.Backend.Contract` として明文化しています。
+
+```elixir
+Llamex.Backend.Contract.matrix()
+|> Enum.map(fn {backend, caps} ->
+  %{
+    バックエンド: backend |> inspect() |> String.replace("Llamex.Backend.", ""),
+    ランタイム: inspect(caps.runtime),
+    状態: inspect(caps.status),
+    対応テンソル形式: caps.tensor_formats |> Enum.map(&to_string/1) |> Enum.join(", "),
+    量子化の実行経路: inspect(caps.quantizations)
+  }
+end)
+|> Kino.DataTable.new(
+  keys: [:バックエンド, :ランタイム, :状態, :対応テンソル形式, :量子化の実行経路]
+)
+```
+
+実行経路は2種類あります。
+
+| 経路 | 意味 | 使うバックエンド |
+|---|---|---|
+| `:direct` | 圧縮バイナリをブロック走査しながら純 Elixir で直接計算 | List / AtomVM |
+| `:blockwise_compact` | 圧縮ペイロードをブロック単位の Nx 演算へ変換 | Nx / NxEXLA |
+
+個別のテンソルについて問い合わせることもできます。
+
+```elixir
+Kino.DataTable.new([
+  %{
+    バックエンド: "List",
+    手作りテンソルの実行経路:
+      inspect(Llamex.Backend.Contract.execution_path(Llamex.Backend.List, q8_tensor))
+  },
+  %{
+    バックエンド: "Nx",
+    手作りテンソルの実行経路:
+      inspect(Llamex.Backend.Contract.execution_path(Llamex.Backend.Nx, q8_tensor))
+  }
+])
+```
+
+### ゴールデン比較 — 経路が違っても答えは同じか
+
+実行経路が2つあるなら、「両方が同じ答えを返すこと」の検証が必要です。Sol 版には、そのための関数が最初から入っています。
+
+```elixir
+comparison = Llamex.Backend.Quantized.compare([Llamex.Backend.Nx], q8_tensor, ones)
+
+Kino.DataTable.new([
+  %{
+    項目: "List（基準値・direct）",
+    値: inspect(comparison.reference)
+  },
+  %{
+    項目: "Nx（blockwise_compact）",
+    値: inspect(comparison.results[Llamex.Backend.Nx].output)
+  },
+  %{
+    項目: "基準値と一致するか",
+    値: inspect(comparison.results[Llamex.Backend.Nx].matches_reference?)
+  },
+  %{
+    項目: "モデル全体のF32展開が起きたか",
+    値: inspect(comparison.results[Llamex.Backend.Nx].diagnostics.full_model_f32_expansion?)
+  }
+])
+```
+
+純 Elixir のブロック走査と Nx のブロック演算が、同じ 68 バイトから同じ `[528.0, 32.0]` を出しました。診断には「一度に密になるのは 1 ブロック分（128 バイト）だけ」という情報も含まれています。
+
+## 6. GGUF 検証ツール — 読み込む前に調べ尽くす
+
+Sol 版のもう1つの柱が「GGUF検証用 mix task」です。設計思想は README の一文に集約されています。
+
+> Compatibility is deliberately diagnosed before tensor payloads are loaded; a `.gguf` extension alone does not imply support.
+> （互換性はテンソルを読み込む前に意図的に診断される。拡張子が .gguf だからといって対応しているとは限らない）
+
+コマンドラインからは次のように使います。
+
+<!-- livebook:{"force_markdown":true} -->
+
+```bash
+mix llamex.gguf.inspect --supported          # 対応面の一覧（モデル不要）
+mix llamex.gguf.inspect model.gguf --summary # 診断サマリー
+mix llamex.gguf.inspect model.gguf --config  # 設計値と欠損メタデータ
+mix llamex.gguf.inspect model.gguf --schema  # テンソル名スキーマの照合
+mix llamex.natural.smoke model.gguf 8        # 自然文生成のスモークテスト
+mix llamex.benchmark model.gguf --tokens 8,16 --backends list,nx
+```
+
+Livebook からは、タスクが内部で呼ぶ関数を直接使えます。まずモデル不要の「対応面」から。
+
+```elixir
+surface = Llamex.GGUF.Diagnostic.supported_surface()
+
+Kino.DataTable.new([
+  %{項目: "対応アーキテクチャ", 値: Enum.join(surface.supported_architectures, ", ")},
+  %{項目: "対応テンソル型", 値: Enum.join(surface.supported_tensor_type_names, ", ")},
+  %{項目: "対応トークナイザー", 値: Enum.join(surface.supported_tokenizer_models, ", ")}
+])
+```
+
+実モデルを診断します。前作と同じ TinyStories の2つをダウンロードします。
+
+```elixir
+models_dir = Path.join(System.tmp_dir!(), "llamex_models")
+File.mkdir_p!(models_dir)
+
+download = fn filename ->
+  path = Path.join(models_dir, filename)
+
+  unless File.exists?(path) do
+    Req.get!(
+      "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/#{filename}",
+      into: File.stream!(path),
+      redirect: true
+    )
+  end
+
+  path
+end
+
+path_260k = download.("stories260K.gguf")
+path_15m = download.("stories15M-q4_0.gguf")
+
+Kino.DataTable.new([
+  %{
+    モデル: "stories260K.gguf",
+    サイズ: "#{Float.round(File.stat!(path_260k).size / 1_048_576, 2)} MB"
+  },
+  %{
+    モデル: "stories15M-q4_0.gguf",
+    サイズ: "#{Float.round(File.stat!(path_15m).size / 1_048_576, 2)} MB"
+  }
+])
+```
+
+1つ注意点があります。Sol 版のファイル読み込み（`Reader.read_file`）はディレクトリ部分を 64KB ずつ増分で読む設計ですが、語彙 32,000 のモデルではメタデータが数 MB あり、値の途中で切れたときのリトライ判定に不備があるため失敗します（筆者環境では `{:unsupported_metadata_type, 6}` というエラーになりました）。**ファイル全体を読んでから渡す** `read_binary` / `load_binary_result` を使えば回避できます。
+
+```elixir
+binary_15m = File.read!(path_15m)
+reader_15m = Llamex.GGUF.read_binary(binary_15m)
+
+diagnostic = Llamex.GGUF.Diagnostic.inspect(reader_15m)
+
+Kino.DataTable.new([
+  %{項目: "アーキテクチャ", 値: inspect(diagnostic.architecture)},
+  %{項目: "読み込み可能か", 値: inspect(diagnostic.loadable?)},
+  %{項目: "互換性の問題", 値: inspect(diagnostic.compatibility_issues)},
+  %{
+    項目: "GGUF ペイロード合計",
+    値: "#{Float.round(diagnostic.gguf_payload_bytes / 1_048_576, 1)} MB"
+  },
+  %{
+    項目: "F32 に展開した場合",
+    値: "#{Float.round(diagnostic.eager_f32_bytes / 1_048_576, 1)} MB"
+  },
+  %{
+    項目: "展開倍率",
+    値: "#{Float.round(diagnostic.eager_f32_expansion_ratio, 2)} 倍"
+  }
+])
+```
+
+**読み込む前に**「このモデルを展開すると 93MB、compact なら 17.5MB」と分かるのが診断の価値です。型ごとの内訳も見てみます。
+
+```elixir
+type_rows =
+  diagnostic.tensor_payload_by_type
+  |> Enum.flat_map(fn {type, info} ->
+    [
+      %{
+        型: type,
+        系列: "GGUF（圧縮のまま）",
+        MB: Float.round(info.gguf_payload_bytes / 1_048_576, 2)
+      },
+      %{
+        型: type,
+        系列: "F32 に展開した場合",
+        MB: Float.round(info.eager_f32_bytes / 1_048_576, 2)
+      }
+    ]
+  end)
+
+LlamexSol.Visuals.bar_chart(
+  type_rows,
+  "stories15M-q4_0: テンソル型ごとの圧縮サイズと展開後サイズ",
+  :型,
+  :MB,
+  color_field: :系列
+)
+```
+
+Q4_0 の 43 テンソル（アテンションと FFN の重み）は 8.1MB → 展開すると 58MB。Q8_0 の 1 テンソル（トークン埋め込み）は 9.3MB → 35MB。**モデルの本体はほぼ量子化テンソル**なので、展開しない効果がそのまま効きます。
+
+`--config` 相当の設計値レポートは、**欠けているメタデータ**まで教えてくれます。
+
+```elixir
+config_report = Llamex.GGUF.ModelLoader.model_config_report(reader_15m)
+
+missing =
+  config_report["missing_metadata"]
+  |> Enum.map(fn entry ->
+    %{設定名: entry.name, 期待されるメタデータキー: entry.metadata_key}
+  end)
+
+Kino.Layout.grid(
+  [
+    Kino.DataTable.new(
+      Enum.map(config_report["config"], fn {key, value} -> %{設定: key, 値: inspect(value)} end)
+    ),
+    Kino.DataTable.new(missing, keys: [:設定名, :期待されるメタデータキー])
+  ],
+  columns: 1
+)
+```
+
+このモデルには `rope_theta` と `attention_head_count_kv` のメタデータが無く、既定値で補われることが分かります。「黙って動く」のではなく「何を補ったか言う」のが Sol 版の一貫した態度です。
+
+## 7. 前作の宿題 — 15M モデルを動かす
+
+いよいよ本題です。前作で 5 分待っても読み込めなかった `stories15M-q4_0.gguf` を、`tensor_format: :compact` で読み込みます。
+
+```elixir
+{load_microseconds, {:ok, model_15m}} =
+  :timer.tc(fn ->
+    Llamex.GGUF.ModelLoader.load_binary_result(binary_15m, tensor_format: :compact)
+  end)
+
+Kino.DataTable.new([
+  %{項目: "読み込み時間", 値: "#{Float.round(load_microseconds / 1_000_000, 1)} 秒"},
+  %{項目: "語彙数", 値: inspect(model_15m.config.vocab_size)},
+  %{項目: "埋め込み次元", 値: inspect(model_15m.config.embedding_size)},
+  %{項目: "ブロック数", 値: inspect(model_15m.config.block_count)}
+])
+```
+
+筆者環境では約 42 秒でした。瞬時ではありませんが、**「終わらない」から「1分弱で終わる」への変化**です（時間の大半は、埋め込みテーブルなど一部テンソルの復元と 19MB のバイナリ走査です）。
+
+読み込んだモデルの重みが本当に圧縮のままか確かめます。
+
+```elixir
+model_15m.tensors
+|> Enum.take(5)
+|> Enum.map(fn {name, tensor} ->
+  %{
+    テンソル名: name,
+    構造体: tensor.__struct__ |> inspect() |> String.replace("Llamex.", ""),
+    型: inspect(Map.get(tensor, :type))
+  }
+end)
+|> Kino.DataTable.new(keys: [:テンソル名, :構造体, :型])
+```
+
+アテンションや FFN の重みが `CompactTensor` の `:q4_0` のまま保持されています。エンジンを準備して生成します。
+
+```elixir
+{prepare_microseconds, {:ok, engine_15m}} =
+  :timer.tc(fn -> Llamex.prepare_model(model_15m, backend: Llamex.Backend.List) end)
+
+{generate_microseconds, generation} =
+  :timer.tc(fn -> Llamex.generate(engine_15m, "Once upon a time", max_tokens: 4) end)
+
+Kino.DataTable.new([
+  %{項目: "エンジン準備", 値: "#{Float.round(prepare_microseconds / 1_000_000, 2)} 秒"},
+  %{項目: "4トークン生成", 値: "#{Float.round(generate_microseconds / 1_000_000, 1)} 秒"},
+  %{項目: "生成結果", 値: inspect(generation)}
+])
+```
+
+`{:ok, ", there was a"}` — **1500 万パラメータの実モデルが、純 Elixir のブロック走査だけで文章を生成しました**。約 10 秒/トークンなので実用速度ではありませんが、前作との差を整理すると意味がはっきりします。
+
+| | 前作（通常版・F32 展開） | Sol 版（compact） |
+|---|---|---|
+| 読み込み | 5 分でも完了せず | 約 42 秒 |
+| 保持メモリ | 展開できず測定不能（理論値 93MB + リストのオーバーヘッド） | 圧縮ペイロード約 17.5MB |
+| 生成 | 到達できず | 約 10 秒/トークン（List 直接カーネル） |
+
+## 8. 刷新された API
+
+Sol 版は公開 API も再設計されています。前作の「map オプション + 結果 map」から「keyword オプション + `{:ok, _}` タプル」になりました。
+
+| 操作 | 前作(通常版) | Sol 版 |
+|---|---|---|
+| 読み込み | `ModelLoader.load(path)` → model（失敗は例外） | `Llamex.GGUF.load(path, tensor_format: :compact)` → `{:ok, model}` |
+| 準備 | `prepare_model(model, Backend.List)` → PreparedModel | `prepare_model(model, backend: Backend.List)` → `{:ok, engine}` |
+| 生成 | `generate(model, prompt, %{max_new_tokens: 8})` → `%{text: ...}` | `generate(engine, prompt, max_tokens: 8)` → `{:ok, text}` |
+| ストリーム | チャンクの map を列挙 | `{:ok, stream}` → 復号済みテキスト片を列挙 |
+
+軽い 260K モデルで一通り確かめます（こちらはメタデータが小さいので、ファイルベースの `Llamex.GGUF.load` がそのまま使えます）。
+
+```elixir
+{:ok, model_260k} = Llamex.GGUF.load(path_260k, tensor_format: :compact)
+{:ok, engine_260k} = Llamex.prepare_model(model_260k, backend: Llamex.Backend.List)
+
+Llamex.generate(engine_260k, "Once upon a time", max_tokens: 10)
+```
+
+`{:ok, ", there was a little girl named Lily"}` が返ります。前作の greedy（`, there was a little gothip`）と違うのは、Sol 版の既定サンプラーが **seed 固定（既定 seed: 1）のサンプリング**だからです。乱数を使いつつ、同じ入力からは同じ結果が再現されます。
+
+```elixir
+[
+  %{
+    設定: "既定（seed 1）",
+    結果: inspect(Llamex.generate(engine_260k, "Once upon a time", max_tokens: 12))
+  },
+  %{
+    設定: "temperature 0.9 / top_k 40 / seed 2",
+    結果:
+      inspect(
+        Llamex.generate(engine_260k, "Once upon a time",
+          max_tokens: 12,
+          temperature: 0.9,
+          top_k: 40,
+          seed: 2
+        )
+      )
+  },
+  %{
+    設定: "stop_sequences [\".\"]",
+    結果:
+      inspect(
+        Llamex.generate(engine_260k, "Once upon a time",
+          max_tokens: 30,
+          stop_sequences: ["."]
+        )
+      )
+  }
+]
+|> Kino.DataTable.new(keys: [:設定, :結果])
+```
+
+ストリームは、復号済みのテキスト片を直接返すようになりました。
+
+```elixir
+{:ok, stream} = Llamex.stream(engine_260k, "Once upon a time", max_tokens: 8)
+
+Enum.to_list(stream)
+```
+
+`prefill` でロジットを取り出す低レベル操作も残っています。
+
+```elixir
+{:ok, logits, _state} = Llamex.prefill(engine_260k, "Once upon a time", [])
+
+logits
+|> Enum.with_index()
+|> Enum.sort_by(fn {value, _} -> -value end)
+|> Enum.take(5)
+|> Enum.map(fn {value, token_id} ->
+  %{トークン番号: token_id, ロジット: Float.round(value, 2)}
+end)
+|> Kino.DataTable.new(keys: [:トークン番号, :ロジット])
+```
+
+バックエンドの切り替えは `switch_backend/2` で、エンジンごと作り直せます。
+
+```elixir
+{:ok, engine_nx} = Llamex.switch_backend(engine_260k, Llamex.Backend.Nx)
+
+diagnostics = Llamex.Engine.diagnostics(engine_nx)
+
+Kino.DataTable.new([
+  %{項目: "バックエンド", 値: inspect(diagnostics.backend)},
+  %{項目: "契約バージョン", 値: inspect(diagnostics.contract_version)},
+  %{項目: "量子化の実行経路", 値: inspect(diagnostics.capabilities.quantizations)},
+  %{項目: "EXLA が使えるか", 値: inspect(diagnostics.capabilities.raw[:exla_available])},
+  %{
+    項目: "生成",
+    値: inspect(Llamex.generate(engine_nx, "Once upon a time", max_tokens: 10))
+  }
+])
+```
+
+同じエンジン API のまま、実行経路だけが `direct` から `blockwise_compact` に切り替わります。`exla_available: false` のように、**使えないものを使えないと申告する**診断は、GPU（CUDA / ROCm）についても同じ方針で実装されています。EXLA が実デバイスを報告しない限り GPU 実行は成功扱いにならない——これが「直 GPU 未完了」を正直に表す仕組みです。
+
+## 9. まとめ
+
+### このノートブックで見たこと
+
+* Q8_0 / Q4_0 の量子化ブロックは「f16 スケール + 量子値」の単純な構造で、**手でバイナリを組んで検算できる**
+* `Llamex.CompactTensor` は展開前のバイナリをそのまま持つ依存ゼロの構造体。`contract/1` が展開倍率（Q4_0 で 7.1 倍、Q8_0 で 3.8 倍）を教えてくれる
+* List バックエンドは**ブロックごとに 32 値だけ復元して部分内積を足す**直接カーネル（`:direct`）を持ち、モデル全体の F32 行列を一度も作らない
+* Nx / NxEXLA は同じペイロードをブロック単位の Nx 演算（`:blockwise_compact`）で処理し、`Quantized.compare` で両経路の一致を検証できる
+* GGUF 検証タスク群は「読み込む前に診断する」思想。展開倍率・欠損メタデータ・互換性ブロッカーを事前に報告する
+* **前作で読み込めなかった 15M モデルが、compact 保持なら約 42 秒でロードでき、生成まで動く**
+* API は `{:ok, _}` タプル + keyword オプションに刷新され、既定でも seed 固定で再現可能
+
+<!-- livebook:{"break_markdown":true} -->
+
+### シリーズの他のノートブック
+
+| ノートブック | 内容 |
+|---|---|
+| [Llamex: Elixir 製 LLM 推論エンジンの中身を覗く](llamex_minimal_engine_tour.livemd) | 通常版の全体ツアー（前作） |
+| [Llamex Luna版: AtomVM 化とポータブル設計](llamex_luna_atomvm_portability.livemd) | 組込向けのポータブル境界とバンドル作成 |
+
+* Sol 版リポジトリ: https://github.com/piacerex/llamex-gpt-5.6-sol-medium

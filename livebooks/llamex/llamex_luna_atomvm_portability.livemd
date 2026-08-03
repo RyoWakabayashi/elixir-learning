@@ -1,0 +1,528 @@
+# Llamex Luna版: AtomVM 化とポータブル設計を学ぶ
+
+```elixir
+Mix.install([
+  {:llamex, github: "piacerex/llamex-gpt-5.6-luna-xhigh"},
+  {:kino, "~> 0.15"},
+  {:kino_vega_lite, "~> 0.1"},
+  # GGUF モデルのダウンロードに使う
+  {:req, "~> 0.5"}
+])
+```
+
+## このノートブックについて
+
+このノートブックは、[Llamex: Elixir 製 LLM 推論エンジンの中身を覗く](llamex_minimal_engine_tour.livemd) の続編です。
+
+Llamex には、異なる方向へ発展させた実験的な派生バージョンが公開されています。
+
+| バージョン | リポジトリ | フォーカス |
+|---|---|---|
+| 通常版（前作で使用） | [piacerex/llamex](https://github.com/piacerex/llamex) | 最小構成の推論エンジン |
+| Sol 版 | [piacerex/llamex-gpt-5.6-sol-medium](https://github.com/piacerex/llamex-gpt-5.6-sol-medium) | 圧縮量子化テンソルの直接実行・GGUF 検証タスク |
+| **Luna 版（このノートブック）** | [piacerex/llamex-gpt-5.6-luna-xhigh](https://github.com/piacerex/llamex-gpt-5.6-luna-xhigh) | **組込向け AtomVM 化** |
+
+Luna 版のテーマは、**LLM 推論エンジンをマイコン級の環境へ持ち込むための「ポータブル境界」の設計**です。このノートブックでは次を確認します。
+
+1. AtomVM とは何か、なぜ Elixir の LLM エンジンと相性が良いのか
+2. **Nx を一切インストールせずに** Llamex が動くことの確認
+3. `Llamex.Backend.AtomVM` — 依存ゼロを明示する境界バックエンド
+4. `Llamex.Portable` ファサードで GGUF モデルを動かす
+5. AtomVM 実機に載せる前の疎通コード（smoke）
+6. モジュールフットプリントの計測 — AVM バンドルに何が入るか
+7. PackBEAM で `.avm` を作る手順と、組込で効く制約
+
+<!-- livebook:{"break_markdown":true} -->
+
+### 実行前の注意
+
+Luna 版は **Elixir 1.19 以上**を要求します（`mix.exs` の `elixir: "~> 1.19"`）。`System.version()` で確認し、古い場合は Livebook 本体を更新してください。
+
+Hex には公開されていないため、GitHub から直接取得します。
+
+また、このノートブックは**意図的に Nx をインストールしません**。それでも LLM の推論が最後まで動くことが、Luna 版の主題そのものだからです。
+
+## 準備
+
+```elixir
+Kino.DataTable.new([
+  %{項目: "Elixir", 値: System.version()},
+  %{項目: "Llamex", 値: to_string(Application.spec(:llamex, :vsn))},
+  %{項目: "Nx はインストールされているか", 値: inspect(Code.ensure_loaded?(Nx))}
+])
+```
+
+`Nx はインストールされているか` が `false` になっています。前作では `{:nx, "~> 0.12.1"}` を必ず入れていましたが、今回は入れていません。この状態で最後まで進みます。
+
+```elixir
+defmodule LlamexLuna.Visuals do
+  # カテゴリごとの大きさを比べる棒グラフ
+  def bar_chart(rows, title, x_field, y_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 640)
+    height = Keyword.get(opts, :height, 300)
+
+    VegaLite.new(width: width, height: height, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:bar, tooltip: true)
+    |> VegaLite.encode_field(:x, Atom.to_string(x_field),
+      type: :nominal,
+      title: Atom.to_string(x_field),
+      sort: "-y"
+    )
+    |> VegaLite.encode_field(:y, Atom.to_string(y_field),
+      type: :quantitative,
+      title: Atom.to_string(y_field)
+    )
+    |> Kino.VegaLite.new()
+  end
+end
+```
+
+## 1. AtomVM とは何か
+
+[AtomVM](https://www.atomvm.net/) は、**マイコン（ESP32・STM32・Raspberry Pi Pico など）の上で動く小さな Erlang VM** です。通常の BEAM（Erlang/OTP の VM）はサーバー向けで数十 MB のメモリを前提としますが、AtomVM は数百 KB 級の RAM でも動くように、機能を大胆に絞り込んでいます。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  subgraph BEAM["通常の BEAM（サーバー・PC）"]
+    B1["OTP の全ライブラリ"]
+    B2["NIF（C 拡張）: Nx / EXLA など"]
+    B3["数十MB〜のメモリ"]
+  end
+
+  subgraph AtomVM["AtomVM（マイコン）"]
+    A1["言語コアと最小限の標準モジュール"]
+    A2["NIF はファームウェアに焼き込んだものだけ"]
+    A3["数百KB〜数MBのメモリ"]
+  end
+
+  SRC["同じ Elixir ソースコード"] --> BEAM
+  SRC --> AtomVM
+""")
+```
+
+制約は主に3つです。
+
+| 制約 | 内容 | Llamex への影響 |
+|---|---|---|
+| ライブラリ | OTP の全モジュールは使えない。`.avm` バンドルに入れたモジュールだけが存在する | 依存ライブラリを持ち込めない（Nx は論外） |
+| NIF | C で書かれた拡張は、AtomVM 本体をビルドし直さないと追加できない | 数値計算はすべて純 Elixir で書く必要がある |
+| メモリ | ESP32 で数百 KB 〜 数 MB | モデルサイズそのものが最大の制約になる |
+
+前作で見た通り、Llamex の `Backend.List` は**リスト演算だけの純 Elixir 実装**でした。つまり Llamex は最初から「AtomVM でも動く数値計算」を持っています。Luna 版は、それを**確実にバンドルへ切り出すための仕組み**を追加したフォークです。
+
+## 2. Nx なしでも動く、を確かめる
+
+まず前提を数値で確認します。Llamex のソースコードには `Llamex.Backend.Nx` のような Nx を呼ぶモジュールが**含まれています**。それなのに、なぜ Nx なしでコンパイル・実行できるのでしょうか。
+
+```elixir
+Kino.DataTable.new([
+  %{
+    確認: "Nx モジュールは存在するか",
+    結果: inspect(Code.ensure_loaded?(Nx))
+  },
+  %{
+    確認: "Llamex.Backend.Nx モジュールは存在するか",
+    結果: inspect(Code.ensure_loaded?(Llamex.Backend.Nx))
+  },
+  %{
+    確認: "Llamex.Backend.List モジュールは存在するか",
+    結果: inspect(Code.ensure_loaded?(Llamex.Backend.List))
+  },
+  %{
+    確認: "Llamex.Backend.AtomVM モジュールは存在するか",
+    結果: inspect(Code.ensure_loaded?(Llamex.Backend.AtomVM))
+  }
+])
+```
+
+`Llamex.Backend.Nx` というモジュール自体はコンパイルされています。Elixir では、**他モジュールへの呼び出しは実行時に解決される**ため、「Nx を呼ぶコードが存在する」ことと「Nx が必要」なことは別なのです。実際に呼ぶとどうなるか試します。
+
+```elixir
+try do
+  Llamex.Backend.Nx.from_list([1.0, 2.0])
+rescue
+  error -> "実行時エラー: #{inspect(error.__struct__)} — #{Exception.message(error)}"
+end
+```
+
+Nx バックエンドは**実行した瞬間に**失敗します。逆に言えば、実行しなければ害はありません。ただし AtomVM では話が変わります。バンドルに `Llamex.Backend.Nx` を入れても動かないだけでなく、**入れること自体がフラッシュ容量の無駄**になります。だから「どのモジュールを持ち込むか」の境界線が重要になります。
+
+### mix.exs のポータブルビルド
+
+Luna 版の `mix.exs` には、依存そのものを消すスイッチがあります。
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+defp deps do
+  if portable_build?() do
+    []
+  else
+    [
+      {:nx, "~> 0.12.1", optional: true},
+      {:exla, "~> 0.12.0", optional: true}
+    ]
+  end
+end
+
+defp portable_build?,
+  do: Mix.env() == :atomvm or System.get_env("LLAMEX_PORTABLE") in ["1", "true"]
+```
+
+`MIX_ENV=atomvm` または `LLAMEX_PORTABLE=1` でビルドすると、**依存リストが空**になります。optional 依存を「入れないこともできる」ではなく「入りようがない」状態にする、組込向けの割り切りです。
+
+なお、この Livebook で Nx が入っていないのは `Mix.install` の仕様によるものです。依存パッケージの optional 依存は、自分で明示しない限りインストールされません。
+
+## 3. Llamex.Backend.AtomVM — 境界としてのバックエンド
+
+Luna 版の中心となる追加が `Llamex.Backend.AtomVM` です。まず能力を見ます。
+
+```elixir
+Llamex.Backend.AtomVM.capabilities()
+```
+
+`dependencies: []` と `portable: true` が宣言されています。では、このバックエンドは独自の数値計算を持っているのでしょうか。ソースコードを見ると、答えは「いいえ」です。
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+defmodule Llamex.Backend.AtomVM do
+  @moduledoc "Explicit dependency-free backend entry point for AtomVM bundles."
+  @behaviour Llamex.Backend
+
+  alias Llamex.Backend.List
+
+  @impl true
+  defdelegate dot(left, right), to: List
+
+  @impl true
+  defdelegate matvec(rows, vector), to: List
+
+  @impl true
+  defdelegate rms_norm(input, weight, epsilon), to: List
+
+  # ... 全 20 個の演算をすべて List へ defdelegate ...
+end
+```
+
+**すべての演算を `Llamex.Backend.List` へ委譲するだけ**のモジュールです。実際に同じ値を返すことを確かめます。
+
+```elixir
+vector_a = [1.0, 2.0, 3.0, 4.0]
+vector_b = [0.5, -1.0, 2.0, 0.0]
+norm_weight = [1.0, 1.0, 1.0, 1.0]
+
+Kino.DataTable.new([
+  %{
+    演算: "dot",
+    AtomVM: inspect(Llamex.Backend.AtomVM.dot(vector_a, vector_b)),
+    List: inspect(Llamex.Backend.List.dot(vector_a, vector_b))
+  },
+  %{
+    演算: "rms_norm（先頭2要素）",
+    AtomVM:
+      inspect(
+        Llamex.Backend.AtomVM.rms_norm(vector_a, norm_weight, 1.0e-6)
+        |> Enum.take(2)
+        |> Enum.map(&Float.round(&1, 4))
+      ),
+    List:
+      inspect(
+        Llamex.Backend.List.rms_norm(vector_a, norm_weight, 1.0e-6)
+        |> Enum.take(2)
+        |> Enum.map(&Float.round(&1, 4))
+      )
+  },
+  %{
+    演算: "silu_multiply",
+    AtomVM:
+      inspect(
+        Llamex.Backend.AtomVM.silu_multiply([1.0, -1.0], [1.0, 1.0])
+        |> Enum.map(&Float.round(&1, 4))
+      ),
+    List:
+      inspect(
+        Llamex.Backend.List.silu_multiply([1.0, -1.0], [1.0, 1.0])
+        |> Enum.map(&Float.round(&1, 4))
+      )
+  }
+])
+```
+
+計算がまったく同じなら、なぜわざわざ別モジュールを作るのでしょうか。
+
+答えは**バンドルの入口を1つに固定するため**です。AtomVM の `.avm` バンドルは「エントリモジュールから到達可能なモジュール」を選んで詰めます。`Llamex.Backend.AtomVM` という明示的な入口があれば、
+
+* アプリは常にこのモジュールだけを参照する
+* そこから届く先は `Backend.List` と純 Elixir のレイヤー実装だけ
+* 将来 `Backend.List` の中身が変わっても、AtomVM 向けの契約（依存ゼロ）はこのモジュールが守る
+
+という「ポータブル境界」が生まれます。委譲だけのモジュールは無駄ではなく、**制約を型ではなくモジュール構造で表現している**わけです。
+
+## 4. Llamex.Portable — 組込向けファサード
+
+もう1つの追加が `Llamex.Portable` です。ロードから生成まで、AtomVM バックエンドを既定にした入口をまとめています。
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+defmodule Llamex.Portable do
+  @moduledoc "AtomVM-oriented loading and generation facade."
+
+  def load(path, opts \\ []) do
+    model = Llamex.GGUF.ModelLoader.load(path, opts)
+    Llamex.prepare_model(model, Llamex.Backend.AtomVM)
+  end
+
+  def generate(%Model{} = model, prompt, opts) do
+    Llamex.generate(model, prompt, Map.put(opts, :backend, Llamex.Backend.AtomVM))
+  end
+  # ... stream / generate_chat / stream_chat も同様 ...
+end
+```
+
+前作と同じ `stories260K.gguf`（約 1.1MB の Llama モデル）で動かします。ついでに、組込で最重要となる**メモリ消費**も測ります。
+
+```elixir
+models_dir = Path.join(System.tmp_dir!(), "llamex_models")
+File.mkdir_p!(models_dir)
+
+model_path = Path.join(models_dir, "stories260K.gguf")
+
+unless File.exists?(model_path) do
+  Req.get!(
+    "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf",
+    into: File.stream!(model_path),
+    redirect: true
+  )
+end
+
+memory_before_mb = :erlang.memory(:total) / 1_048_576
+
+{load_microseconds, prepared} = :timer.tc(fn -> Llamex.Portable.load(model_path) end)
+
+memory_after_mb = :erlang.memory(:total) / 1_048_576
+
+Kino.DataTable.new([
+  %{項目: "読み込み時間", 値: "#{Float.round(load_microseconds / 1_000_000, 2)} 秒"},
+  %{項目: "バックエンド", 値: inspect(prepared.backend)},
+  %{項目: "GGUF ファイルサイズ", 値: "#{Float.round(File.stat!(model_path).size / 1_048_576, 2)} MB"},
+  %{項目: "読み込み前の BEAM メモリ", 値: "#{Float.round(memory_before_mb, 1)} MB"},
+  %{項目: "読み込み後の BEAM メモリ", 値: "#{Float.round(memory_after_mb, 1)} MB"},
+  %{項目: "増加分", 値: "#{Float.round(memory_after_mb - memory_before_mb, 1)} MB"}
+])
+```
+
+生成も前作と同じ API（map オプション）で動きます。
+
+```elixir
+{generate_microseconds, result} =
+  :timer.tc(fn ->
+    Llamex.Portable.generate(prepared, "Once upon a time", %{
+      max_new_tokens: 10,
+      sampler: :greedy
+    })
+  end)
+
+Kino.DataTable.new([
+  %{項目: "生成時間", 値: "#{Float.round(generate_microseconds / 1_000_000, 2)} 秒"},
+  %{項目: "生成結果", 値: result.text},
+  %{項目: "終了理由", 値: inspect(result.finish_reason)}
+])
+```
+
+前作の通常版（`Backend.List`）とまったく同じ `, there was a little gothip` が生成されるはずです。委譲バックエンドなので当然ですが、**「サーバーで動かしたものと同じ計算がマイコン側でも走る」ことをコードの構造が保証している**のが重要な点です。
+
+ストリーミングも同様に使えます。
+
+```elixir
+prepared
+|> Llamex.Portable.stream("Once upon a time", %{max_new_tokens: 6, sampler: :greedy})
+|> Enum.map(& &1.text)
+```
+
+## 5. AtomVM 実機へ載せる前の疎通コード
+
+Luna 版のリポジトリには `examples/atomvm_smoke.ex` という、実機で最初に動かす疎通コードが入っています。GGUF もトークナイザーも使わず、**手作りの語彙3・埋め込み2次元のモデルで「1トークン推論が通るか」だけ**を見る最小構成です。
+
+同じことを Livebook 上で再現します。
+
+```elixir
+tiny_model =
+  Llamex.new_model(%{
+    config: %{vocab_size: 3, embedding_size: 2},
+    token_embeddings: %{
+      0 => [1.0, 0.0],
+      1 => [0.0, 1.0],
+      2 => [0.8, 0.2]
+    }
+  })
+
+prepared_tiny = Llamex.prepare_model(tiny_model, Llamex.Backend.AtomVM)
+context = Llamex.new_context(prepared_tiny)
+
+{context_after, next_token} = Llamex.next_token(context, 0)
+
+Kino.DataTable.new([
+  %{項目: "コンテキストのバックエンド", 値: inspect(context_after.backend)},
+  %{項目: "トークン 0 の次の予測", 値: inspect(next_token)},
+  %{
+    項目: "判定",
+    値:
+      if(context_after.backend == Llamex.Backend.AtomVM and next_token == 0,
+        do: "AtomVM smoke passed",
+        else: "unexpected result"
+      )
+  }
+])
+```
+
+出力層がないので、ロジットは埋め込み同士の内積です（前作の第2節と同じ理屈）。トークン 0 の埋め込み `[1.0, 0.0]` と最も内積が大きいのは自分自身なので、予測は `0` になります。
+
+たった数十行ですが、これが通れば「アテンション・RoPE・RMS 正規化・KV キャッシュ・argmax がすべて実機の AtomVM 上で計算できた」ことになります。疎通コードとして必要十分です。
+
+## 6. モジュールフットプリント — バンドルに何が入るか
+
+組込では「コードが何 KB あるか」が直接フラッシュ容量に効きます。コンパイル済みの Llamex が何モジュール・何 KB あるか数えてみます。
+
+```elixir
+ebin_dir = Llamex |> :code.which() |> List.to_string() |> Path.dirname()
+
+beam_files =
+  ebin_dir
+  |> File.ls!()
+  |> Enum.filter(&String.ends_with?(&1, ".beam"))
+  |> Enum.map(fn file ->
+    %{
+      モジュール: file |> String.replace_prefix("Elixir.", "") |> String.replace_suffix(".beam", ""),
+      KB: Float.round(File.stat!(Path.join(ebin_dir, file)).size / 1024, 1)
+    }
+  end)
+  |> Enum.sort_by(& &1[:KB], :desc)
+
+total_kb = beam_files |> Enum.map(& &1[:KB]) |> Enum.sum() |> Float.round(1)
+
+Kino.DataTable.new([
+  %{項目: "コンパイル済みモジュール数", 値: length(beam_files)},
+  %{項目: "合計サイズ", 値: "#{total_kb} KB"}
+])
+```
+
+```elixir
+LlamexLuna.Visuals.bar_chart(
+  Enum.take(beam_files, 10),
+  "サイズの大きい .beam モジュール（上位10件）",
+  :モジュール,
+  :KB
+)
+```
+
+1 MB 弱に全推論エンジンが収まっています。ただし、この中には AtomVM バンドルに**入れてはいけない**ものも混ざっています。
+
+```elixir
+excluded = Enum.filter(beam_files, &String.contains?(&1.モジュール, ["Backend.Nx", "Mix.Tasks"]))
+excluded_kb = excluded |> Enum.map(& &1[:KB]) |> Enum.sum() |> Float.round(1)
+
+Kino.DataTable.new(
+  excluded ++
+    [%{モジュール: "（合計 — バンドルから除外すべき分）", KB: excluded_kb}],
+  keys: [:モジュール, :KB]
+)
+```
+
+`Backend.Nx` / `Backend.NxEXLA` は実行時に Nx を要求するため AtomVM では動かず、`Mix.Tasks.*` は Mix 自体が存在しないため不要です。この選別を人手でやるとミスが出ます。次の節の `--prune` がそれを自動化します。
+
+## 7. .avm バンドルを作る — mix llamex.atomvm.smoke の中身
+
+Luna 版には、generic UNIX 向け AtomVM で疎通を自動実行する Mix タスクが用意されています。Livebook からは AtomVM 本体が必要なため実行しませんが、中身を追うとバンドル作成の全手順が分かります。
+
+<!-- livebook:{"force_markdown":true} -->
+
+```bash
+mix llamex.atomvm.smoke \
+  --atomvm /path/to/atomvm \
+  --packbeam /path/to/packbeam \
+  --atomvm-lib /path/to/atomvmlib.avm
+```
+
+タスクの内部で起きることは3段階です。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  A["1. elixirc で examples/atomvm_smoke.ex をコンパイル"] --> B["2. packbeam create --prune --start EntryModule"]
+  B --> C["3. atomvm bundle.avm atomvmlib.avm で実行"]
+
+  B -.-> D["--prune: エントリモジュールから到達可能な<br/>モジュールだけを .avm に残す"]
+  B -.-> E["Backend.Nx や Mix.Tasks は<br/>エントリから参照されないので自動的に落ちる"]
+""")
+```
+
+実際のコマンド列は次の通りです（Mix タスクのソースから抜粋）。
+
+<!-- livebook:{"force_markdown":true} -->
+
+```bash
+# 1. サンプルをコンパイル（llamex 本体の ebin をパスに含める）
+elixirc -pa _build/dev/lib/llamex/ebin -o workspace examples/atomvm_smoke.ex
+
+# 2. PackBEAM で .avm を作る。--prune が到達可能モジュールだけを選別する
+packbeam create --prune \
+  --start Elixir.Llamex.Examples.AtomVMSmoke \
+  llamex_atomvm_smoke.avm \
+  workspace/Elixir.Llamex.Examples.AtomVMSmoke.beam _build/dev/lib/llamex/ebin/*.beam
+
+# 3. AtomVM で実行（標準ライブラリの avm と一緒に）
+atomvm llamex_atomvm_smoke.avm atomvmlib.avm
+```
+
+ポイントは2つです。
+
+* **`--prune`** — エントリモジュール（`start/0` を持つ）から参照をたどり、届くモジュールだけを残します。第3節で見た「AtomVM バックエンドは List だけを参照する」という設計が、ここで効きます。エントリが `Llamex.Backend.AtomVM` 経由で推論する限り、Nx 系モジュールは自動的にバンドルから落ちます
+* **`atomvmlib.avm` のビルド一致** — AtomVM の標準ライブラリは、実行する AtomVM 本体と同じビルドのものが必要です。リポジトリの README によると、この smoke は AtomVM 0.8.0-dev + OTP 28 + Elixir 1.19 の組み合わせで検証されています
+
+ESP32 などの実機に載せる場合も原理は同じで、`.avm` をフラッシュへ書き込む手順が加わるだけです。
+
+## 8. 組込で効く現実的な制約
+
+第4節の計測を組込の視点で読み直します。
+
+| 項目 | 計測値 | ESP32（RAM 520KB + 外部 PSRAM 数MB）で考えると |
+|---|---|---|
+| GGUF ファイル | 約 1.1 MB | フラッシュには載る |
+| 読み込み後のメモリ増加 | 約 20 MB | **PSRAM があっても厳しい** |
+| コード（.avm 相当） | 1 MB 弱（prune 前） | 問題ない |
+
+増加分が約 20 倍に膨らむのは、Llamex がテンソルを **Elixir のリスト**として保持するためです。26 万パラメータでもこの規模なので、GGUF をそのまま読む使い方は、マイコンでは現実的ではありません。
+
+つまり Luna 版の現在地は、
+
+* **動くこと・境界が保たれることの検証**（smoke・prune・依存ゼロビルド）が完成している段階
+* 実用的なモデルを載せるには、第5節のような**極小の手作りモデル**か、量子化ペイロードを展開せずに使う工夫（これは Sol 版のテーマ）が必要
+
+という整理になります。「まず正しさとポータビリティの土台を固め、性能・容量の最適化は別トラックで進める」という開発方針が、フォークの分かれ方そのものに表れています。
+
+## 9. まとめ
+
+### このノートブックで見たこと
+
+* AtomVM はマイコンで動く小さな Erlang VM。ライブラリ・NIF・メモリの3つの制約がある
+* Luna 版は **Nx を一切入れずに** コンパイル・実行できる。optional 依存 + `MIX_ENV=atomvm` で依存リスト自体を空にできる
+* `Llamex.Backend.AtomVM` は全演算を `Backend.List` へ委譲するだけのモジュール。計算のためではなく、**バンドルの入口を固定するポータブル境界**として存在する
+* `Llamex.Portable` ファサードで、通常版と同じ GGUF・同じ生成結果を AtomVM バックエンドで再現できる
+* `packbeam create --prune` がエントリモジュールからの到達可能性でバンドルを選別し、Nx 系モジュールを自動的に除外する
+* メモリ計測では 1.1MB の GGUF が約 20MB に展開される。実機ではモデル表現の圧縮が次の課題になる
+
+<!-- livebook:{"break_markdown":true} -->
+
+### シリーズの他のノートブック
+
+| ノートブック | 内容 |
+|---|---|
+| [Llamex: Elixir 製 LLM 推論エンジンの中身を覗く](llamex_minimal_engine_tour.livemd) | 通常版の全体ツアー（前作） |
+| [Llamex Sol版: 圧縮量子化テンソルと GGUF 検証](llamex_sol_compact_quantization.livemd) | 量子化ペイロードを展開せずに実行する仕組み |
+
+* Luna 版リポジトリ: https://github.com/piacerex/llamex-gpt-5.6-luna-xhigh
+* AtomVM: https://www.atomvm.net/
