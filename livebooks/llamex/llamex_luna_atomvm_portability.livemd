@@ -259,11 +259,23 @@ Kino.DataTable.new([
 * そこから届く先は `Backend.List` と純 Elixir のレイヤー実装だけ
 * 将来 `Backend.List` の中身が変わっても、AtomVM 向けの契約（依存ゼロ）はこのモジュールが守る
 
-という「ポータブル境界」が生まれます。委譲だけのモジュールは無駄ではなく、**制約を型ではなくモジュール構造で表現している**わけです。
+という「ポータブル境界」が生まれます。図にするとこうです。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart LR
+  APP["アプリ<br/>（エントリモジュール）"] --> AVM["Llamex.Backend.AtomVM<br/>= ポータブル境界"]
+  AVM --> LIST["Llamex.Backend.List<br/>（純 Elixir 演算）"]
+  LIST --> LAYERS["レイヤー実装<br/>RMS 正規化 / RoPE / アテンション"]
+  NX["Llamex.Backend.Nx / NxEXLA"] -.->|"エントリから参照されないので<br/>バンドル作成時に自動で落ちる"| DROP["バンドルに入らない"]
+""")
+```
+
+矢印でつながっている左側のルートだけがバンドルに入り、Nx 系はどこからも参照されないので自然に外れます。委譲だけのモジュールは無駄ではなく、**制約を型ではなくモジュール構造で表現している**わけです。
 
 ## 4. Llamex.Portable — 組込向けファサード
 
-もう1つの追加が `Llamex.Portable` です。ロードから生成まで、AtomVM バックエンドを既定にした入口をまとめています。
+もう1つの追加が `Llamex.Portable` です。ファサード（facade）とは「複数のモジュールに分かれた手順を、1つの窓口にまとめるモジュール」のことで、ここではロードから生成まで、AtomVM バックエンドを既定にした入口をまとめています。
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -314,6 +326,25 @@ Kino.DataTable.new([
   %{項目: "増加分", 値: "#{Float.round(memory_after_mb - memory_before_mb, 1)} MB"}
 ])
 ```
+
+ファイルサイズとメモリ増加分を並べて描くと、組込向けの課題が先に見えてきます。
+
+```elixir
+file_mb = Float.round(File.stat!(model_path).size / 1_048_576, 2)
+delta_mb = Float.round(memory_after_mb - memory_before_mb, 1)
+
+LlamexLuna.Visuals.bar_chart(
+  [
+    %{項目: "GGUF ファイル", MB: file_mb},
+    %{項目: "読み込み後のメモリ増加", MB: delta_mb}
+  ],
+  "1.1MB のモデルが、メモリ上では約20倍に膨らむ",
+  :項目,
+  :MB
+)
+```
+
+膨らむ理由は、重みをバイナリのまま持たず **Elixir のリスト（1 要素あたり数十バイトかかる）に展開する**ためです。この問題への対処が Sol 版のテーマ（compact 保持）で、組込視点での整理は第8節で改めて行います。
 
 生成も前作と同じ API（map オプション）で動きます。
 

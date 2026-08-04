@@ -27,13 +27,14 @@ Llamex には、異なる方向へ発展させた実験的な派生バージョ�
 
 Sol 版の中心は、まさにこの問題への回答です。**量子化されたバイナリを展開せずそのまま保持し（compact）、計算のたびに必要なブロックだけを復元する**仕組みが入っています。このノートブックでは次を確認します。
 
-1. Q4_0 / Q8_0 量子化ブロックの中身（バイト単位で手作りする）
-2. `Llamex.CompactTensor` — 展開しないテンソルの契約
-3. 展開せずに行列×ベクトルを計算する仕組み
-4. バックエンド契約 — `direct` と `blockwise_compact` という2つの実行経路
-5. GGUF 検証ツール群（`mix llamex.gguf.inspect` など）の中身
-6. **前作の宿題だった 15M モデルを実際に動かす**
-7. `{:ok, _}` タプルベースに刷新された新 API
+1. 量子化の考え方 — 実数を「スケール × 整数」で近似する仕組みをグラフで見る
+2. Q4_0 / Q8_0 量子化ブロックの中身（バイト単位で手作りする）
+3. `Llamex.CompactTensor` — 展開しないテンソルの契約
+4. 展開せずに行列×ベクトルを計算する仕組み
+5. バックエンド契約 — `direct` と `blockwise_compact` という2つの実行経路
+6. GGUF 検証ツール群（`mix llamex.gguf.inspect` など）の中身
+7. **前作の宿題だった 15M モデルを実際に動かす**
+8. `{:ok, _}` タプルベースに刷新された新 API
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -41,7 +42,7 @@ Sol 版の中心は、まさにこの問題への回答です。**量子化さ�
 
 Sol 版の Elixir 要件は `>= 1.15` に緩和されています（通常版は 1.19 以上でした）。Hex には公開されていないため、GitHub から直接取得します。
 
-第6節以降で 19MB のモデルをダウンロードし、第7節には**数十秒〜1分程度かかるセル**があります。
+第7節以降で 19MB のモデルをダウンロードし、第8節には**数十秒〜1分程度かかるセル**があります。
 
 ## 準備
 
@@ -60,15 +61,17 @@ defmodule LlamexSol.Visuals do
     width = Keyword.get(opts, :width, 640)
     height = Keyword.get(opts, :height, 300)
     color_field = Keyword.get(opts, :color_field)
+    x_sort = Keyword.get(opts, :x_sort)
+
+    x_opts =
+      [type: :nominal, title: Atom.to_string(x_field)] ++
+        if(x_sort, do: [sort: x_sort], else: [])
 
     chart =
       VegaLite.new(width: width, height: height, title: title)
       |> VegaLite.data_from_values(rows)
       |> VegaLite.mark(:bar, tooltip: true)
-      |> VegaLite.encode_field(:x, Atom.to_string(x_field),
-        type: :nominal,
-        title: Atom.to_string(x_field)
-      )
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field), x_opts)
       |> VegaLite.encode_field(:y, Atom.to_string(y_field),
         type: :quantitative,
         title: Atom.to_string(y_field)
@@ -85,10 +88,183 @@ defmodule LlamexSol.Visuals do
 
     Kino.VegaLite.new(chart)
   end
+
+  # 系列を色分けした折れ線グラフ
+  def line_chart(rows, title, x_field, y_field, color_field, opts \\ []) do
+    width = Keyword.get(opts, :width, 640)
+    height = Keyword.get(opts, :height, 300)
+    point = Keyword.get(opts, :point, true)
+
+    VegaLite.new(width: width, height: height, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:line, point: point, tooltip: true)
+    |> VegaLite.encode_field(:x, Atom.to_string(x_field),
+      type: :quantitative,
+      title: Atom.to_string(x_field)
+    )
+    |> VegaLite.encode_field(:y, Atom.to_string(y_field),
+      type: :quantitative,
+      title: Atom.to_string(y_field)
+    )
+    |> VegaLite.encode_field(:color, Atom.to_string(color_field), type: :nominal)
+    |> Kino.VegaLite.new()
+  end
+
+  # バイト列のレイアウトを1バイト=1タイルで描く
+  def byte_layout(rows, title) do
+    VegaLite.new(width: 680, height: 120, title: title)
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:rect, tooltip: true, stroke: "white", stroke_width: 1)
+    |> VegaLite.encode_field(:x, "バイト位置", type: :ordinal)
+    |> VegaLite.encode_field(:y, "ブロック", type: :nominal, title: nil)
+    |> VegaLite.encode_field(:color, "役割", type: :nominal)
+    |> Kino.VegaLite.new()
+  end
 end
 ```
 
-## 1. 量子化ブロックの解剖
+## 1. 量子化とは — 実数を「スケール × 整数」で近似する
+
+まず「なぜ量子化するのか」からです。前作で動かした 260K モデルの GGUF はわずか 1.1MB でしたが、実用的な LLM は桁違いに大きく、例えば 70 億（7B）パラメータのモデルを F32 のまま保存すると 28GB になります。重み 1 個あたりのビット数を減らせば、容量はそれに比例して縮みます。
+
+```elixir
+params_7b = 7_000_000_000
+
+sizes =
+  [
+    {"F32", 32},
+    {"F16", 16},
+    {"Q8_0", 8.5},
+    {"Q4_0", 4.5}
+  ]
+  |> Enum.map(fn {label, bits} ->
+    %{形式: "#{label}（#{bits}ビット）", GB: Float.round(params_7b * bits / 8 / 1.0e9, 1)}
+  end)
+
+LlamexSol.Visuals.bar_chart(
+  sizes,
+  "7B パラメータのモデルに必要な容量 — ビット数に比例して縮む",
+  :形式,
+  :GB,
+  x_sort: Enum.map(sizes, & &1[:形式])
+)
+```
+
+28GB は一般的な PC のメモリに載りませんが、Q4_0 の約 3.9GB なら載ります。**モデルが手元で動くかどうか**を左右するのがこの差です。ダウンロードした GGUF のファイル名に `q4_0` や `q8_0` と付いているのは、この量子化方式の名前です。
+
+では、その中身に入ります。量子化（quantization）は、32 ビット浮動小数点数（F32）で持っていた重みを、**もっと少ないビット数の整数**に置き換える圧縮手法です。仕組みは1行で書けます。
+
+> 復元値 = スケール × 整数の量子値
+
+グループ内で一番大きい絶対値が整数の上限（int8 なら 127、4bit なら 7）にちょうど収まるようにスケールを決め、各値を「スケール何個分か」に丸めます。式だけでは掴みにくいので、実際にやってみましょう。なだらかな波を描く 32 個の F32 値を量子化します。
+
+```elixir
+original = Enum.map(0..31, fn i -> Float.round(4.0 * :math.sin(i / 4.0), 4) end)
+
+# levels_max: 整数側の最大値（int8 は 127、4bit の符号付き相当は 7）
+quantize = fn values, levels_max ->
+  max_abs = values |> Enum.map(&abs/1) |> Enum.max()
+  scale = max_abs / levels_max
+  quantized = Enum.map(values, &round(&1 / scale))
+  restored = Enum.map(quantized, &(&1 * scale))
+  %{scale: scale, quantized: quantized, restored: restored}
+end
+
+q8 = quantize.(original, 127)
+q4 = quantize.(original, 7)
+
+Kino.DataTable.new([
+  %{方式: "Q8_0 相当（int8）", スケール: Float.round(q8.scale, 5), 量子値の範囲: "-127 〜 127"},
+  %{方式: "Q4_0 相当（4bit）", スケール: Float.round(q4.scale, 5), 量子値の範囲: "-7 〜 7"}
+])
+```
+
+元の値と、量子化してから復元した値を重ねて描きます。
+
+```elixir
+wave_rows =
+  original
+  |> Enum.with_index()
+  |> Enum.flat_map(fn {value, index} ->
+    [
+      %{位置: index, 値: value, 系列: "元の値（F32）"},
+      %{位置: index, 値: Float.round(Enum.at(q8.restored, index), 4), 系列: "Q8_0 相当の復元値"},
+      %{位置: index, 値: Float.round(Enum.at(q4.restored, index), 4), 系列: "Q4_0 相当の復元値"}
+    ]
+  end)
+
+LlamexSol.Visuals.line_chart(
+  wave_rows,
+  "量子化してから復元しても、波の形はほぼ保たれる",
+  :位置,
+  :値,
+  :系列
+)
+```
+
+Q8_0 相当（256 段階）は元の線とほぼ重なり、Q4_0 相当（15 段階）はところどころ段差が見えます。誤差だけを取り出して比べると、ビット数と精度のトレードオフがはっきりします。
+
+```elixir
+error_rows =
+  original
+  |> Enum.with_index()
+  |> Enum.flat_map(fn {value, index} ->
+    [
+      %{
+        位置: index,
+        誤差: Float.round(abs(Enum.at(q8.restored, index) - value), 4),
+        系列: "Q8_0 相当"
+      },
+      %{
+        位置: index,
+        誤差: Float.round(abs(Enum.at(q4.restored, index) - value), 4),
+        系列: "Q4_0 相当"
+      }
+    ]
+  end)
+
+LlamexSol.Visuals.line_chart(
+  error_rows,
+  "復元誤差の比較 — ビット数を削るほど誤差が増える",
+  :位置,
+  :誤差,
+  :系列
+)
+```
+
+誤差の上限は「スケールの半分」です。Q4_0 相当はスケールが大きい（目盛りが粗い）ので、誤差もそのぶん大きくなります。
+
+なぜ誤差が出るのかは、「入力の実数 → 復元値」の対応を描くと一目で分かります。量子化は、連続な実数を**とびとびの段**に丸める操作です。
+
+```elixir
+stair_rows =
+  Enum.flat_map(-40..40, fn i ->
+    x = i / 10
+    [
+      %{入力: x, 復元値: x, 系列: "F32（そのまま）"},
+      %{
+        入力: x,
+        復元値: Float.round(round(x / q4.scale) * q4.scale, 4),
+        系列: "Q4_0 相当（15段の階段）"
+      }
+    ]
+  end)
+
+LlamexSol.Visuals.line_chart(
+  stair_rows,
+  "量子化は実数を階段状に丸める",
+  :入力,
+  :復元値,
+  :系列,
+  point: false
+)
+```
+
+斜めの直線（F32）に対して、Q4_0 相当は 15 段の階段です。階段の上に乗っている値はそのまま復元されますが、段と段の間の値は近い段へ丸められます。これが量子化誤差の正体です。
+
+実際の GGUF では、この「グループごとにスケールを決めて丸める」操作を **32 個ずつのブロック単位**で行います。テンソル全体で1つのスケールを使うと外れ値に引きずられて目盛りが粗くなりますが、32 個ごとにスケールを持てば、目盛りが局所的な値の大きさに寄り添うので誤差を抑えられます。
+
+## 2. 量子化ブロックの解剖
 
 前作で触れた通り、GGUF の量子化は **32 個（K 系は 256 個）の値を1ブロック**にまとめ、ブロックごとに f16 のスケール値と縮めた量子値を持ちます。
 
@@ -125,11 +301,50 @@ end)
 
 F32 は 1 値 32 ビットですが、Q8_0 は 8.5 ビット、Q4_0 は 4.5 ビットです。端数の 0.5 ビットはブロック共有のスケール値の分です。
 
-## 2. CompactTensor を手作りする（Q8_0）
+Q8_0 と Q4_0 の 1 ブロックを 1 バイト＝1 タイルで描くと、構造の単純さが見えます。**どちらも先頭 2 バイトはブロック共有のスケール（f16）**で、残りが量子値です。
+
+```elixir
+layout_rows =
+  Enum.map(0..33, fn i ->
+    %{
+      ブロック: "Q8_0（34バイト = 32値）",
+      バイト位置: i,
+      役割: if(i < 2, do: "スケール（f16）", else: "量子値（1バイトに1値）")
+    }
+  end) ++
+    Enum.map(0..17, fn i ->
+      %{
+        ブロック: "Q4_0（18バイト = 32値）",
+        バイト位置: i,
+        役割: if(i < 2, do: "スケール（f16）", else: "量子値（1バイトに2値）")
+      }
+    end)
+
+LlamexSol.Visuals.byte_layout(layout_rows, "1ブロックのバイトレイアウト — 同じ32個の値がこの長さの差になる")
+```
+
+同じ 32 個の値を、Q8_0 は 34 バイト、Q4_0 は 18 バイトで持ちます。Q4_0 の行が短いのは、1 バイトに 4 ビット値を 2 個詰めているからです。「1 つの値を何ビットで表すか」に換算して並べると、圧縮の度合いが直感的になります。
+
+```elixir
+LlamexSol.Visuals.bar_chart(
+  [
+    %{形式: "F32", "1値あたりビット数": 32.0},
+    %{形式: "Q8_0", "1値あたりビット数": 8.5},
+    %{形式: "Q4_0", "1値あたりビット数": 4.5}
+  ],
+  "1値あたりのビット数 — Q4_0 は F32 の約 1/7",
+  :形式,
+  :"1値あたりビット数"
+)
+```
+
+## 3. CompactTensor を手作りする（Q8_0）
 
 仕組みを本当に理解したか確かめる一番の方法は、**バイナリを自分で組んで、期待通りの計算結果が出るか見る**ことです。
 
-Q8_0 の 1 ブロックは `f16 スケール（2バイト、リトルエンディアン） + int8 の量子値 × 32` です。f16 の `1.0` は `0x3C00`、`0.5` は `0x3800` なので、バイト列は次のように書けます。
+Q8_0 の 1 ブロックは `f16 スケール（2バイト） + int8 の量子値 × 32` です。f16 は **16 ビット（2バイト）の浮動小数点数**で、F32 の半分の精度しかありませんが、スケールはブロック内の 32 値で共有する1個だけなので、この精度で十分という割り切りです。
+
+f16 のビットパターンは規格（IEEE 754 half）で決まっていて、`1.0` は `0x3C00`、`0.5` は `0x3800` です。GGUF は**リトルエンディアン（下位バイトが先に来る並び順）**なので、バイト列は次のように書けます。
 
 ```elixir
 # f16 をリトルエンディアンのバイト列で直書きする
@@ -149,6 +364,8 @@ row_2 = scale_0_5 <> :binary.list_to_bin(List.duplicate(2, 32))
 q8_tensor.type
 ```
 
+確認には行列×ベクトル（matvec）を使います。matvec を選ぶのは、**これが LLM 推論の計算のほぼすべて**だからです。前作で見たアテンションの Q/K/V も FFN も、中身は「重み行列 × ベクトル」でした。つまり量子化テンソルで matvec が正しく動けば、推論全体が動きます。
+
 このテンソルに、要素がすべて `1.0` の32次元ベクトルを掛けます。期待値は手計算できます。
 
 * 1行目: `1.0 + 2.0 + ... + 32.0 = 528.0`
@@ -161,6 +378,31 @@ Llamex.Backend.List.matvec_tensor(q8_tensor, ones)
 ```
 
 `[528.0, 32.0]` — 手で組んだ 68 バイトのバイナリが、正しく行列として振る舞いました。
+
+内積の合計だけでなく、**1 要素ずつの復元値**も取り出して確かめられます。i 番目だけ 1.0 の単位ベクトルを掛ければ、各行の i 番目の復元値がそのまま返ってくるからです。実際のカーネルを通して復元値を描いてみます。
+
+```elixir
+restored_rows =
+  Enum.flat_map(0..31, fn index ->
+    basis = List.duplicate(0.0, 32) |> List.replace_at(index, 1.0)
+    [row1, row2] = Llamex.Backend.List.matvec_tensor(q8_tensor, basis)
+
+    [
+      %{位置: index, 復元値: Float.round(row1, 4), 行: "1行目（スケール1.0 × 量子値1..32）"},
+      %{位置: index, 復元値: Float.round(row2, 4), 行: "2行目（スケール0.5 × 量子値2）"}
+    ]
+  end)
+
+LlamexSol.Visuals.line_chart(
+  restored_rows,
+  "手作り Q8_0 ブロックの復元値 — 狙い通りの斜め線と水平線",
+  :位置,
+  :復元値,
+  :行
+)
+```
+
+1 行目は 1.0〜32.0 の斜め線、2 行目はすべて 1.0 の水平線。第1節の式「復元値 = スケール × 量子値」が、バイナリレベルでその通りに動いていることの確認です。
 
 `CompactTensor.contract/1` を使うと、このテンソルの「契約情報」——F32 に展開した場合との比較——が取れます。
 
@@ -176,11 +418,33 @@ Kino.DataTable.new([
 ])
 ```
 
-## 3. Q4_0 も手作りする
+## 4. Q4_0 も手作りする
 
-Q4_0 は 1 バイトに **4 ビット値を2個**詰めます。復元は `(量子値 - 8) × スケール` で、下位ニブル 16 個 → 上位ニブル 16 個の順に並びます。
+Q4_0 は 1 バイトに **4 ビット値を2個**詰めます。1 バイト（8 ビット）の前半 4 ビットを**上位ニブル**、後半 4 ビットを**下位ニブル**と呼びます（ニブル = 4 ビットのこと）。
 
-全バイトを `0x98` にすると、下位ニブルは `8`（復元値 0）、上位ニブルは `9`（復元値 1）になります。
+4 ビットで表せるのは 0〜15 の 16 通りだけです。負の値も扱えるように真ん中の 8 を「ゼロ」とみなし、復元は `(量子値 - 8) × スケール` で行います。ブロック内の並び順は、下位ニブル 16 個 → 上位ニブル 16 個です。
+
+全バイトを `0x98` にした場合を分解してみます。
+
+```elixir
+byte = 0x98
+low_nibble = rem(byte, 16)
+high_nibble = div(byte, 16)
+
+Kino.DataTable.new([
+  %{項目: "バイト値", 値: "0x98 = 2進数で 1001 1000"},
+  %{
+    項目: "上位ニブル（前半4ビット 1001）",
+    値: "量子値 #{high_nibble} → 復元値 (#{high_nibble} - 8) × 1.0 = 1.0"
+  },
+  %{
+    項目: "下位ニブル（後半4ビット 1000）",
+    値: "量子値 #{low_nibble} → 復元値 (#{low_nibble} - 8) × 1.0 = 0.0"
+  }
+])
+```
+
+つまり 0x98 を 16 バイト並べると、復元値は「0.0 が 16 個（下位ニブル分）、1.0 が 16 個（上位ニブル分）」になります。
 
 ```elixir
 # スケール1.0 + 0x98 × 16バイト = 18バイトで1ブロック
@@ -212,9 +476,24 @@ end)
 |> Kino.DataTable.new(keys: [:テンソル, :圧縮バイト, :展開後バイト, :展開倍率])
 ```
 
-## 4. 展開せずに計算する仕組み
+## 5. 展開せずに計算する仕組み
 
-前作の通常版は、量子化テンソルを読み込み時に**全部 F32 リストへ展開**していました。Sol 版の `Llamex.Backend.List.Math` は違います。`matvec` の実装（抜粋）を見てください。
+前作の通常版は、量子化テンソルを読み込み時に**全部 F32 リストへ展開**していました。LLM は 1 トークン生成するたびに全層の重み行列で matvec を実行するので、重みをどんな形で持つかが、メモリと速度を直接決めます。
+
+Sol 版の `Llamex.Backend.List.Math` は、展開する代わりに**圧縮バイナリの上を歩きながら計算**します。流れはこうです。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  P["圧縮ペイロード（1行分のバイナリ）"] --> B1["先頭のブロックを切り出す<br/>（Q4_0 なら 18 バイト）"]
+  B1 --> R1["32 個の値だけ一時的に復元"]
+  R1 --> D1["ベクトルの対応する 32 要素と部分内積"]
+  D1 --> ADD["行の合計に加算"]
+  ADD -->|"次のブロックへ<br/>（復元した 32 値はすぐ捨てられる）"| B1
+""")
+```
+
+`matvec` の実装（抜粋）を見てください。上の図がほぼそのままコードになっています。
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -247,7 +526,7 @@ end
 
 Nx / NxEXLA バックエンドも同じ圧縮ペイロードを受け取り、**ブロック単位の Nx 演算**として処理します（`blockwise_compact`）。README はこれを「カスタム CUDA カーネルではない」と明記しています。GPU 直行はまだ未完了で、これが「圧縮Q対応（直GPU未完了）」の意味です。
 
-## 5. バックエンド契約 — 実行経路を宣言する
+## 6. バックエンド契約 — 実行経路を宣言する
 
 Sol 版は「どのバックエンドが、どの量子化形式を、どの方式で実行できるか」を `Llamex.Backend.Contract` として明文化しています。
 
@@ -320,7 +599,7 @@ Kino.DataTable.new([
 
 純 Elixir のブロック走査と Nx のブロック演算が、同じ 68 バイトから同じ `[528.0, 32.0]` を出しました。診断には「一度に密になるのは 1 ブロック分（128 バイト）だけ」という情報も含まれています。
 
-## 6. GGUF 検証ツール — 読み込む前に調べ尽くす
+## 7. GGUF 検証ツール — 読み込む前に調べ尽くす
 
 Sol 版のもう1つの柱が「GGUF検証用 mix task」です。設計思想は README の一文に集約されています。
 
@@ -469,7 +748,7 @@ Kino.Layout.grid(
 
 このモデルには `rope_theta` と `attention_head_count_kv` のメタデータが無く、既定値で補われることが分かります。「黙って動く」のではなく「何を補ったか言う」のが Sol 版の一貫した態度です。
 
-## 7. 前作の宿題 — 15M モデルを動かす
+## 8. 前作の宿題 — 15M モデルを動かす
 
 いよいよ本題です。前作で 5 分待っても読み込めなかった `stories15M-q4_0.gguf` を、`tensor_format: :compact` で読み込みます。
 
@@ -528,7 +807,7 @@ Kino.DataTable.new([
 | 保持メモリ | 展開できず測定不能（理論値 93MB + リストのオーバーヘッド） | 圧縮ペイロード約 17.5MB |
 | 生成 | 到達できず | 約 10 秒/トークン（List 直接カーネル） |
 
-## 8. 刷新された API
+## 9. 刷新された API
 
 Sol 版は公開 API も再設計されています。前作の「map オプション + 結果 map」から「keyword オプション + `{:ok, _}` タプル」になりました。
 
@@ -590,7 +869,7 @@ Llamex.generate(engine_260k, "Once upon a time", max_tokens: 10)
 Enum.to_list(stream)
 ```
 
-`prefill` でロジットを取り出す低レベル操作も残っています。
+`prefill` で、ロジット（次トークン候補ごとの生スコア。ソフトマックスで確率へ変える前の値）だけを取り出す低レベル操作も残っています。
 
 ```elixir
 {:ok, logits, _state} = Llamex.prefill(engine_260k, "Once upon a time", [])
@@ -626,10 +905,11 @@ Kino.DataTable.new([
 
 同じエンジン API のまま、実行経路だけが `direct` から `blockwise_compact` に切り替わります。`exla_available: false` のように、**使えないものを使えないと申告する**診断は、GPU（CUDA / ROCm）についても同じ方針で実装されています。EXLA が実デバイスを報告しない限り GPU 実行は成功扱いにならない——これが「直 GPU 未完了」を正直に表す仕組みです。
 
-## 9. まとめ
+## 10. まとめ
 
 ### このノートブックで見たこと
 
+* 量子化は「復元値 = スケール × 整数」への丸め。ビット数を削るほど復元は粗い階段になり、誤差が増える（波形・誤差・階段のグラフで確認）
 * Q8_0 / Q4_0 の量子化ブロックは「f16 スケール + 量子値」の単純な構造で、**手でバイナリを組んで検算できる**
 * `Llamex.CompactTensor` は展開前のバイナリをそのまま持つ依存ゼロの構造体。`contract/1` が展開倍率（Q4_0 で 7.1 倍、Q8_0 で 3.8 倍）を教えてくれる
 * List バックエンドは**ブロックごとに 32 値だけ復元して部分内積を足す**直接カーネル（`:direct`）を持ち、モデル全体の F32 行列を一度も作らない
