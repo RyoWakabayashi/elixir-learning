@@ -2,7 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:llamex, github: "piacerex/llamex-gpt-5.6-luna-xhigh"},
+  {:llamex,
+   github: "piacerex/llamex-gpt-5.6-luna-xhigh",
+   ref: "8dd68427239425d3f21a6e010788c1d9db98dc61"},
   {:kino, "~> 0.15"},
   {:kino_vega_lite, "~> 0.1"},
   # GGUF モデルのダウンロードに使う
@@ -48,8 +50,9 @@ Hex には公開されていないため、GitHub から直接取得します。
 Kino.DataTable.new([
   %{項目: "Elixir", 値: System.version()},
   %{項目: "Llamex", 値: to_string(Application.spec(:llamex, :vsn))},
+  %{項目: "Llamex commit", 値: "8dd6842"},
   %{項目: "Nx はインストールされているか", 値: inspect(Code.ensure_loaded?(Nx))}
-])
+], keys: [:項目, :値])
 ```
 
 `Nx はインストールされているか` が `false` になっています。前作では `{:nx, "~> 0.12.1"}` を必ず入れていましたが、今回は入れていません。この状態で最後まで進みます。
@@ -67,7 +70,7 @@ defmodule LlamexLuna.Visuals do
     |> VegaLite.encode_field(:x, Atom.to_string(x_field),
       type: :nominal,
       title: Atom.to_string(x_field),
-      sort: "-y"
+      sort: "y"
     )
     |> VegaLite.encode_field(:y, Atom.to_string(y_field),
       type: :quantitative,
@@ -84,14 +87,14 @@ end
 
 ```elixir
 Kino.Mermaid.new("""
-flowchart TD
-  subgraph BEAM["通常の BEAM（サーバー・PC）"]
+flowchart
+  subgraph BEAM["通常のBEAM(サーバー/PC)"]
     B1["OTP の全ライブラリ"]
     B2["NIF（C 拡張）: Nx / EXLA など"]
     B3["数十MB〜のメモリ"]
   end
 
-  subgraph AtomVM["AtomVM（マイコン）"]
+  subgraph AtomVM["AtomVM(マイコン)"]
     A1["言語コアと最小限の標準モジュール"]
     A2["NIF はファームウェアに焼き込んだものだけ"]
     A3["数百KB〜数MBのメモリ"]
@@ -203,7 +206,7 @@ defmodule Llamex.Backend.AtomVM do
   @impl true
   defdelegate rms_norm(input, weight, epsilon), to: List
 
-  # ... 全 20 個の演算をすべて List へ defdelegate ...
+  # ... 全 22 個の演算をすべて List へ defdelegate ...
 end
 ```
 
@@ -248,7 +251,7 @@ Kino.DataTable.new([
         |> Enum.map(&Float.round(&1, 4))
       )
   }
-])
+], keys: [:演算, :AtomVM, :List])
 ```
 
 計算がまったく同じなら、なぜわざわざ別モジュールを作るのでしょうか。
@@ -301,20 +304,41 @@ end
 models_dir = Path.join(System.tmp_dir!(), "llamex_models")
 File.mkdir_p!(models_dir)
 
-model_path = Path.join(models_dir, "stories260K.gguf")
+models_revision = "499bc8821c6b12b4e53c5bffcb21ec206f212d81"
+model_sha256 = "270cba1bd5109f42d03350f60406024560464db173c0e387d91f0426d3bd256d"
+model_path = Path.join(models_dir, "#{String.slice(models_revision, 0, 7)}-stories260K.gguf")
 
 unless File.exists?(model_path) do
+  download_path = model_path <> ".download"
+
   Req.get!(
-    "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf",
-    into: File.stream!(model_path),
+    "https://huggingface.co/ggml-org/models/resolve/#{models_revision}/tinyllamas/stories260K.gguf",
+    into: File.stream!(download_path),
     redirect: true
   )
+
+  File.rename!(download_path, model_path)
 end
 
+actual_sha256 =
+  model_path
+  |> File.read!()
+  |> then(&:crypto.hash(:sha256, &1))
+  |> Base.encode16(case: :lower)
+
+if actual_sha256 != model_sha256 do
+  raise "stories260K.gguf の SHA-256 が一致しません: #{actual_sha256}"
+end
+
+model_diagnostic = Llamex.GGUF.Diagnostic.inspect_file(model_path)
+
+# 一時的なダウンロード・診断データを回収してから、BEAM 全体の差分を測る
+:erlang.garbage_collect(self())
 memory_before_mb = :erlang.memory(:total) / 1_048_576
 
 {load_microseconds, prepared} = :timer.tc(fn -> Llamex.Portable.load(model_path) end)
 
+:erlang.garbage_collect(self())
 memory_after_mb = :erlang.memory(:total) / 1_048_576
 
 Kino.DataTable.new([
@@ -324,21 +348,31 @@ Kino.DataTable.new([
   %{項目: "読み込み前の BEAM メモリ", 値: "#{Float.round(memory_before_mb, 1)} MB"},
   %{項目: "読み込み後の BEAM メモリ", 値: "#{Float.round(memory_after_mb, 1)} MB"},
   %{項目: "増加分", 値: "#{Float.round(memory_after_mb - memory_before_mb, 1)} MB"}
-])
+], keys: [:項目, :値])
 ```
 
-ファイルサイズとメモリ増加分を並べて描くと、組込向けの課題が先に見えてきます。
+ファイルサイズ、F32 数値だけを数えた理論サイズ、BEAM 全体で観測したメモリ増加分を並べます。実測値は GC や他の Livebook プロセスにも影響されるため、**このセッションでの参考値**です。
 
 ```elixir
 file_mb = Float.round(File.stat!(model_path).size / 1_048_576, 2)
-delta_mb = Float.round(memory_after_mb - memory_before_mb, 1)
+dense_f32_mb = Float.round(model_diagnostic.eager_f32_bytes / 1_048_576, 1)
+delta_mb = memory_after_mb - memory_before_mb
+observed_ratio = if delta_mb > 0, do: delta_mb / file_mb, else: nil
+
+ratio_label =
+  if observed_ratio do
+    "ファイルの約 #{Float.round(observed_ratio, 1)} 倍"
+  else
+    "有効な増加量を計測できず"
+  end
 
 LlamexLuna.Visuals.bar_chart(
   [
     %{項目: "GGUF ファイル", MB: file_mb},
-    %{項目: "読み込み後のメモリ増加", MB: delta_mb}
+    %{項目: "F32 数値の理論値", MB: dense_f32_mb},
+    %{項目: "BEAM 全体の実測増加", MB: Float.round(delta_mb, 1)}
   ],
-  "1.1MB のモデルが、メモリ上では約20倍に膨らむ",
+  "モデルサイズの3つの見方 — 実測は#{ratio_label}",
   :項目,
   :MB
 )
@@ -361,10 +395,10 @@ Kino.DataTable.new([
   %{項目: "生成時間", 値: "#{Float.round(generate_microseconds / 1_000_000, 2)} 秒"},
   %{項目: "生成結果", 値: result.text},
   %{項目: "終了理由", 値: inspect(result.finish_reason)}
-])
+], keys: [:項目, :値])
 ```
 
-前作の通常版（`Backend.List`）とまったく同じ `, there was a little gothip` が生成されるはずです。委譲バックエンドなので当然ですが、**「サーバーで動かしたものと同じ計算がマイコン側でも走る」ことをコードの構造が保証している**のが重要な点です。
+前作の通常版（`Backend.List`）とまったく同じ `, there was a little gothip` が生成されるはずです。ここで確認できるのは、**BEAM 上でポータブルな純 Elixir 経路を選んでも同じ計算結果になること**です。AtomVM 本体での実行確認は第7節の smoke、マイコン実機への搭載はその先の検証として区別します。
 
 ストリーミングも同様に使えます。
 
@@ -376,7 +410,7 @@ prepared
 
 ## 5. AtomVM 実機へ載せる前の疎通コード
 
-Luna 版のリポジトリには `examples/atomvm_smoke.ex` という、実機で最初に動かす疎通コードが入っています。GGUF もトークナイザーも使わず、**手作りの語彙3・埋め込み2次元のモデルで「1トークン推論が通るか」だけ**を見る最小構成です。
+Luna 版のリポジトリには `examples/atomvm_smoke.ex` という、実機へ載せる前に AtomVM 互換性を確かめる疎通コードが入っています。GGUF もトークナイザーも使わず、**手作りの語彙3・埋め込み2次元のモデルで「1トークン推論が通るか」だけ**を見る最小構成です。
 
 同じことを Livebook 上で再現します。
 
@@ -403,16 +437,29 @@ Kino.DataTable.new([
     項目: "判定",
     値:
       if(context_after.backend == Llamex.Backend.AtomVM and next_token == 0,
-        do: "AtomVM smoke passed",
+        do: "BEAM portability check passed",
         else: "unexpected result"
       )
   }
-])
+], keys: [:項目, :値])
 ```
 
 出力層がないので、ロジットは埋め込み同士の内積です（前作の第2節と同じ理屈）。トークン 0 の埋め込み `[1.0, 0.0]` と最も内積が大きいのは自分自身なので、予測は `0` になります。
 
-たった数十行ですが、これが通れば「アテンション・RoPE・RMS 正規化・KV キャッシュ・argmax がすべて実機の AtomVM 上で計算できた」ことになります。疎通コードとして必要十分です。
+このモデルには Transformer レイヤーがないため、smoke が通ったときに確認できる範囲は限定されています。検証範囲を表にすると次の通りです。
+
+```elixir
+Kino.DataTable.new([
+  %{計算経路: "埋め込みの参照", 検証結果: "✓"},
+  %{計算経路: "埋め込み同士の内積によるロジット", 検証結果: "✓"},
+  %{計算経路: "argmax", 検証結果: "✓"},
+  %{計算経路: "アテンション / RoPE", 検証結果: "—（レイヤーなし）"},
+  %{計算経路: "RMS 正規化 / FFN", 検証結果: "—（レイヤーなし）"},
+  %{計算経路: "KV キャッシュ", 検証結果: "—（レイヤーなし）"}
+], keys: [:計算経路, :検証結果])
+```
+
+この Livebook セルが確認するのは、同じ最小経路が BEAM 上の `Backend.AtomVM` で期待値を返すことです。第7節のタスクで同じコードを generic UNIX 版 AtomVM 上でも実行できれば、**依存ゼロの最小推論経路と argmax が AtomVM で動くこと**を確認できます。Transformer の全経路を検証するには、1層を持つ別の smoke が必要です。
 
 ## 6. モジュールフットプリント — バンドルに何が入るか
 
@@ -438,7 +485,7 @@ total_kb = beam_files |> Enum.map(& &1[:KB]) |> Enum.sum() |> Float.round(1)
 Kino.DataTable.new([
   %{項目: "コンパイル済みモジュール数", 値: length(beam_files)},
   %{項目: "合計サイズ", 値: "#{total_kb} KB"}
-])
+], keys: [:項目, :値])
 ```
 
 ```elixir
@@ -450,7 +497,7 @@ LlamexLuna.Visuals.bar_chart(
 )
 ```
 
-1 MB 弱に全推論エンジンが収まっています。ただし、この中には AtomVM バンドルに**入れてはいけない**ものも混ざっています。
+ホスト上の `.beam` ファイル合計は 1 MB 弱です。ただし、これは `.avm` の実サイズではなく、prune 前の上限を見るための値です。この中には AtomVM バンドルに**入れてはいけない**ものも混ざっています。
 
 ```elixir
 excluded = Enum.filter(beam_files, &String.contains?(&1.モジュール, ["Backend.Nx", "Mix.Tasks"]))
@@ -483,8 +530,8 @@ mix llamex.atomvm.smoke \
 ```elixir
 Kino.Mermaid.new("""
 flowchart TD
-  A["1. elixirc で examples/atomvm_smoke.ex をコンパイル"] --> B["2. packbeam create --prune --start EntryModule"]
-  B --> C["3. atomvm bundle.avm atomvmlib.avm で実行"]
+  A["1.elixirc で examples/atomvm_smoke.ex をコンパイル"] --> B["2.packbeam create --prune --start EntryModule"]
+  B --> C["3.atomvm bundle.avm atomvmlib.avm で実行"]
 
   B -.-> D["--prune: エントリモジュールから到達可能な<br/>モジュールだけを .avm に残す"]
   B -.-> E["Backend.Nx や Mix.Tasks は<br/>エントリから参照されないので自動的に落ちる"]
@@ -512,25 +559,44 @@ atomvm llamex_atomvm_smoke.avm atomvmlib.avm
 ポイントは2つです。
 
 * **`--prune`** — エントリモジュール（`start/0` を持つ）から参照をたどり、届くモジュールだけを残します。第3節で見た「AtomVM バックエンドは List だけを参照する」という設計が、ここで効きます。エントリが `Llamex.Backend.AtomVM` 経由で推論する限り、Nx 系モジュールは自動的にバンドルから落ちます
-* **`atomvmlib.avm` のビルド一致** — AtomVM の標準ライブラリは、実行する AtomVM 本体と同じビルドのものが必要です。リポジトリの README によると、この smoke は AtomVM 0.8.0-dev + OTP 28 + Elixir 1.19 の組み合わせで検証されています
+* **ツールチェーンの一致** — `atomvm` と `atomvmlib.avm` は同じ AtomVM ビルドのものを使います。さらに、`.beam` を作る OTP / Elixir と AtomVM 側の対応状況も合わせて確認します。この Livebook はタスク自体を実行しないため、ここでは実行成功までは主張しません
 
-ESP32 などの実機に載せる場合も原理は同じで、`.avm` をフラッシュへ書き込む手順が加わるだけです。
+ESP32 などの実機でも `.avm` を作る原理は同じですが、フラッシュへの書き込みに加えて、対象ボード用の AtomVM ファームウェアと利用可能な標準モジュールを確認する必要があります。
 
 ## 8. 組込で効く現実的な制約
 
 第4節の計測を組込の視点で読み直します。
 
-| 項目 | 計測値 | ESP32（RAM 520KB + 外部 PSRAM 数MB）で考えると |
-|---|---|---|
-| GGUF ファイル | 約 1.1 MB | フラッシュには載る |
-| 読み込み後のメモリ増加 | 約 20 MB | **PSRAM があっても厳しい** |
-| コード（.avm 相当） | 1 MB 弱（prune 前） | 問題ない |
+```elixir
+Kino.DataTable.new([
+  %{
+    項目: "GGUF ファイル",
+    この実行の値: "#{file_mb} MB",
+    組込での読み方: "フラッシュ容量と比較する"
+  },
+  %{
+    項目: "F32 数値の理論値",
+    この実行の値: "#{dense_f32_mb} MB",
+    組込での読み方: "リストの管理領域を含まない下限"
+  },
+  %{
+    項目: "BEAM 全体の実測増加",
+    この実行の値: "#{Float.round(delta_mb, 1)} MB（参考値）",
+    組込での読み方: "GC・他プロセスを含むため傾向を見る"
+  },
+  %{
+    項目: "ホスト上の .beam 合計",
+    この実行の値: "#{total_kb} KB（prune 前）",
+    組込での読み方: ".avm の実サイズは PackBEAM 後に別途測る"
+  }
+], keys: [:項目, :この実行の値, :組込での読み方])
+```
 
-増加分が約 20 倍に膨らむのは、Llamex がテンソルを **Elixir のリスト**として保持するためです。26 万パラメータでもこの規模なので、GGUF をそのまま読む使い方は、マイコンでは現実的ではありません。
+F32 数値の理論値より BEAM の実測増加が大きくなり得るのは、Llamex がテンソルを **Elixir のリスト**として保持し、各要素やリスト構造にも管理領域が必要になるためです。26 万パラメータでもこの規模なので、GGUF を展開して読む使い方は、マイコンでは現実的ではありません。
 
 つまり Luna 版の現在地は、
 
-* **動くこと・境界が保たれることの検証**（smoke・prune・依存ゼロビルド）が完成している段階
+* **最小経路が動くこと・境界が保たれることの検証**（smoke・prune・依存ゼロビルド）が完成している段階
 * 実用的なモデルを載せるには、第5節のような**極小の手作りモデル**か、量子化ペイロードを展開せずに使う工夫（これは Sol 版のテーマ）が必要
 
 という整理になります。「まず正しさとポータビリティの土台を固め、性能・容量の最適化は別トラックで進める」という開発方針が、フォークの分かれ方そのものに表れています。
@@ -544,7 +610,7 @@ ESP32 などの実機に載せる場合も原理は同じで、`.avm` をフラ�
 * `Llamex.Backend.AtomVM` は全演算を `Backend.List` へ委譲するだけのモジュール。計算のためではなく、**バンドルの入口を固定するポータブル境界**として存在する
 * `Llamex.Portable` ファサードで、通常版と同じ GGUF・同じ生成結果を AtomVM バックエンドで再現できる
 * `packbeam create --prune` がエントリモジュールからの到達可能性でバンドルを選別し、Nx 系モジュールを自動的に除外する
-* メモリ計測では 1.1MB の GGUF が約 20MB に展開される。実機ではモデル表現の圧縮が次の課題になる
+* ファイルサイズ・F32数値の理論値・BEAM全体の実測増加を分けて比較した。実測はセッション依存だが、リスト展開の管理領域が組込で大きな課題になる
 
 <!-- livebook:{"break_markdown":true} -->
 

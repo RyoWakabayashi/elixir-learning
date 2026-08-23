@@ -2,7 +2,9 @@
 
 ```elixir
 Mix.install([
-  {:llamex, github: "piacerex/llamex-gpt-5.6-sol-medium"},
+  {:llamex,
+   github: "piacerex/llamex-gpt-5.6-sol-medium",
+   ref: "3c9342a7e4b1494d2ef495b42688357100c4ceb3"},
   {:nx, "~> 0.12.1"},
   {:kino, "~> 0.15"},
   {:kino_vega_lite, "~> 0.1"},
@@ -50,8 +52,9 @@ Sol 版の Elixir 要件は `>= 1.15` に緩和されています（通常版は
 Kino.DataTable.new([
   %{項目: "Elixir", 値: System.version()},
   %{項目: "Llamex (Sol)", 値: to_string(Application.spec(:llamex, :vsn))},
+  %{項目: "Llamex commit", 値: "3c9342a"},
   %{項目: "Nx", 値: to_string(Application.spec(:nx, :vsn))}
-])
+], keys: [:項目, :値])
 ```
 
 ```elixir
@@ -89,25 +92,39 @@ defmodule LlamexSol.Visuals do
     Kino.VegaLite.new(chart)
   end
 
-  # 系列を色分けした折れ線グラフ
+  # 系列の色分けと、タブ間比較用の縦軸固定に対応した折れ線グラフ
   def line_chart(rows, title, x_field, y_field, color_field, opts \\ []) do
     width = Keyword.get(opts, :width, 640)
     height = Keyword.get(opts, :height, 300)
     point = Keyword.get(opts, :point, true)
 
-    VegaLite.new(width: width, height: height, title: title)
-    |> VegaLite.data_from_values(rows)
-    |> VegaLite.mark(:line, point: point, tooltip: true)
-    |> VegaLite.encode_field(:x, Atom.to_string(x_field),
-      type: :quantitative,
-      title: Atom.to_string(x_field)
-    )
-    |> VegaLite.encode_field(:y, Atom.to_string(y_field),
-      type: :quantitative,
-      title: Atom.to_string(y_field)
-    )
-    |> VegaLite.encode_field(:color, Atom.to_string(color_field), type: :nominal)
-    |> Kino.VegaLite.new()
+    y_opts =
+      [type: :quantitative, title: Atom.to_string(y_field)]
+      |> then(fn base ->
+        case Keyword.get(opts, :y_domain) do
+          nil -> base
+          domain -> Keyword.put(base, :scale, domain: domain)
+        end
+      end)
+
+    chart =
+      VegaLite.new(width: width, height: height, title: title)
+      |> VegaLite.data_from_values(rows)
+      |> VegaLite.mark(:line, point: point, tooltip: true)
+      |> VegaLite.encode_field(:x, Atom.to_string(x_field),
+        type: :quantitative,
+        title: Atom.to_string(x_field)
+      )
+      |> VegaLite.encode_field(:y, Atom.to_string(y_field), y_opts)
+
+    chart =
+      if color_field do
+        VegaLite.encode_field(chart, :color, Atom.to_string(color_field), type: :nominal)
+      else
+        chart
+      end
+
+    Kino.VegaLite.new(chart)
   end
 
   # バイト列のレイアウトを1バイト=1タイルで描く
@@ -156,7 +173,9 @@ LlamexSol.Visuals.bar_chart(
 
 > 復元値 = スケール × 整数の量子値
 
-グループ内で一番大きい絶対値が整数の上限（int8 なら 127、4bit なら 7）にちょうど収まるようにスケールを決め、各値を「スケール何個分か」に丸めます。式だけでは掴みにくいので、実際にやってみましょう。なだらかな波を描く 32 個の F32 値を量子化します。
+まず誤差の生まれ方へ集中するため、正負を対称に扱う簡易量子化で試します。グループ内で一番大きい絶対値が整数の上限（int8 なら 127、ここで使う簡易 4bit なら 7）にちょうど収まるようにスケールを決め、各値を「スケール何個分か」に丸めます。
+
+なお、この簡易 4bit は `-7..7` の15段階です。**実際の GGUF の Q4_0 は、格納コード `0..15` を整数値 `-8..7` に対応させる16段階**で、詳しいバイト表現は第4節で扱います。ここでは、なだらかな波を描く32個の F32 値を使って「ビット数を減らすと誤差がどう見えるか」を先に確かめます。
 
 ```elixir
 original = Enum.map(0..31, fn i -> Float.round(4.0 * :math.sin(i / 4.0), 4) end)
@@ -170,39 +189,60 @@ quantize = fn values, levels_max ->
   %{scale: scale, quantized: quantized, restored: restored}
 end
 
-q8 = quantize.(original, 127)
-q4 = quantize.(original, 7)
+q8_demo = quantize.(original, 127)
+q4_demo = quantize.(original, 7)
 
 Kino.DataTable.new([
-  %{方式: "Q8_0 相当（int8）", スケール: Float.round(q8.scale, 5), 量子値の範囲: "-127 〜 127"},
-  %{方式: "Q4_0 相当（4bit）", スケール: Float.round(q4.scale, 5), 量子値の範囲: "-7 〜 7"}
-])
+  %{
+    方式: "対称int8（Q8_0の原理説明用）",
+    スケール: Float.round(q8_demo.scale, 5),
+    量子値の範囲: "-127 〜 127",
+    段階数: 255
+  },
+  %{
+    方式: "対称4bit（簡易モデル）",
+    スケール: Float.round(q4_demo.scale, 5),
+    量子値の範囲: "-7 〜 7",
+    段階数: 15
+  }
+], keys: [:方式, :スケール, :量子値の範囲, :段階数])
 ```
 
-元の値と、量子化してから復元した値を重ねて描きます。
+元の値と、量子化してから復元した値を1枚ずつグラフにし、タブで切り替えられるようにします。
 
 ```elixir
-wave_rows =
-  original
-  |> Enum.with_index()
-  |> Enum.flat_map(fn {value, index} ->
-    [
-      %{位置: index, 値: value, 系列: "元の値（F32）"},
-      %{位置: index, 値: Float.round(Enum.at(q8.restored, index), 4), 系列: "Q8_0 相当の復元値"},
-      %{位置: index, 値: Float.round(Enum.at(q4.restored, index), 4), 系列: "Q4_0 相当の復元値"}
-    ]
+wave_tabs =
+  [
+    {"元の値（F32）", original},
+    {"対称int8の復元値", q8_demo.restored},
+    {"対称4bitの復元値", q4_demo.restored}
+  ]
+  |> Enum.map(fn {label, values} ->
+    rows =
+      values
+      |> Enum.with_index()
+      |> Enum.map(fn {value, index} ->
+        %{位置: index, 値: Float.round(value, 4), 系列: label}
+      end)
+
+    chart =
+      LlamexSol.Visuals.line_chart(
+        rows,
+        "#{label}の波形",
+        :位置,
+        :値,
+        nil,
+        width: 560,
+        y_domain: [-4.2, 4.2]
+      )
+
+    {label, chart}
   end)
 
-LlamexSol.Visuals.line_chart(
-  wave_rows,
-  "量子化してから復元しても、波の形はほぼ保たれる",
-  :位置,
-  :値,
-  :系列
-)
+Kino.Layout.tabs(wave_tabs)
 ```
 
-Q8_0 相当（256 段階）は元の線とほぼ重なり、Q4_0 相当（15 段階）はところどころ段差が見えます。誤差だけを取り出して比べると、ビット数と精度のトレードオフがはっきりします。
+すべてのタブで縦軸を `-4.2..4.2` に固定しているため、軸の伸縮に惑わされず形を比べられます。対称int8（255段階）は元の波形とほぼ同じで、対称4bit（15段階）はところどころ段差が見えます。誤差だけを取り出して比べると、ビット数と精度のトレードオフがはっきりします。
 
 ```elixir
 error_rows =
@@ -212,13 +252,13 @@ error_rows =
     [
       %{
         位置: index,
-        誤差: Float.round(abs(Enum.at(q8.restored, index) - value), 4),
-        系列: "Q8_0 相当"
+        誤差: Float.round(abs(Enum.at(q8_demo.restored, index) - value), 4),
+        系列: "対称int8"
       },
       %{
         位置: index,
-        誤差: Float.round(abs(Enum.at(q4.restored, index) - value), 4),
-        系列: "Q4_0 相当"
+        誤差: Float.round(abs(Enum.at(q4_demo.restored, index) - value), 4),
+        系列: "対称4bit"
       }
     ]
   end)
@@ -232,7 +272,7 @@ LlamexSol.Visuals.line_chart(
 )
 ```
 
-誤差の上限は「スケールの半分」です。Q4_0 相当はスケールが大きい（目盛りが粗い）ので、誤差もそのぶん大きくなります。
+この簡易量子化で丸めの範囲内に収まる値について、誤差の上限は「スケールの半分」です。対称4bitはスケールが大きい（目盛りが粗い）ので、誤差もそのぶん大きくなります。
 
 なぜ誤差が出るのかは、「入力の実数 → 復元値」の対応を描くと一目で分かります。量子化は、連続な実数を**とびとびの段**に丸める操作です。
 
@@ -244,8 +284,8 @@ stair_rows =
       %{入力: x, 復元値: x, 系列: "F32（そのまま）"},
       %{
         入力: x,
-        復元値: Float.round(round(x / q4.scale) * q4.scale, 4),
-        系列: "Q4_0 相当（15段の階段）"
+        復元値: Float.round(round(x / q4_demo.scale) * q4_demo.scale, 4),
+        系列: "対称4bit（15段の階段）"
       }
     ]
   end)
@@ -260,7 +300,7 @@ LlamexSol.Visuals.line_chart(
 )
 ```
 
-斜めの直線（F32）に対して、Q4_0 相当は 15 段の階段です。階段の上に乗っている値はそのまま復元されますが、段と段の間の値は近い段へ丸められます。これが量子化誤差の正体です。
+斜めの直線（F32）に対して、簡易な対称4bitは15段の階段です。階段の上に乗っている値はそのまま復元されますが、段と段の間の値は近い段へ丸められます。これが量子化誤差の正体です。
 
 実際の GGUF では、この「グループごとにスケールを決めて丸める」操作を **32 個ずつのブロック単位**で行います。テンソル全体で1つのスケールを使うと外れ値に引きずられて目盛りが粗くなりますが、32 個ごとにスケールを持てば、目盛りが局所的な値の大きさに寄り添うので誤差を抑えられます。
 
@@ -415,14 +455,35 @@ Kino.DataTable.new([
   %{項目: "圧縮ペイロード", 値: "#{contract.payload_bytes} バイト"},
   %{項目: "F32 に展開した場合", 値: "#{contract.dense_f32_bytes} バイト"},
   %{項目: "展開倍率", 値: "#{Float.round(contract.f32_expansion_ratio, 2)} 倍"}
-])
+], keys: [:項目, :値])
 ```
 
 ## 4. Q4_0 も手作りする
 
+第1節の簡易 4bit は原理を見やすくするため `-7..7` の15段階にしました。ここからは、実際の GGUF で使われる16段階の Q4_0 を扱います。
+
 Q4_0 は 1 バイトに **4 ビット値を2個**詰めます。1 バイト（8 ビット）の前半 4 ビットを**上位ニブル**、後半 4 ビットを**下位ニブル**と呼びます（ニブル = 4 ビットのこと）。
 
 4 ビットで表せるのは 0〜15 の 16 通りだけです。負の値も扱えるように真ん中の 8 を「ゼロ」とみなし、復元は `(量子値 - 8) × スケール` で行います。ブロック内の並び順は、下位ニブル 16 個 → 上位ニブル 16 個です。
+
+```elixir
+0..15
+|> Enum.map(fn stored_code ->
+  integer_value = stored_code - 8
+
+  %{
+    格納コード: stored_code,
+    "4bit表現": stored_code |> Integer.to_string(2) |> String.pad_leading(4, "0"),
+    整数量子値: integer_value,
+    "スケール1.0での復元値": integer_value * 1.0
+  }
+end)
+|> Kino.DataTable.new(
+  keys: [:格納コード, :"4bit表現", :整数量子値, :"スケール1.0での復元値"]
+)
+```
+
+この表の16行が、実際の Q4_0 で使える16段階です。格納コード `8` がゼロ、その前後が負と正の値になります。
 
 全バイトを `0x98` にした場合を分解してみます。
 
@@ -441,7 +502,7 @@ Kino.DataTable.new([
     項目: "下位ニブル（後半4ビット 1000）",
     値: "量子値 #{low_nibble} → 復元値 (#{low_nibble} - 8) × 1.0 = 0.0"
   }
-])
+], keys: [:項目, :値])
 ```
 
 つまり 0x98 を 16 バイト並べると、復元値は「0.0 が 16 個（下位ニブル分）、1.0 が 16 個（上位ニブル分）」になります。
@@ -594,7 +655,7 @@ Kino.DataTable.new([
     項目: "モデル全体のF32展開が起きたか",
     値: inspect(comparison.results[Llamex.Backend.Nx].diagnostics.full_model_f32_expansion?)
   }
-])
+], keys: [:項目, :値])
 ```
 
 純 Elixir のブロック走査と Nx のブロック演算が、同じ 68 バイトから同じ `[528.0, 32.0]` を出しました。診断には「一度に密になるのは 1 ブロック分（128 バイト）だけ」という情報も含まれています。
@@ -628,7 +689,7 @@ Kino.DataTable.new([
   %{項目: "対応アーキテクチャ", 値: Enum.join(surface.supported_architectures, ", ")},
   %{項目: "対応テンソル型", 値: Enum.join(surface.supported_tensor_type_names, ", ")},
   %{項目: "対応トークナイザー", 値: Enum.join(surface.supported_tokenizer_models, ", ")}
-])
+], keys: [:項目, :値])
 ```
 
 実モデルを診断します。前作と同じ TinyStories の2つをダウンロードします。
@@ -637,15 +698,37 @@ Kino.DataTable.new([
 models_dir = Path.join(System.tmp_dir!(), "llamex_models")
 File.mkdir_p!(models_dir)
 
+models_revision = "499bc8821c6b12b4e53c5bffcb21ec206f212d81"
+
+model_sha256 = %{
+  "stories260K.gguf" => "270cba1bd5109f42d03350f60406024560464db173c0e387d91f0426d3bd256d",
+  "stories15M-q4_0.gguf" => "66967fbece6dbe97886593fdbb73589584927e29119ec31f08090732d1861739"
+}
+
 download = fn filename ->
-  path = Path.join(models_dir, filename)
+  revision_short = String.slice(models_revision, 0, 7)
+  path = Path.join(models_dir, "#{revision_short}-#{filename}")
 
   unless File.exists?(path) do
+    download_path = path <> ".download"
+
     Req.get!(
-      "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/#{filename}",
-      into: File.stream!(path),
+      "https://huggingface.co/ggml-org/models/resolve/#{models_revision}/tinyllamas/#{filename}",
+      into: File.stream!(download_path),
       redirect: true
     )
+
+    File.rename!(download_path, path)
+  end
+
+  actual_sha256 =
+    path
+    |> File.read!()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+
+  if actual_sha256 != Map.fetch!(model_sha256, filename) do
+    raise "#{filename} の SHA-256 が一致しません: #{actual_sha256}"
   end
 
   path
@@ -657,13 +740,15 @@ path_15m = download.("stories15M-q4_0.gguf")
 Kino.DataTable.new([
   %{
     モデル: "stories260K.gguf",
-    サイズ: "#{Float.round(File.stat!(path_260k).size / 1_048_576, 2)} MB"
+    サイズ: "#{Float.round(File.stat!(path_260k).size / 1_048_576, 2)} MB",
+    リビジョン: String.slice(models_revision, 0, 7)
   },
   %{
     モデル: "stories15M-q4_0.gguf",
-    サイズ: "#{Float.round(File.stat!(path_15m).size / 1_048_576, 2)} MB"
+    サイズ: "#{Float.round(File.stat!(path_15m).size / 1_048_576, 2)} MB",
+    リビジョン: String.slice(models_revision, 0, 7)
   }
-])
+], keys: [:モデル, :サイズ, :リビジョン])
 ```
 
 1つ注意点があります。Sol 版のファイル読み込み（`Reader.read_file`）はディレクトリ部分を 64KB ずつ増分で読む設計ですが、語彙 32,000 のモデルではメタデータが数 MB あり、値の途中で切れたときのリトライ判定に不備があるため失敗します（筆者環境では `{:unsupported_metadata_type, 6}` というエラーになりました）。**ファイル全体を読んでから渡す** `read_binary` / `load_binary_result` を使えば回避できます。
@@ -690,10 +775,10 @@ Kino.DataTable.new([
     項目: "展開倍率",
     値: "#{Float.round(diagnostic.eager_f32_expansion_ratio, 2)} 倍"
   }
-])
+], keys: [:項目, :値])
 ```
 
-**読み込む前に**「このモデルを展開すると 93MB、compact なら 17.5MB」と分かるのが診断の価値です。型ごとの内訳も見てみます。
+ファイル全体はすでにメモリへ読み込んでいますが、**テンソルをF32へ復元したりモデルを構築したりする前に**、圧縮ペイロードと展開後サイズの差を確認できるのが診断の価値です。数値は直前の表に実データから表示されているので、ここでは型ごとの内訳へ進みます。
 
 ```elixir
 type_rows =
@@ -738,7 +823,8 @@ missing =
 Kino.Layout.grid(
   [
     Kino.DataTable.new(
-      Enum.map(config_report["config"], fn {key, value} -> %{設定: key, 値: inspect(value)} end)
+      Enum.map(config_report["config"], fn {key, value} -> %{設定: key, 値: inspect(value)} end),
+      keys: [:設定, :値]
     ),
     Kino.DataTable.new(missing, keys: [:設定名, :期待されるメタデータキー])
   ],
@@ -763,27 +849,67 @@ Kino.DataTable.new([
   %{項目: "語彙数", 値: inspect(model_15m.config.vocab_size)},
   %{項目: "埋め込み次元", 値: inspect(model_15m.config.embedding_size)},
   %{項目: "ブロック数", 値: inspect(model_15m.config.block_count)}
-])
+], keys: [:項目, :値])
 ```
 
 筆者環境では約 42 秒でした。瞬時ではありませんが、**「終わらない」から「1分弱で終わる」への変化**です（時間の大半は、埋め込みテーブルなど一部テンソルの復元と 19MB のバイナリ走査です）。
 
-読み込んだモデルの重みが本当に圧縮のままか確かめます。
+読み込んだモデルの重みが本当に圧縮のままか、全テンソルの集計とアテンション・FFNの代表例で確かめます。
 
 ```elixir
-model_15m.tensors
-|> Enum.take(5)
-|> Enum.map(fn {name, tensor} ->
-  %{
-    テンソル名: name,
-    構造体: tensor.__struct__ |> inspect() |> String.replace("Llamex.", ""),
-    型: inspect(Map.get(tensor, :type))
-  }
-end)
-|> Kino.DataTable.new(keys: [:テンソル名, :構造体, :型])
+tensor_storage_rows =
+  model_15m.tensors
+  |> Enum.frequencies_by(fn {_name, tensor} ->
+    struct_name =
+      tensor
+      |> Map.get(:__struct__, :plain_map)
+      |> inspect()
+      |> String.replace("Llamex.", "")
+
+    {struct_name, inspect(Map.get(tensor, :type))}
+  end)
+  |> Enum.map(fn {{struct_name, type}, count} ->
+    %{保持形式: "#{struct_name} / #{type}", テンソル数: count}
+  end)
+  |> Enum.sort_by(& &1[:テンソル数], :desc)
+
+representative_tensors =
+  [
+    {"アテンション", ".attn_"},
+    {"FFN", ".ffn_"}
+  ]
+  |> Enum.flat_map(fn {category, pattern} ->
+    model_15m.tensors
+    |> Enum.filter(fn {name, tensor} ->
+      String.contains?(to_string(name), pattern) and
+        Map.get(tensor, :__struct__) == Llamex.CompactTensor and
+        Map.get(tensor, :type) == :q4_0
+    end)
+    |> Enum.sort_by(fn {name, _tensor} -> to_string(name) end)
+    |> Enum.take(3)
+    |> Enum.map(fn {name, tensor} ->
+      %{
+        用途: category,
+        テンソル名: name,
+        構造体: tensor.__struct__ |> inspect() |> String.replace("Llamex.", ""),
+        型: inspect(tensor.type)
+      }
+    end)
+  end)
+
+Kino.Layout.grid([
+  LlamexSol.Visuals.bar_chart(
+    tensor_storage_rows,
+    "全テンソルの保持形式と型",
+    :保持形式,
+    :テンソル数,
+    x_sort: Enum.map(tensor_storage_rows, & &1[:保持形式])
+  ),
+  Kino.DataTable.new(representative_tensors, keys: [:用途, :テンソル名, :構造体, :型])
+], columns: 1)
 ```
 
-アテンションや FFN の重みが `CompactTensor` の `:q4_0` のまま保持されています。エンジンを準備して生成します。
+棒グラフはMapの列挙順に依存せず、モデル全体で各保持形式が何件あるかを示します。代表例の表では、アテンションとFFNの重みがどちらも `CompactTensor` の `:q4_0` のまま保持されていることを名前付きで確認できます。エンジンを準備して生成します。
 
 ```elixir
 {prepare_microseconds, {:ok, engine_15m}} =
@@ -796,7 +922,7 @@ Kino.DataTable.new([
   %{項目: "エンジン準備", 値: "#{Float.round(prepare_microseconds / 1_000_000, 2)} 秒"},
   %{項目: "4トークン生成", 値: "#{Float.round(generate_microseconds / 1_000_000, 1)} 秒"},
   %{項目: "生成結果", 値: inspect(generation)}
-])
+], keys: [:項目, :値])
 ```
 
 `{:ok, ", there was a"}` — **1500 万パラメータの実モデルが、純 Elixir のブロック走査だけで文章を生成しました**。約 10 秒/トークンなので実用速度ではありませんが、前作との差を整理すると意味がはっきりします。
@@ -900,7 +1026,7 @@ Kino.DataTable.new([
     項目: "生成",
     値: inspect(Llamex.generate(engine_nx, "Once upon a time", max_tokens: 10))
   }
-])
+], keys: [:項目, :値])
 ```
 
 同じエンジン API のまま、実行経路だけが `direct` から `blockwise_compact` に切り替わります。`exla_available: false` のように、**使えないものを使えないと申告する**診断は、GPU（CUDA / ROCm）についても同じ方針で実装されています。EXLA が実デバイスを報告しない限り GPU 実行は成功扱いにならない——これが「直 GPU 未完了」を正直に表す仕組みです。
@@ -914,7 +1040,7 @@ Kino.DataTable.new([
 * `Llamex.CompactTensor` は展開前のバイナリをそのまま持つ依存ゼロの構造体。`contract/1` が展開倍率（Q4_0 で 7.1 倍、Q8_0 で 3.8 倍）を教えてくれる
 * List バックエンドは**ブロックごとに 32 値だけ復元して部分内積を足す**直接カーネル（`:direct`）を持ち、モデル全体の F32 行列を一度も作らない
 * Nx / NxEXLA は同じペイロードをブロック単位の Nx 演算（`:blockwise_compact`）で処理し、`Quantized.compare` で両経路の一致を検証できる
-* GGUF 検証タスク群は「読み込む前に診断する」思想。展開倍率・欠損メタデータ・互換性ブロッカーを事前に報告する
+* GGUF 検証タスク群は、テンソルペイロードを復元・モデル化する前に、展開倍率・欠損メタデータ・互換性ブロッカーを報告する
 * **前作で読み込めなかった 15M モデルが、compact 保持なら約 42 秒でロードでき、生成まで動く**
 * API は `{:ok, _}` タプル + keyword オプションに刷新され、既定でも seed 固定で再現可能
 
