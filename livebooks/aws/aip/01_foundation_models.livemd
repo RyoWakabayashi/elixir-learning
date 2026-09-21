@@ -1,0 +1,294 @@
+# AIP-C01 01: 基盤モデルの統合とモデル選定
+
+```elixir
+Mix.install([
+  {:aws, "~> 1.0.15"},
+  {:hackney, "~> 4.7"},
+  {:kino, "~> 0.19"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 概要
+
+> 最終確認日: 2026-09-21
+>
+> 対応範囲: 1.1, 1.2, 1.3, 2.2, 2.4
+
+## このノートで身につけること
+
+- Converse API と InvokeModel の違いを説明する
+- 品質、レイテンシー、コスト、モダリティ、リージョン、データ所在地から FM を選ぶ
+- 直接モデル、推論プロファイル、Prompt Router、Provisioned Throughput を使い分ける
+- モデル固有 ID をコードに埋め込まず、切り替え可能な統合を作る
+
+## 最新仕様の要点
+
+Amazon Bedrock には Invoke、Converse、OpenAI 互換、Messages の API ファミリーがあります。Converse は対応モデル間で会話形式を共通化します。API 対応、リージョン、モデル ID はモデルごとに異なるため、実装前にモデルカタログを確認します。
+
+推論先は主に次の3種類です。
+
+| 選択 | 向く要件 | 注意点 |
+|---|---|---|
+| In-Region | 単一リージョンのデータ所在地 | そのリージョンの容量とクォータに依存 |
+| 地理的 Cross-Region | 地理境界内で可用性を上げる | 宛先リージョンを SCP / IAM で許可 |
+| Global Cross-Region | 最大の可用性、所在地制約なし | 世界の商用リージョンで処理され得る |
+
+Configured Prompt Router は同一モデルファミリー内で品質とコストを考慮して動的にルーティングできます。ただし、英語プロンプト向けに最適化され、アプリ固有の実績値を自動学習するものではありません。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  R["ビジネス要件"] --> C{"必須制約"}
+  C -->|単一Region| I["In-Region model"]
+  C -->|地理境界| G["Geo inference profile"]
+  C -->|所在地制約なし| X["Global inference profile"]
+  I --> S["品質・Latency・Cost評価"]
+  G --> S
+  X --> S
+  S --> P{"負荷特性"}
+  P -->|変動・小規模| O["On-Demand"]
+  P -->|安定・高負荷| T["Provisioned Throughput"]
+  P -->|大量・非同期| B["Batch inference"]
+""")
+```
+
+## 認証情報
+
+長期アクセスキーをノートに保存しないでください。Livebook Secrets または一時クレデンシャルを推奨します。この実習では入力値をセルの状態だけに保持します。
+
+```elixir
+access_key_input = Kino.Input.password("AWS_ACCESS_KEY_ID")
+secret_key_input = Kino.Input.password("AWS_SECRET_ACCESS_KEY")
+session_token_input = Kino.Input.password("AWS_SESSION_TOKEN（一時認証の場合）")
+region_input = Kino.Input.text("AWS_REGION", default: "ap-northeast-1")
+
+Kino.Layout.grid(
+  [access_key_input, secret_key_input, session_token_input, region_input],
+  columns: 2
+)
+```
+
+```elixir
+access_key = Kino.Input.read(access_key_input)
+secret_key = Kino.Input.read(secret_key_input)
+session_token = Kino.Input.read(session_token_input)
+region = Kino.Input.read(region_input)
+
+client =
+  if session_token in [nil, ""] do
+    AWS.Client.create(access_key, secret_key, region)
+  else
+    AWS.Client.create(access_key, secret_key, session_token, region)
+  end
+```
+
+## ハンズオン1: 利用可能な FM を棚卸しする
+
+`ListFoundationModels` はモデル選定の入口です。実際に呼び出せるかは、リージョン、API 互換性、推論タイプ、Marketplace 権限も確認します。
+
+```elixir
+{:ok, %{"modelSummaries" => models}, _response} =
+  AWS.Bedrock.list_foundation_models(client)
+
+keys = [
+  "providerName",
+  "modelName",
+  "modelId",
+  "inputModalities",
+  "outputModalities",
+  "inferenceTypesSupported"
+]
+
+models
+|> Enum.map(fn model ->
+  Map.take(model, keys)
+end)
+|> Kino.DataTable.new(keys: keys)
+```
+
+### 選定スコアカード
+
+重みはユースケースごとに変えます。以下は判断過程を明示するローカル演習です。
+
+```elixir
+candidates = [
+  %{name: "small", quality: 3, latency: 5, cost: 5, residency: 4, multimodal: 2},
+  %{name: "balanced", quality: 4, latency: 4, cost: 4, residency: 4, multimodal: 4},
+  %{name: "large", quality: 5, latency: 2, cost: 2, residency: 4, multimodal: 5}
+]
+
+keys = [
+  :name,
+  :quality,
+  :latency,
+  :cost,
+  :residency,
+  :multimodal
+]
+
+weights = %{quality: 0.35, latency: 0.25, cost: 0.20, residency: 0.15, multimodal: 0.05}
+
+score = fn model ->
+  weights
+  |> Enum.map(fn {key, weight} -> Map.fetch!(model, key) * weight end)
+  |> Enum.sum()
+end
+
+ranked_candidates =
+  candidates
+  |> Enum.map(&Map.put(&1, :weighted_score, Float.round(score.(&1), 2)))
+  |> Enum.sort_by(& &1.weighted_score, :desc)
+
+score_chart =
+  VegaLite.new(width: 620, height: 250, title: "要件を重み付けしたモデル候補スコア")
+  |> VegaLite.data_from_values(ranked_candidates)
+  |> VegaLite.mark(:bar, tooltip: true)
+  |> VegaLite.encode_field(:x, "name", type: :nominal, title: "モデル候補", sort: "-y")
+  |> VegaLite.encode_field(:y, "weighted_score", type: :quantitative, title: "加重スコア")
+  |> Kino.VegaLite.new()
+
+Kino.Layout.tabs([
+  {"比較グラフ", score_chart},
+  {"評価値", Kino.DataTable.new(ranked_candidates, keys: keys)}
+])
+```
+
+要件が「医療データを単一リージョンから出さない」に変わった場合、単なる加重平均より先に residency を必須条件としてフィルタリングします。制約と嗜好を混同しないことが試験でも重要です。
+
+## ハンズオン2: FM 入力前のデータ品質ゲート
+
+テキスト、画像、音声、表形式データは、対応モダリティ、サイズ、形式、品質、機密性を検証してから FM へ渡します。Transcribe、Textract、Bedrock Data Automation、SageMaker Processing、Lambda などを前処理要件で選びます。
+
+```elixir
+validate_input = fn item ->
+  errors =
+    []
+    |> then(fn errors -> if item.bytes > item.max_bytes, do: [:too_large | errors], else: errors end)
+    |> then(fn errors -> if item.content_type in item.allowed_types, do: errors, else: [:unsupported_type | errors] end)
+    |> then(fn errors -> if item.checksum_valid, do: errors, else: [:checksum_mismatch | errors] end)
+    |> then(fn errors -> if item.contains_secret, do: [:secret_detected | errors], else: errors end)
+
+  %{id: item.id, valid: errors == [], errors: Enum.reverse(errors)}
+end
+
+inputs = [
+  %{id: "doc-1", bytes: 12_000, max_bytes: 50_000, content_type: "text/plain", allowed_types: ["text/plain"], checksum_valid: true, contains_secret: false},
+  %{id: "img-1", bytes: 90_000, max_bytes: 50_000, content_type: "image/png", allowed_types: ["image/png"], checksum_valid: true, contains_secret: false},
+  %{id: "doc-2", bytes: 8_000, max_bytes: 50_000, content_type: "text/plain", allowed_types: ["text/plain"], checksum_valid: true, contains_secret: true}
+]
+
+Enum.map(inputs, validate_input)
+|> Kino.DataTable.new(keys: [:id, :valid, :errors])
+```
+
+品質ゲートの失敗件数、原因、データソース、モデル／pipeline version を CloudWatch へ記録し、壊れた入力が「モデル品質低下」に見える状況を避けます。
+
+## ハンズオン3: Converse API でモデル非依存の呼び出しを作る
+
+一覧とモデルカタログを確認し、現在利用できる Converse 対応モデルまたは推論プロファイル ID を入力します。
+
+```elixir
+model_id_input = Kino.Input.text(
+  "MODEL_ID / INFERENCE_PROFILE_ID",
+  default: "amazon.nova-lite-v1:0"
+)
+```
+
+```elixir
+converse = fn prompt, opts ->
+  payload = %{
+    "system" => [%{"text" => Keyword.get(opts, :system, "簡潔で正確に回答してください。")}],
+    "messages" => [
+      %{"role" => "user", "content" => [%{"text" => prompt}]}
+    ],
+    "inferenceConfig" => %{
+      "maxTokens" => Keyword.get(opts, :max_tokens, 300),
+      "temperature" => Keyword.get(opts, :temperature, 0.2)
+    }
+  }
+
+  AWS.BedrockRuntime.converse(
+    client,
+    Kino.Input.read(model_id_input),
+    payload,
+    recv_timeout: 60_000
+  )
+end
+```
+
+```elixir
+{:ok, response, _http_response} =
+  converse.(
+    "Amazon Bedrock の Converse API を採用する利点を3点で説明してください。",
+    system: "あなたは AWS アーキテクトです。事実と設計判断を分けてください。"
+  )
+
+text = get_in(response, ["output", "message", "content", Access.at(0), "text"])
+usage = response["usage"]
+
+Kino.Layout.tabs([
+  {"応答", Kino.Markdown.new(text)},
+  {"メトリクス", Kino.DataTable.new([usage || %{}])}
+])
+```
+
+`usage` の inputTokens / outputTokens / totalTokens は、コストとクォータを考える基礎データです。
+
+## ハンズオン4: 設定だけでモデルを切り替える
+
+```elixir
+route = fn request ->
+  cond do
+    request.data_residency == :single_region -> request.in_region_model
+    request.availability == :highest -> request.global_profile
+    request.complexity == :low -> request.small_model
+    true -> request.balanced_model
+  end
+end
+
+requests = [
+  %{
+    name: "規制データ",
+    data_residency: :single_region,
+    availability: :normal,
+    complexity: :high,
+    in_region_model: "in-region-model-id",
+    global_profile: "global.profile-id",
+    small_model: "small-model-id",
+    balanced_model: "balanced-model-id"
+  },
+  %{
+    name: "公開FAQ",
+    data_residency: :none,
+    availability: :highest,
+    complexity: :low,
+    in_region_model: "in-region-model-id",
+    global_profile: "global.profile-id",
+    small_model: "small-model-id",
+    balanced_model: "balanced-model-id"
+  }
+]
+
+Enum.map(requests, &%{request: &1.name, selected: route.(&1)})
+```
+
+本番ではモデル ID を AppConfig や環境設定に置き、カナリア、ロールバック、監査を可能にします。モデルの廃止やリージョン変更をアプリの再ビルドなしで扱える設計が狙いです。
+
+## 判断問題
+
+1. 単一リージョン保持が必須のデータに Global 推論プロファイルを使わない理由は何ですか。
+2. 断続的な小規模トラフィックには On-Demand、安定した大規模負荷には Provisioned Throughput が候補になるのはなぜですか。
+3. バッチ推論、ConverseStream、通常の Converse を、夜間要約・チャット・同期分類に割り当ててください。
+4. Prompt Router を独自ルーターより優先する条件と、逆に避ける条件を挙げてください。
+
+## 公式資料
+
+- [Converse API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html)
+- [API compatibility](https://docs.aws.amazon.com/bedrock/latest/userguide/models-api-compatibility.html)
+- [Regional availability by models](https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.html)
+- [Cross-Region inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html)
+- [Intelligent prompt routing](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-routing.html)
+- [Provisioned Throughput](https://docs.aws.amazon.com/bedrock/latest/userguide/prov-throughput.html)
+
+モデル ID、対応 API、リージョン、料金は実習直前に再確認してください。

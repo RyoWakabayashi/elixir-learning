@@ -1,0 +1,273 @@
+# AIP-C01 08: 評価・テスト・トラブルシューティング
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.19"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 概要
+
+> 最終確認日: 2026-09-21
+>
+> 対応範囲: 5.1, 5.2, 1.2, 1.5, 3.4, 4.3
+
+## このノートで身につけること
+
+- オフライン評価、オンライン評価、人手評価、LLM-as-a-judge を組み合わせる
+- Retrieval と Generation を別々に測る
+- prompt / model / RAG / Agent の変更を品質ゲートで検証する
+- API、context overflow、retrieval drift、schema mismatch を系統的に切り分ける
+
+## 最新仕様の要点
+
+Amazon Bedrock Evaluations は FM、Knowledge Bases、Bedrock 外のモデル／RAG source を評価できます。programmatic evaluation、人手評価、LLM-as-a-judge、RAG evaluation があり、モデル・リージョン・メトリクスの対応は変更されるため実行前に確認します。
+
+LLM-as-a-judge は大規模な評価を速くできますが、judge のバイアス、位置効果、自己選好、非決定性、コストがあります。重要な判断は人手サンプルで校正し、judge model と prompt version を記録します。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart LR
+  D["固定評価dataset"] --> R["Retrieval評価"]
+  D --> G["Generation評価"]
+  D --> S["Safety評価"]
+  D --> A["Agent評価"]
+  R --> Q["Quality gate"]
+  G --> Q
+  S --> Q
+  A --> Q
+  Q -->|pass| C["Canary / online評価"]
+  Q -->|fail| F["原因別に改善"]
+  C --> H["人手feedback"]
+  H --> D
+  F --> D
+""")
+```
+
+## ハンズオン1: 文字列ベースライン評価
+
+生成品質を文字列一致だけで評価するのは不十分ですが、決定的な抽出・分類の回帰検出には有効です。
+
+```elixir
+normalize = fn text ->
+  text
+  |> String.downcase()
+  |> String.replace(~r/[^[:alnum:]ぁ-んァ-ン一-龠]+/u, " ")
+  |> String.trim()
+end
+
+token_f1 = fn expected, actual ->
+  expected_tokens = expected |> normalize.() |> String.split() |> MapSet.new()
+  actual_tokens = actual |> normalize.() |> String.split() |> MapSet.new()
+  overlap = MapSet.intersection(expected_tokens, actual_tokens) |> MapSet.size()
+
+  precision = if MapSet.size(actual_tokens) == 0, do: 0.0, else: overlap / MapSet.size(actual_tokens)
+  recall = if MapSet.size(expected_tokens) == 0, do: 0.0, else: overlap / MapSet.size(expected_tokens)
+
+  if precision + recall == 0, do: 0.0, else: 2 * precision * recall / (precision + recall)
+end
+```
+
+```elixir
+cases = [
+  %{id: "q1", expected: "Amazon Bedrock Guardrails", actual: "Bedrock Guardrails"},
+  %{id: "q2", expected: "CloudWatch と X-Ray", actual: "CloudTrail"},
+  %{id: "q3", expected: "S3 Vectors", actual: "S3 Vectors"}
+]
+
+cases
+|> Enum.map(fn test ->
+  Map.merge(test, %{
+    exact_match: normalize.(test.expected) == normalize.(test.actual),
+    token_f1: Float.round(token_f1.(test.expected, test.actual), 3)
+  })
+end)
+|> Kino.DataTable.new()
+```
+
+日本語は空白区切りがないため、この単純な F1 は限定的です。本番では言語に合う tokenizer、semantic similarity、タスク固有ルール、人手評価を組み合わせます。
+
+## ハンズオン2: Retrieval の Recall@k と MRR
+
+```elixir
+retrieval_cases = [
+  %{query: "安全制御", relevant: MapSet.new(["guardrails"]), ranked: ["iam", "guardrails", "cloudwatch"]},
+  %{query: "監視", relevant: MapSet.new(["cloudwatch", "xray"]), ranked: ["cloudwatch", "cloudtrail", "xray"]},
+  %{query: "埋め込み保存", relevant: MapSet.new(["s3-vectors"]), ranked: ["opensearch", "aurora", "s3-vectors"]}
+]
+
+recall_at_k = fn relevant, ranked, k ->
+  retrieved = ranked |> Enum.take(k) |> MapSet.new()
+  MapSet.intersection(relevant, retrieved) |> MapSet.size() |> Kernel./(MapSet.size(relevant))
+end
+
+reciprocal_rank = fn relevant, ranked ->
+  case Enum.find_index(ranked, &MapSet.member?(relevant, &1)) do
+    nil -> 0.0
+    index -> 1.0 / (index + 1)
+  end
+end
+
+retrieval_results =
+  Enum.map(retrieval_cases, fn test ->
+    %{
+      query: test.query,
+      recall_at_2: recall_at_k.(test.relevant, test.ranked, 2),
+      reciprocal_rank: Float.round(reciprocal_rank.(test.relevant, test.ranked), 3)
+    }
+  end)
+
+retrieval_summary = %{
+  mean_recall_at_2: Enum.map(retrieval_results, & &1.recall_at_2) |> Enum.sum() |> Kernel./(length(retrieval_results)),
+  mrr: Enum.map(retrieval_results, & &1.reciprocal_rank) |> Enum.sum() |> Kernel./(length(retrieval_results)),
+  details: retrieval_results
+}
+
+metric_rows =
+  Enum.flat_map(retrieval_results, fn row ->
+    [
+      %{query: row.query, metric: "Recall@2", value: row.recall_at_2},
+      %{query: row.query, metric: "MRR contribution", value: row.reciprocal_rank}
+    ]
+  end)
+
+retrieval_chart =
+  VegaLite.new(width: 660, height: 260, title: "クエリ別の Retrieval 品質")
+  |> VegaLite.data_from_values(metric_rows)
+  |> VegaLite.mark(:bar, tooltip: true)
+  |> VegaLite.encode_field(:x, "query", type: :nominal, title: "クエリ")
+  |> VegaLite.encode_field(:x_offset, "metric")
+  |> VegaLite.encode_field(:y, "value", type: :quantitative, title: "score", scale: [domain: [0, 1]])
+  |> VegaLite.encode_field(:color, "metric", type: :nominal, title: "指標")
+  |> Kino.VegaLite.new()
+
+Kino.Layout.tabs([
+  {"指標比較", retrieval_chart},
+  {"集計", Kino.DataTable.new([Map.drop(retrieval_summary, [:details])])},
+  {"明細", Kino.DataTable.new(retrieval_results)}
+])
+```
+
+Retrieve-only では context relevance / coverage、Retrieve-and-generate では correctness / completeness / faithfulness などを測ります。生成回答の失敗を、検索と生成のどちらに帰属させるかが重要です。
+
+## ハンズオン3: 多目的品質ゲート
+
+```elixir
+baseline = %{
+  task_success: 0.91,
+  grounded_rate: 0.96,
+  safety_pass_rate: 0.995,
+  p95_latency_ms: 2_800,
+  avg_cost_usd: 0.008
+}
+
+candidate = %{
+  task_success: 0.93,
+  grounded_rate: 0.95,
+  safety_pass_rate: 0.997,
+  p95_latency_ms: 3_100,
+  avg_cost_usd: 0.006
+}
+
+gate = %{
+  min_task_success: 0.92,
+  min_grounded_rate: 0.95,
+  min_safety_pass_rate: 0.995,
+  max_p95_latency_ms: 3_000,
+  max_avg_cost_usd: 0.009
+}
+
+checks = [
+  %{name: :task_success, pass: candidate.task_success >= gate.min_task_success},
+  %{name: :grounded_rate, pass: candidate.grounded_rate >= gate.min_grounded_rate},
+  %{name: :safety, pass: candidate.safety_pass_rate >= gate.min_safety_pass_rate},
+  %{name: :latency, pass: candidate.p95_latency_ms <= gate.max_p95_latency_ms},
+  %{name: :cost, pass: candidate.avg_cost_usd <= gate.max_avg_cost_usd},
+  %{name: :no_large_quality_regression, pass: candidate.grounded_rate >= baseline.grounded_rate - 0.02}
+]
+
+%{release: Enum.all?(checks, & &1.pass), checks: checks}
+```
+
+候補は品質とコストを改善していますが、p95 latency の基準を超えるため release は止まります。加重平均だけだと重大な安全性低下を他の改善が相殺するため、安全・法令・データ所在地は hard gate にします。
+
+## ハンズオン4: 障害の切り分け
+
+```elixir
+diagnose = fn symptoms ->
+  cond do
+    symptoms.status == 403 -> [:iam, :model_access, :kms, :scp, :resource_policy]
+    symptoms.status == 429 -> [:quota_rpm_tpm, :concurrency, :max_tokens, :backoff, :cross_region]
+    symptoms.status in [503, 529] -> [:temporary_capacity, :backoff_jitter, :cross_region, :fallback]
+    symptoms.schema_error -> [:model_support, :json_schema_subset, :prompt_version, :post_validation]
+    symptoms.truncated -> [:context_window, :max_tokens, :chunk_size, :prompt_compression]
+    symptoms.low_relevance -> [:chunking, :embedding, :metadata_filter, :hybrid_search, :reranker, :data_freshness]
+    symptoms.slow -> [:ttft_vs_total, :retrieval_latency, :tool_latency, :output_tokens, :streaming]
+    true -> [:correlate_request_id, :logs, :metrics, :traces, :recent_changes]
+  end
+end
+
+diagnose.(%{
+  status: 200,
+  schema_error: false,
+  truncated: false,
+  low_relevance: true,
+  slow: false
+})
+```
+
+## 評価セットの設計
+
+- 実トラフィック分布を反映し、easy / typical / hard / adversarial を含める
+- tenant・言語・長さ・権限・モダリティ別に slice を持つ
+- 学習／prompt optimization 用と、未使用の holdout を分ける
+- ground truth の根拠、作成者、更新日、合意度を保存する
+- 失敗例を継続追加するが、テストへの過学習を監視する
+- prompt、model、embedding、chunking、reranker、Guardrail の version を記録する
+
+## トラブルシューティング順序
+
+```elixir
+Kino.Mermaid.new("""
+flowchart TD
+  X["失敗を request ID で固定"] --> H{"HTTP / error type"}
+  H -->|403| IAM["IAM / SCP / KMS / model access"]
+  H -->|429| TH["RPM / TPM / concurrency / maxTokens"]
+  H -->|503 / 529| CP["capacity / retry / cross-Region"]
+  H -->|200 but low quality| Q{"どの境界で劣化?"}
+  Q --> R["Retrieval: chunk / embedding / filter"]
+  Q --> M["Model: prompt / parameter / version"]
+  Q --> T["Tool: input / permission / timeout"]
+  Q --> P["Post-process: schema / business rule"]
+  IAM --> REG["最小再現を回帰testへ"]
+  TH --> REG
+  CP --> REG
+  R --> REG
+  M --> REG
+  T --> REG
+  P --> REG
+""")
+```
+
+1. request ID、時刻、リージョン、モデル／推論プロファイル、変更履歴を固定
+2. 入力スキーマ、権限、クォータ、対応 API を確認
+3. retrieval、model、tool、post-process の境界ごとに再現
+4. CloudWatch metrics / logs、X-Ray、CloudTrail を相関
+5. 直前の prompt / model / index / policy 変更と比較
+6. 最小再現ケースを作り、回帰テストへ追加
+
+## 判断問題
+
+1. semantic similarity が高くても factual correctness が低い例を挙げてください。
+2. LLM-as-a-judge を人手評価で校正する方法を説明してください。
+3. embedding drift と document freshness の問題をどう切り分けますか。
+4. Agent の task completion rate が高くても危険な場合はどんなときですか。
+
+## 公式資料
+
+- [Amazon Bedrock Evaluations](https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html)
+- [LLM-as-a-judge](https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-judge.html)
+- [RAG evaluation metrics](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-eval-retrieve.html)
+- [CloudWatch runtime metrics](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-runtime-metrics.html)
+- [Troubleshooting API errors](https://docs.aws.amazon.com/bedrock/latest/userguide/troubleshooting-api-error-codes.html)

@@ -1,0 +1,224 @@
+# AIP-C01 06: 本番統合とレジリエンス
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.19"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 概要
+
+> 最終確認日: 2026-09-21
+>
+> 対応範囲: 1.1, 1.2, 2.2〜2.5, 4.2, 5.2
+
+## このノートで身につけること
+
+- 同期、ストリーミング、非同期、バッチを要件から選ぶ
+- timeout、retry、backoff、jitter、circuit breaker を設計する
+- API Gateway、Lambda、SQS、EventBridge、Step Functions を疎結合に組む
+- カナリア、品質ゲート、ロールバックを含む GenAI CI/CD を考える
+
+## 最新仕様の要点
+
+Bedrock の batch inference は大量の独立プロンプトを S3 入出力で非同期処理します。Converse 形式も利用できますが、tool calling、structured output、複数ターンのやり取りは使えません。状態変更は EventBridge で受け、ポーリングを避けられます。
+
+スロットリングや一時的容量不足では、`Retry-After` を尊重し、指数バックオフと jitter、上限付き試行回数、同時実行制御を使います。429 をすべて同じ原因と決めつけず、エラー型、RPM / TPM、`max_tokens`、モデル準備状態を確認します。503 / 529 は一時的容量エラーとして扱い、必要なら cross-Region inference やフォールバックを検討します。
+
+## ハンズオン1: 統合方式を要件から選ぶ
+
+```elixir
+select_pattern = fn request ->
+  cond do
+    request.count > 1_000 and request.deadline_minutes >= 60 -> :batch_inference
+    request.user_facing and request.first_token_important -> :streaming
+    request.long_running -> :async_job_with_eventbridge
+    request.needs_tools or request.multi_turn -> :converse
+    true -> :synchronous_invoke
+  end
+end
+
+workloads = [
+  %{name: "チャット", count: 1, deadline_minutes: 1, user_facing: true, first_token_important: true, long_running: false, needs_tools: false, multi_turn: true},
+  %{name: "夜間100万件分類", count: 1_000_000, deadline_minutes: 480, user_facing: false, first_token_important: false, long_running: true, needs_tools: false, multi_turn: false},
+  %{name: "社内ツール実行", count: 1, deadline_minutes: 2, user_facing: true, first_token_important: false, long_running: false, needs_tools: true, multi_turn: true}
+]
+
+workloads
+|> Enum.map(&Map.put(&1, :pattern, select_pattern.(&1)))
+|> Kino.DataTable.new()
+```
+
+## ハンズオン2: 指数バックオフと full jitter
+
+```elixir
+defmodule RetryPolicy do
+  @transient [:throttling, :service_unavailable, :model_not_ready, :overloaded]
+
+  def run(fun, opts \\ []) do
+    max_attempts = Keyword.get(opts, :max_attempts, 6)
+    base_ms = Keyword.get(opts, :base_ms, 100)
+    cap_ms = Keyword.get(opts, :cap_ms, 2_000)
+    do_run(fun, 1, max_attempts, base_ms, cap_ms)
+  end
+
+  defp do_run(fun, attempt, max_attempts, base_ms, cap_ms) do
+    case fun.() do
+      {:ok, value} -> {:ok, value, attempt}
+      {:error, reason} when reason in @transient and attempt < max_attempts ->
+        max_delay = min(cap_ms, trunc(base_ms * :math.pow(2, attempt - 1)))
+        delay = :rand.uniform(max_delay)
+        Process.sleep(delay)
+        do_run(fun, attempt + 1, max_attempts, base_ms, cap_ms)
+
+      {:error, reason} ->
+        {:error, reason, attempt}
+    end
+  end
+end
+```
+
+```elixir
+{:ok, counter} = Agent.start_link(fn -> 0 end)
+
+unstable_call = fn ->
+  attempt = Agent.get_and_update(counter, fn value -> {value + 1, value + 1} end)
+  if attempt < 3, do: {:error, :throttling}, else: {:ok, "success"}
+end
+
+RetryPolicy.run(unstable_call, base_ms: 10, cap_ms: 100)
+```
+
+実運用では AWS SDK の標準 retry を優先し、アプリ層の retry と二重に増幅しないようにします。認証エラー、入力不正、AccessDenied のような恒久エラーは再試行しません。
+
+```elixir
+backoff_rows =
+  Enum.map(1..6, fn attempt ->
+    %{
+      attempt: attempt,
+      max_delay_ms: min(2_000, trunc(100 * :math.pow(2, attempt - 1)))
+    }
+  end)
+
+VegaLite.new(width: 620, height: 250, title: "指数バックオフの上限（実待機は 0〜上限の jitter）")
+|> VegaLite.data_from_values(backoff_rows)
+|> VegaLite.mark(:line, point: true, tooltip: true)
+|> VegaLite.encode_field(:x, "attempt", type: :ordinal, title: "試行回数")
+|> VegaLite.encode_field(:y, "max_delay_ms", type: :quantitative, title: "最大待機 (ms)")
+|> Kino.VegaLite.new()
+```
+
+## ハンズオン3: circuit breaker の状態遷移
+
+```elixir
+transition = fn
+  %{state: :closed, failures: failures} = breaker, :failure when failures + 1 >= 3 ->
+    %{breaker | state: :open, failures: failures + 1}
+
+  %{state: :closed, failures: failures} = breaker, :failure ->
+    %{breaker | failures: failures + 1}
+
+  %{state: :closed} = breaker, :success ->
+    %{breaker | failures: 0}
+
+  %{state: :open} = breaker, :cooldown_elapsed ->
+    %{breaker | state: :half_open}
+
+  %{state: :half_open} = breaker, :success ->
+    %{breaker | state: :closed, failures: 0}
+
+  %{state: :half_open} = breaker, :failure ->
+    %{breaker | state: :open}
+
+  breaker, _event ->
+    breaker
+end
+
+events = [:failure, :failure, :failure, :cooldown_elapsed, :success]
+
+{_last, history} =
+  Enum.map_reduce(events, %{state: :closed, failures: 0}, fn event, breaker ->
+    next = transition.(breaker, event)
+    {%{event: event, before: breaker.state, after: next.state}, next}
+  end)
+
+history
+```
+
+フォールバックは「別モデルへ黙って切り替える」だけではありません。キャッシュ済み応答、検索結果だけ、受付だけして後処理、人間窓口への誘導など、品質と業務リスクに合わせます。
+
+## ハンズオン4: EventBridge の batch 完了イベントを分類する
+
+```elixir
+handle_event = fn event ->
+  case {event["source"], event["detail-type"], get_in(event, ["detail", "status"])} do
+    {"aws.bedrock", "Batch Inference Job State Change", "Completed"} ->
+      {:process_output, get_in(event, ["detail", "jobArn"])}
+
+    {"aws.bedrock", "Batch Inference Job State Change", status}
+    when status in ["Failed", "Stopped"] ->
+      {:alert, status}
+
+    _ ->
+      :ignore
+  end
+end
+
+sample_event = %{
+  "source" => "aws.bedrock",
+  "detail-type" => "Batch Inference Job State Change",
+  "detail" => %{"status" => "Completed", "jobArn" => "arn:aws:bedrock:REGION:ACCOUNT:model-invocation-job/ID"}
+}
+
+handle_event.(sample_event)
+```
+
+## リファレンスアーキテクチャ
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  C["Client"] --> W["WAF / Cognito"]
+  W --> A["API Gateway"]
+  A --> L["Lambda / ECS"]
+  L --> G["Guardrail input check"]
+  G --> B["Bedrock Converse / Stream"]
+  L --> D["DynamoDB conversation state"]
+  L --> Q["SQS overflow / async"]
+  L --> S["Step Functions tools / approval"]
+
+  L -.-> O["CloudWatch / X-Ray / CloudTrail"]
+  B -.-> O
+  S -.-> O
+
+  SI["S3 batch input"] --> J["Model invocation job"]
+  J --> E["EventBridge"]
+  E --> P["Output processor"]
+  P --> SO["S3 batch output"]
+""")
+```
+
+## CI/CD 品質ゲート
+
+1. IaC と IAM policy の静的検査
+2. prompt / schema / tool contract のユニットテスト
+3. 固定評価セットで品質・安全性・検索・コスト・レイテンシー評価
+4. staging で synthetic workflow
+5. canary で少量トラフィック
+6. SLO と品質閾値を満たさなければ自動ロールバック
+
+## 判断問題
+
+1. 429 時に無制限 retry が障害を悪化させる仕組みを説明してください。
+2. 大量の独立要約に batch inference が向き、tool use に向かない理由は何ですか。
+3. API Gateway のタイムアウトより FM の最悪レイテンシーが長い場合、どんな統合へ変更しますか。
+4. model fallback で品質・安全・データ所在地を再評価すべき理由は何ですか。
+
+## 公式資料
+
+- [Scaling and throughput best practices](https://docs.aws.amazon.com/bedrock/latest/userguide/scaling-throughput-best-practices.html)
+- [Batch inference](https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html)
+- [Bedrock events with EventBridge](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-eventbridge-how-it-works.html)
+- [Cross-Region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html)
+- [Latency-optimized inference](https://docs.aws.amazon.com/bedrock/latest/userguide/latency-optimized-inference.html)

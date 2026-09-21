@@ -1,0 +1,237 @@
+# AIP-C01 03: RAG・埋め込み・検索
+
+```elixir
+Mix.install([
+  {:aws, "~> 1.0.15"},
+  {:hackney, "~> 4.7"},
+  {:kino, "~> 0.19"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 概要
+
+> 最終確認日: 2026-09-21
+>
+> 対応範囲: 1.3, 1.4, 1.5, 3.1, 4.2, 5.1, 5.2
+
+## このノートで身につけること
+
+- チャンク、埋め込み、ベクトル検索、リランキング、生成の流れを実装する
+- fixed / hierarchical / semantic chunking を使い分ける
+- semantic / keyword / hybrid search とメタデータフィルターを比較する
+- 検索品質と生成品質を分離して評価する
+
+## 最新仕様の要点
+
+Bedrock Knowledge Bases の標準チャンクは約 300 トークンで文境界を保ちます。固定長、階層、セマンティック、チャンクなしも選べます。チャンク方式はデータソース接続後に変更できないため、評価データで先に比較します。セマンティックチャンクは追加の FM コストが発生します。
+
+Titan Text Embeddings V2 は 1,024 / 512 / 256 次元、正規化の有無、float / binary 出力を設定できます。ベクトルストア側の次元と一致させます。Knowledge Bases は S3 Vectors、OpenSearch、Aurora PostgreSQL、Neptune Analytics などを要件に応じて選びます。S3 Vectors はコスト重視の大規模保存、OpenSearch は高 QPS・低レイテンシーや高度な hybrid search が代表的な判断軸です。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  subgraph Ingestion["Ingestion"]
+    D["Documents"] --> P["Parse / Clean"]
+    P --> C["Chunk"]
+    C --> E["Embedding"]
+    E --> V["Vector store + metadata"]
+  end
+
+  subgraph Query["Query time"]
+    Q["Question"] --> QE["Query embedding / expansion"]
+    QE --> R["Semantic / Hybrid retrieval"]
+    V --> R
+    R --> RR["Rerank + ACL filter"]
+    RR --> L["FM generation"]
+    L --> A["Grounded answer + citation"]
+  end
+""")
+```
+
+## 接続
+
+```elixir
+access_key_input = Kino.Input.password("AWS_ACCESS_KEY_ID")
+secret_key_input = Kino.Input.password("AWS_SECRET_ACCESS_KEY")
+session_token_input = Kino.Input.password("AWS_SESSION_TOKEN（一時認証の場合）")
+region_input = Kino.Input.text("AWS_REGION", default: "ap-northeast-1")
+
+Kino.Layout.grid([access_key_input, secret_key_input, session_token_input, region_input], columns: 2)
+```
+
+```elixir
+access_key = Kino.Input.read(access_key_input)
+secret_key = Kino.Input.read(secret_key_input)
+session_token = Kino.Input.read(session_token_input)
+region = Kino.Input.read(region_input)
+
+client =
+  if session_token in [nil, ""] do
+    AWS.Client.create(access_key, secret_key, region)
+  else
+    AWS.Client.create(access_key, secret_key, session_token, region)
+  end
+```
+
+## ハンズオン1: チャンクの粒度を観察する
+
+```elixir
+document = """
+Amazon Bedrock は基盤モデルを利用するためのマネージドサービスです。
+Converse API は対応モデル間で共通のメッセージ形式を提供します。
+Knowledge Bases はデータの取り込み、埋め込み、検索、生成を支援します。
+Guardrails は入力と出力に安全ポリシーを適用します。
+CloudWatch では呼び出し数、レイテンシー、トークン、エラーを監視できます。
+"""
+
+chunk_words = fn text, size, overlap ->
+  words = String.split(text)
+  step = max(size - overlap, 1)
+
+  words
+  |> Enum.chunk_every(size, step, :discard)
+  |> Enum.with_index()
+  |> Enum.map(fn {chunk, index} -> %{id: index, text: Enum.join(chunk, " ")} end)
+end
+
+chunk_words.(document, 12, 3)
+|> Kino.DataTable.new()
+```
+
+実際のトークン境界はモデルの tokenizer に依存します。このセルは「小さいチャンクは精密だが文脈が減る」「overlap は再現率を上げ得るが保存量と重複を増やす」ことを観察するための簡略版です。
+
+## ハンズオン2: Titan Text Embeddings V2 でベクトル化する
+
+```elixir
+embed = fn text ->
+  {:ok, body, _} =
+    AWS.BedrockRuntime.invoke_model(
+      client,
+      "amazon.titan-embed-text-v2:0",
+      %{
+        "accept" => "application/json",
+        "contentType" => "application/json",
+        "inputText" => text,
+        "dimensions" => 256,
+        "normalize" => true
+      },
+      recv_timeout: 60_000
+    )
+
+  body["embedding"] || get_in(body, ["embeddingsByType", "float"])
+end
+```
+
+```elixir
+documents = [
+  %{id: "bedrock", text: "Amazon Bedrock は基盤モデルを API で利用するマネージドサービスです。", team: "platform"},
+  %{id: "guardrails", text: "Bedrock Guardrails は有害コンテンツや PII を検出・制御します。", team: "security"},
+  %{id: "cloudwatch", text: "CloudWatch はメトリクス、ログ、アラームを提供します。", team: "operations"}
+]
+
+indexed_documents =
+  Enum.map(documents, fn doc -> Map.put(doc, :embedding, embed.(doc.text)) end)
+```
+
+## ハンズオン3: cosine similarity で検索する
+
+正規化済みベクトルの cosine similarity は内積で求められますが、ここでは一般形を実装します。
+
+```elixir
+cosine_similarity = fn left, right ->
+  dot = Enum.zip_with(left, right, &Kernel.*/2) |> Enum.sum()
+  left_norm = :math.sqrt(Enum.map(left, &(&1 * &1)) |> Enum.sum())
+  right_norm = :math.sqrt(Enum.map(right, &(&1 * &1)) |> Enum.sum())
+  dot / (left_norm * right_norm)
+end
+
+search = fn query, filters, top_k ->
+  query_embedding = embed.(query)
+
+  indexed_documents
+  |> Enum.filter(fn doc ->
+    Enum.all?(filters, fn {key, value} -> Map.fetch!(doc, key) == value end)
+  end)
+  |> Enum.map(fn doc ->
+    Map.put(doc, :score, cosine_similarity.(query_embedding, doc.embedding))
+  end)
+  |> Enum.sort_by(& &1.score, :desc)
+  |> Enum.take(top_k)
+  |> Enum.map(&Map.drop(&1, [:embedding]))
+end
+```
+
+```elixir
+search_results = search.("個人情報を保護するには？", %{}, 2)
+
+similarity_chart =
+  VegaLite.new(width: 620, height: 240, title: "検索結果の cosine similarity")
+  |> VegaLite.data_from_values(search_results)
+  |> VegaLite.mark(:bar, tooltip: true)
+  |> VegaLite.encode_field(:y, "id", type: :nominal, title: "document", sort: "-x")
+  |> VegaLite.encode_field(:x, "score", type: :quantitative, title: "cosine similarity")
+  |> Kino.VegaLite.new()
+
+Kino.Layout.tabs([
+  {"類似度", similarity_chart},
+  {"検索結果", Kino.DataTable.new(search_results)}
+])
+```
+
+```elixir
+search.("監視方法は？", %{team: "operations"}, 2)
+|> Kino.DataTable.new()
+```
+
+メタデータフィルターは検索後の表示制御ではなく、原則として検索時の認可境界にも組み込みます。取得後に隠すだけでは、権限外データがモデルのコンテキストへ入る恐れがあります。
+
+## ハンズオン4: Retrieval と Generation を分離する
+
+```elixir
+query = "生成 AI の入出力を安全にする AWS 機能は？"
+contexts = search.(query, %{}, 2)
+
+grounded_prompt = """
+次の参照情報だけを使って質問に答えてください。
+参照情報に答えがなければ「情報不足」と答えてください。
+回答の末尾に参照した id を列挙してください。
+
+<context>
+#{Enum.map_join(contexts, "\n", &"[#{&1.id}] #{&1.text}")}
+</context>
+
+<question>#{query}</question>
+"""
+
+Kino.Text.new(grounded_prompt)
+```
+
+ここで検索結果が誤っていれば、強い生成モデルに変えても根拠は改善しません。検索失敗（recall / relevance）と生成失敗（faithfulness / correctness）を分離して診断します。
+
+## 設計比較
+
+| 要件 | 第一候補 | 理由 |
+|---|---|---|
+| 低頻度・大量ベクトル・コスト重視 | S3 Vectors | 永続ストレージコストを重視 |
+| 高 QPS、低レイテンシー、hybrid / facet | OpenSearch | 高度な検索と運用機能 |
+| 既存 PostgreSQL とトランザクション統合 | Aurora PostgreSQL + pgvector | 既存データと近接 |
+| 関係探索とベクトル検索 | Neptune Analytics | グラフ関係を利用 |
+
+この表は出発点です。リージョン、規模、SLA、運用スキル、暗号化、バックアップ、料金で最終判断します。
+
+## 判断問題
+
+1. 階層チャンクで検索件数が指定した top-k より少なくなることがある理由は何ですか。
+2. hybrid search と reranker はどの段階で何を改善しますか。
+3. Guardrails を Knowledge Bases に付けても、取得した reference 自体は評価対象外である点が重要なのはなぜですか。
+4. 埋め込みモデルを変更するとき、なぜ再インデックスと回帰評価が必要ですか。
+
+## 公式資料
+
+- [Knowledge Bases のチャンク](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-chunking.html)
+- [Titan Text Embeddings V2](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-titan-text-embeddings-v2.html)
+- [Knowledge Bases のベクトルストア](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-setup.html)
+- [Reranker](https://docs.aws.amazon.com/bedrock/latest/userguide/rerank.html)
+- [S3 Vectors](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors.html)
+- [RAG 評価メトリクス](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-eval-retrieve.html)

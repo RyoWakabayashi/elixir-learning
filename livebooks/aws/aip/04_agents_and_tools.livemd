@@ -1,0 +1,261 @@
+# AIP-C01 04: エージェントとツール統合
+
+```elixir
+Mix.install([
+  {:aws, "~> 1.0.15"},
+  {:hackney, "~> 4.7"},
+  {:kino, "~> 0.19"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 概要
+
+> 最終確認日: 2026-09-21
+>
+> 対応範囲: 2.1, 2.3, 2.5, 3.1, 4.3, 5.1
+
+## このノートで身につけること
+
+- client-side tool use の制御ループを実装する
+- ツール入力を信頼せず、スキーマと業務権限で検証する
+- Bedrock Agents、AgentCore、Strands Agents、Step Functions の役割を比較する
+- 停止条件、タイムアウト、人間承認、監査を設計する
+
+## 最新仕様の要点
+
+Amazon Bedrock の tool use では、通常モデル自身が外部処理を実行するのではなく、モデルがツール呼び出しを要求し、アプリケーションが検証・実行して結果を返します。Bedrock は client-side tool use に加え、Responses API の server-side tool use、Anthropic 固有ツールも提供します。API とモデルごとの対応を確認してください。
+
+標準版 AIP-C01 には Amazon Bedrock AgentCore が追加されています。AgentCore は Runtime、Gateway、Memory、Identity、Observability、Policy に加え、Harness、Browser、Code Interpreter、Payments、Evaluations、Optimization、Registry などを含む本番エージェント向けプラットフォームです。機能追加が速いため、名称の暗記より「実行・ツール接続・状態・認証認可・監視評価」の要件へ対応付けます。フレームワークや FM は Strands Agents や Bedrock 内のモデルに限定されません。
+
+```elixir
+Kino.Mermaid.new("""
+sequenceDiagram
+  actor User
+  participant App as Application
+  participant FM as Bedrock FM
+  participant Policy as Auth / Policy
+  participant Tool as Tool / Lambda
+
+  User->>App: request
+  App->>FM: messages + tool schema
+  FM-->>App: toolUse(name, input)
+  App->>Policy: validate identity, tool, arguments
+  alt approval required
+    Policy-->>App: human review
+  else allowed
+    Policy-->>App: allow
+    App->>Tool: idempotent invocation
+    Tool-->>App: validated result
+    App->>FM: toolResult
+    FM-->>App: final answer
+    App-->>User: response
+  end
+""")
+```
+
+## 接続
+
+```elixir
+access_key_input = Kino.Input.password("AWS_ACCESS_KEY_ID")
+secret_key_input = Kino.Input.password("AWS_SECRET_ACCESS_KEY")
+session_token_input = Kino.Input.password("AWS_SESSION_TOKEN（一時認証の場合）")
+region_input = Kino.Input.text("AWS_REGION", default: "ap-northeast-1")
+model_id_input = Kino.Input.text("Tool use 対応 MODEL_ID", default: "amazon.nova-lite-v1:0")
+
+Kino.Layout.grid([access_key_input, secret_key_input, session_token_input, region_input, model_id_input], columns: 2)
+```
+
+```elixir
+access_key = Kino.Input.read(access_key_input)
+secret_key = Kino.Input.read(secret_key_input)
+session_token = Kino.Input.read(session_token_input)
+region = Kino.Input.read(region_input)
+
+client =
+  if session_token in [nil, ""] do
+    AWS.Client.create(access_key, secret_key, region)
+  else
+    AWS.Client.create(access_key, secret_key, session_token, region)
+  end
+```
+
+## ハンズオン1: ツールを最小権限で定義する
+
+```elixir
+tool_spec = %{
+  "toolSpec" => %{
+    "name" => "get_order_status",
+    "description" => "注文IDから配送状態を取得する。状態変更は行わない。",
+    "inputSchema" => %{
+      "json" => %{
+        "type" => "object",
+        "properties" => %{
+          "order_id" => %{"type" => "string", "description" => "ORD-で始まる注文ID"}
+        },
+        "required" => ["order_id"],
+        "additionalProperties" => false
+      }
+    }
+  }
+}
+
+orders = %{
+  "ORD-100" => %{status: "shipped", eta: "2026-09-23"},
+  "ORD-200" => %{status: "processing", eta: nil}
+}
+```
+
+```elixir
+execute_tool = fn
+  "get_order_status", %{"order_id" => "ORD-" <> _ = order_id} ->
+    case Map.fetch(orders, order_id) do
+      {:ok, order} -> {:ok, Map.put(order, :order_id, order_id)}
+      :error -> {:error, "order_not_found"}
+    end
+
+  "get_order_status", _ ->
+    {:error, "invalid_order_id"}
+
+  _, _ ->
+    {:error, "tool_not_allowed"}
+end
+```
+
+ツールの description と schema はモデル向けの説明です。セキュリティ境界ではありません。実行時に、ツール名、引数、呼び出し主体、対象リソース、レート、重複実行を検証します。
+
+## ハンズオン2: client-side tool use ループ
+
+```elixir
+user_message = %{
+  "role" => "user",
+  "content" => [%{"text" => "注文 ORD-100 はいつ届きますか？"}]
+}
+
+payload = %{
+  "messages" => [user_message],
+  "toolConfig" => %{
+    "tools" => [tool_spec],
+    "toolChoice" => %{"auto" => %{}}
+  },
+  "inferenceConfig" => %{"maxTokens" => 300, "temperature" => 0.0}
+}
+
+{:ok, first_response, _} =
+  AWS.BedrockRuntime.converse(
+    client,
+    Kino.Input.read(model_id_input),
+    payload,
+    recv_timeout: 60_000
+  )
+```
+
+```elixir
+assistant_message = get_in(first_response, ["output", "message"])
+
+tool_use =
+  assistant_message["content"]
+  |> Enum.find_value(& &1["toolUse"])
+
+tool_result_content =
+  case execute_tool.(tool_use["name"], tool_use["input"]) do
+    {:ok, result} ->
+      %{
+        "toolResult" => %{
+          "toolUseId" => tool_use["toolUseId"],
+          "content" => [%{"json" => result}],
+          "status" => "success"
+        }
+      }
+
+    {:error, reason} ->
+      %{
+        "toolResult" => %{
+          "toolUseId" => tool_use["toolUseId"],
+          "content" => [%{"text" => reason}],
+          "status" => "error"
+        }
+      }
+  end
+```
+
+```elixir
+second_payload = %{
+  "messages" => [
+    user_message,
+    assistant_message,
+    %{"role" => "user", "content" => [tool_result_content]}
+  ],
+  "toolConfig" => %{"tools" => [tool_spec]},
+  "inferenceConfig" => %{"maxTokens" => 300, "temperature" => 0.0}
+}
+
+{:ok, final_response, _} =
+  AWS.BedrockRuntime.converse(
+    client,
+    Kino.Input.read(model_id_input),
+    second_payload,
+    recv_timeout: 60_000
+  )
+
+final_response
+|> get_in(["output", "message", "content", Access.at(0), "text"])
+|> Kino.Markdown.new()
+```
+
+## ハンズオン3: 停止条件と人間承認
+
+```elixir
+policy = %{
+  max_steps: 6,
+  max_tool_calls: 3,
+  timeout_ms: 15_000,
+  approval_required: ["refund_order", "delete_account", "send_email"],
+  allowed_tools: ["get_order_status", "search_faq", "refund_order"]
+}
+
+authorize = fn tool_name, step, tool_calls ->
+  cond do
+    step >= policy.max_steps -> {:deny, :max_steps}
+    tool_calls >= policy.max_tool_calls -> {:deny, :max_tool_calls}
+    tool_name not in policy.allowed_tools -> {:deny, :not_allowed}
+    tool_name in policy.approval_required -> {:review, :human_approval}
+    true -> :allow
+  end
+end
+
+[
+  authorize.("get_order_status", 1, 0),
+  authorize.("refund_order", 2, 1),
+  authorize.("unknown_tool", 2, 1),
+  authorize.("search_faq", 7, 2)
+]
+```
+
+エージェントは「賢い Lambda」ではありません。非決定的な判断を含むため、リソース境界、冪等性キー、タイムアウト、サーキットブレーカー、ステップ上限、承認、監査証跡を明示します。
+
+## 構成の使い分け
+
+| 選択 | 適する場面 |
+|---|---|
+| アプリ内 client-side tool use | 小さな制御ループ、独自の厳密な実行制御 |
+| Step Functions | 可視な決定的ワークフロー、待機・承認・再試行 |
+| Bedrock Agents | Bedrock 管理のオーケストレーション、Action Groups、Knowledge Bases |
+| AgentCore | 任意フレームワークの本番実行、Gateway、Memory、Identity、Policy、Observability |
+| Lambda 上の MCP server | 軽量・ステートレスなツール公開 |
+| ECS 上の MCP server | 長時間・複雑・状態を伴うツール |
+
+## 判断問題
+
+1. モデルが生成したツール引数を、そのまま Lambda に渡してはいけない理由は何ですか。
+2. 返金処理で人間承認と冪等性キーの両方が必要なのはなぜですか。
+3. AgentCore Gateway と各ツールの IAM 権限は、どのように責務を分けますか。
+4. multi-agent が single-agent より妥当になる条件と、不要な複雑性になる条件を挙げてください。
+
+## 公式資料
+
+- [Amazon Bedrock tool use](https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use.html)
+- [Amazon Bedrock AgentCore Developer Guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html)
+- [AgentCore resource-based policies](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/resource-based-policies.html)
+- [AgentCore Gateway permissions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-prerequisites-permissions.html)
+- [Prompt injection security](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-injection.html)

@@ -1,0 +1,124 @@
+# AWS Certified Generative AI Developer - Professional (AIP-C01) 学習ロードマップ
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.19"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 概要
+
+> 最終確認日: 2026-09-21
+
+このシリーズは、Amazon Bedrock を中心に、本番向け生成 AI アプリケーションを設計・実装・運用する力を Livebook で身につけるための教材です。暗記ではなく、コードを動かして「なぜその選択肢が適切か」を説明できる状態を目指します。
+
+## 試験の現在地
+
+標準版 AIP-C01 は 75 問（採点対象 65 問、採点対象外 10 問）、180 分、合格スコアは 750 / 1,000 です。択一・複数選択があり、未回答は不正解、推測による減点はありません。
+
+| 分野 | 比重 | このシリーズ |
+|---|---:|---|
+| 1. 基盤モデルの統合、データ管理、コンプライアンス | 31% | 01, 02, 03 |
+| 2. 実装と統合 | 26% | 01, 04, 06 |
+| 3. AI の安全性、セキュリティ、ガバナンス | 20% | 05 |
+| 4. 運用効率と最適化 | 12% | 07 |
+| 5. テスト、検証、トラブルシューティング | 11% | 08 |
+
+試験範囲外として明示されているのは、モデルそのものの開発・トレーニング、高度な ML 手法、データ／特徴量エンジニアリングです。一方で、FM の選定・統合、RAG、エージェント、ガードレール、評価、運用は深く問われます。
+
+## ノートブック
+
+1. [01 基盤モデルの統合とモデル選定](01_foundation_models.livemd)
+2. [02 プロンプトエンジニアリングと構造化出力](02_prompt_engineering.livemd)
+3. [03 RAG・埋め込み・検索](03_rag_vector_search.livemd)
+4. [04 エージェントとツール統合](04_agents_and_tools.livemd)
+5. [05 安全性・セキュリティ・ガバナンス](05_safety_security_governance.livemd)
+6. [06 本番統合とレジリエンス](06_production_integration.livemd)
+7. [07 コスト・性能・オブザーバビリティ](07_operations_optimization.livemd)
+8. [08 評価・テスト・トラブルシューティング](08_evaluation_troubleshooting.livemd)
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  A["00 試験範囲"] --> B["01 FM統合"]
+  B --> C["02 Prompt"]
+  C --> D["03 RAG"]
+  D --> E["04 Agent"]
+  E --> F["05 Safety"]
+  F --> G["06 Production"]
+  G --> H["07 Operations"]
+  H --> I["08 Evaluation"]
+
+  I -. "評価結果を改善へ戻す" .-> C
+  I -. "検索品質を改善" .-> D
+  I -. "運用データを改善" .-> G
+""")
+```
+
+## 推奨の進め方
+
+各ノートブックを「読む → ローカル演習 → AWS 実習 → 確認問題」の順に進めます。AWS 実習は料金が発生する場合があります。リソースを作る実習では、終了後に必ず削除してください。
+
+```elixir
+domains = [
+  %{domain: "1. FM・データ", weight: 31, notebooks: "01 / 02 / 03"},
+  %{domain: "2. 実装・統合", weight: 26, notebooks: "01 / 04 / 06"},
+  %{domain: "3. 安全・統制", weight: 20, notebooks: "05"},
+  %{domain: "4. 運用最適化", weight: 12, notebooks: "07"},
+  %{domain: "5. 評価・障害", weight: 11, notebooks: "08"}
+]
+
+domain_rows =
+  Enum.map(domains, &Map.put(&1, :questions_per_65, Float.round(&1.weight * 65 / 100, 1)))
+
+domain_chart =
+  VegaLite.new(width: 680, height: 260, title: "AIP-C01 の分野別比重")
+  |> VegaLite.data_from_values(domain_rows)
+  |> VegaLite.mark(:bar, tooltip: true)
+  |> VegaLite.encode_field(:y, "domain", type: :nominal, title: "分野", sort: "-x")
+  |> VegaLite.encode_field(:x, "weight", type: :quantitative, title: "試験比重 (%)")
+  |> Kino.VegaLite.new()
+
+Kino.Layout.tabs([
+  {"比重グラフ", domain_chart},
+  {"65問換算", Kino.DataTable.new(domain_rows)}
+])
+```
+
+上の値は学習時間配分の目安です。試験は補整スコアリングであり、分野ごとの合格ラインはありません。
+
+## 学習前チェック
+
+- AWS のコンピューティング、ストレージ、ネットワークの基礎を説明できる
+- IAM の最小権限、KMS、VPC エンドポイントを説明できる
+- Lambda、API Gateway、SQS、EventBridge、Step Functions の使い分けができる
+- CloudWatch、CloudTrail、X-Ray の役割を区別できる
+- 料金、データ所在地、レイテンシー、品質を同時にトレードオフ評価できる
+
+不足がある場合も先に進めますが、選択肢問題で「生成 AI 以外の AWS 基礎」が決め手になることを意識してください。
+
+## 最新情報の扱い
+
+生成 AI サービスは更新が速いため、次を固定値として暗記しません。
+
+- 個別モデル ID、モデルの提供終了日
+- 対応リージョンと推論プロファイル
+- コンテキスト長、クォータ、価格
+- API・機能ごとの対応モデル
+
+各実習の開始時に、モデルカタログ、リージョン可用性、API 互換性、料金、Service Quotas を確認してください。このシリーズでは、モデル ID を入力または API から取得する構成にしています。
+
+## 公式リソース
+
+- [認定ページ](https://aws.amazon.com/jp/certification/certified-generative-ai-developer-professional/)
+- [AIP-C01 試験ガイド](https://docs.aws.amazon.com/ja_jp/aws-certification/latest/ai-professional-01/ai-professional-01.html)
+- [対象 AWS サービス](https://docs.aws.amazon.com/ja_jp/aws-certification/latest/ai-professional-01/aip-01-in-scope-services.html)
+- [AWS Certification Exam Prep](https://aws.amazon.com/certification/certification-prep/)
+- [Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
+
+AWS は、公式 Practice Question Set、Exam Prep Course、SimuLearn、Official Pretest を含む 4 ステップの準備を案内しています。Livebook の実習に加えて、公式問題で設問形式と判断基準を確認してください。
+
+## 修了条件
+
+各ノートブックの確認問題に、自分の言葉で「採用案」「却下案」「トレードオフ」を書けたら修了です。単一サービス名だけでなく、要件から構成を逆算できることを重視します。

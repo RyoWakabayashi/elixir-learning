@@ -1,0 +1,274 @@
+# AIP-C01 02: プロンプトエンジニアリングと構造化出力
+
+```elixir
+Mix.install([
+  {:aws, "~> 1.0.15"},
+  {:hackney, "~> 4.7"},
+  {:kino, "~> 0.19"},
+  {:kino_vega_lite, "~> 0.1"},
+  {:jason, "~> 1.4"}
+])
+```
+
+## 概要
+
+> 最終確認日: 2026-09-21
+>
+> 対応範囲: 1.6, 2.4, 4.1, 4.2, 5.2
+
+## このノートで身につけること
+
+- 指示、コンテキスト、入力、出力契約を分離したプロンプトを作る
+- temperature / top-p / maxTokens の役割を説明する
+- JSON Schema による構造化出力を使い、後処理を単純化する
+- プロンプトをバージョン管理し、回帰テストする
+
+## 最新仕様の要点
+
+Amazon Bedrock は Converse / InvokeModel で JSON Schema に基づく Structured Outputs を提供します。すべてのモデルが対応するわけではなく、対応 API と制約をモデルカードで確認します。JSON Schema Draft 2020-12 の一部をサポートしますが、再帰スキーマ、外部 `$ref`、多くの数値・文字列制約は非対応です。
+
+長い共通コンテキストを繰り返す場合、対応モデルでは Prompt Caching がレイテンシーと入力トークンコストの削減候補です。キャッシュを前提にする前に、モデル、リージョン、最小トークン数、TTL、料金を確認します。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart
+  S["System: 役割・制約"] --> T["Template: タスク手順"]
+  T --> C["Context: 根拠情報"]
+  C --> U["User input: 信頼しない入力"]
+  U --> O["Output contract: JSON Schema"]
+  O --> V["業務ルールで再検証"]
+
+  M["Prompt Management"] -. "version / approval" .-> T
+  G["Guardrails"] -. "input / output" .-> U
+  G -.-> O
+""")
+```
+
+## 接続
+
+```elixir
+access_key_input = Kino.Input.password("AWS_ACCESS_KEY_ID")
+secret_key_input = Kino.Input.password("AWS_SECRET_ACCESS_KEY")
+session_token_input = Kino.Input.password("AWS_SESSION_TOKEN（一時認証の場合）")
+region_input = Kino.Input.text("AWS_REGION", default: "ap-northeast-1")
+model_id_input = Kino.Input.text("Converse 対応 MODEL_ID", default: "jp.anthropic.claude-haiku-4-5-20251001-v1:0")
+
+Kino.Layout.grid([access_key_input, secret_key_input, session_token_input, region_input, model_id_input], columns: 2)
+```
+
+```elixir
+access_key = Kino.Input.read(access_key_input)
+secret_key = Kino.Input.read(secret_key_input)
+session_token = Kino.Input.read(session_token_input)
+region = Kino.Input.read(region_input)
+
+client =
+  if session_token in [nil, ""] do
+    AWS.Client.create(access_key, secret_key, region)
+  else
+    AWS.Client.create(access_key, secret_key, session_token, region)
+  end
+```
+
+## ハンズオン1: プロンプトを部品化する
+
+```elixir
+defmodule PromptTemplate do
+  @version "support-summary-v3"
+
+  def version, do: @version
+
+  def render(ticket) do
+    system = """
+    あなたはカスタマーサポートの一次分類器です。
+    与えられた問い合わせの内容だけを根拠にしてください。
+    不明な項目は推測せず null にしてください。
+    """
+
+    user = """
+    <ticket>
+    #{ticket}
+    </ticket>
+
+    問い合わせを分類し、要約と次のアクションを返してください。
+    """
+
+    %{system: system, user: user, version: @version}
+  end
+end
+```
+
+```elixir
+ticket = "昨日から請求画面を開くと 500 エラーになります。二重請求も心配です。"
+prompt = PromptTemplate.render(ticket)
+```
+
+XML 風タグはモデルへの命令ではなく、信頼できる指示と信頼できない入力の境界を読みやすくする方法です。アプリケーション側でも、ユーザー入力を system 指示へ連結しないでください。
+
+## ハンズオン2: 同じ入力でパラメータを比較する
+
+```elixir
+invoke = fn prompt, temperature ->
+  AWS.BedrockRuntime.converse(
+    client,
+    Kino.Input.read(model_id_input),
+    %{
+      "system" => [%{"text" => prompt.system}],
+      "messages" => [
+        %{"role" => "user", "content" => [%{"text" => prompt.user}]}
+      ],
+      "inferenceConfig" => %{
+        "maxTokens" => 300,
+        "temperature" => temperature
+      }
+    },
+    recv_timeout: 60_000
+  )
+end
+```
+
+```elixir
+temperatures = [0.0, 0.3, 0.8]
+
+temperature_results =
+  temperatures
+  |> Enum.map(fn temperature ->
+  case invoke.(prompt, temperature) do
+    {:ok, body, _} ->
+      %{
+        temperature: temperature,
+        text: get_in(body, ["output", "message", "content", Access.at(0), "text"]),
+        input_tokens: get_in(body, ["usage", "inputTokens"]),
+        output_tokens: get_in(body, ["usage", "outputTokens"])
+      }
+
+    error ->
+      %{temperature: temperature, error: inspect(error)}
+  end
+end)
+
+token_chart =
+  temperature_results
+  |> Enum.filter(&Map.has_key?(&1, :output_tokens))
+  |> then(fn rows ->
+    VegaLite.new(width: 600, height: 240, title: "Temperature ごとの出力トークン")
+    |> VegaLite.data_from_values(rows)
+    |> VegaLite.mark(:bar, tooltip: true)
+    |> VegaLite.encode_field(:x, "temperature", type: :ordinal, title: "Temperature")
+    |> VegaLite.encode_field(:y, "output_tokens", type: :quantitative, title: "出力 tokens")
+    |> Kino.VegaLite.new()
+  end)
+
+Kino.Layout.tabs([
+  {"トークン比較", token_chart},
+  {"応答比較", Kino.DataTable.new(temperature_results)}
+])
+```
+
+分類や抽出では再現性を重視して低い temperature を選び、発想支援では多様性を許容します。ただしパラメータだけで正確性を保証できません。
+
+## ハンズオン3: JSON Schema で出力契約を作る
+
+対応モデルを選んで実行してください。未対応モデルでは ValidationException になるため、それ自体が API 互換性を確認する演習です。
+
+```elixir
+schema = %{
+  "type" => "object",
+  "properties" => %{
+    "category" => %{
+      "type" => "string",
+      "enum" => ["billing", "technical", "account", "other"]
+    },
+    "summary" => %{"type" => "string"},
+    "priority" => %{"type" => "string", "enum" => ["low", "medium", "high"]},
+    "next_action" => %{"type" => ["string", "null"]}
+  },
+  "required" => ["category", "summary", "priority", "next_action"],
+  "additionalProperties" => false
+}
+```
+
+```elixir
+structured_payload = %{
+  "system" => [%{"text" => prompt.system}],
+  "messages" => [
+    %{"role" => "user", "content" => [%{"text" => prompt.user}]}
+  ],
+  "inferenceConfig" => %{"maxTokens" => 300, "temperature" => 0.0},
+  "outputConfig" => %{
+    "textFormat" => %{
+      "type" => "json_schema",
+      "structure" => %{
+        "jsonSchema" => %{
+          "name" => "support_ticket",
+          "description" => "問い合わせの分類結果",
+          "schema" => Jason.encode!(schema)
+        }
+      }
+    }
+  }
+}
+
+{:ok, structured_response, _} =
+  AWS.BedrockRuntime.converse(
+    client,
+    Kino.Input.read(model_id_input),
+    structured_payload,
+    recv_timeout: 60_000
+  )
+
+structured_response
+|> get_in(["output", "message", "content", Access.at(0), "text"])
+|> Jason.decode!()
+```
+
+構造化出力は構文とスキーマ適合を助けますが、内容の事実性を保証しません。業務ルールは通常のバリデーションでも検証します。
+
+## ハンズオン4: プロンプト回帰テスト
+
+```elixir
+cases = [
+  %{input: "パスワードを忘れました", expected: "account"},
+  %{input: "請求額が契約と違います", expected: "billing"},
+  %{input: "API が 429 を返します", expected: "technical"}
+]
+
+# AWS を呼ばず、評価パイプラインの形を確認するためのスタブ
+classify_stub = fn text ->
+  cond do
+    String.contains?(text, ["請求", "金額"]) -> "billing"
+    String.contains?(text, ["API", "エラー"]) -> "technical"
+    String.contains?(text, ["パスワード", "ログイン"]) -> "account"
+    true -> "other"
+  end
+end
+
+results =
+  Enum.map(cases, fn test ->
+    actual = classify_stub.(test.input)
+    Map.merge(test, %{actual: actual, passed: actual == test.expected})
+  end)
+
+%{
+  prompt_version: PromptTemplate.version(),
+  pass_rate: Enum.count(results, & &1.passed) / length(results),
+  cases: results
+}
+```
+
+本番の回帰テストでは、固定した評価データセット、プロンプトバージョン、モデル／推論プロファイル、推論パラメータ、出力、トークン、レイテンシーを一緒に記録します。
+
+## 判断問題
+
+1. temperature を 0 にしても出力の完全な決定性を保証できないのはなぜですか。
+2. JSON Schema と自然言語の「JSONで返して」の違いは何ですか。
+3. Prompt Management、S3 上のテンプレート、コード内定数を、承認・再利用・デプロイ単位で比較してください。
+4. Prompt Caching が効く入力と効かない入力を1つずつ挙げてください。
+
+## 公式資料
+
+- [Structured Outputs](https://docs.aws.amazon.com/bedrock/latest/userguide/structured-output.html)
+- [Converse API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html)
+- [Prompt Caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html)
+- [Advanced Prompt Optimization](https://docs.aws.amazon.com/bedrock/latest/userguide/advanced-prompt-optimization-how.html)
+- [Prompt attack security](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-injection.html)

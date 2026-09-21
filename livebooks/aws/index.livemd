@@ -9,3 +9,4 @@
 * [DynamoDB](dynamo.livemd)
 * [Lambda](lambda.livemd)
 * [SageMaker](sagemaker.livemd)
+* [AWS Certified Generative AI Developer - Professional (AIP-C01)](aip/00_index.livemd)

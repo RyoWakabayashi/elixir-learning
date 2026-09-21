@@ -1,0 +1,191 @@
+# AIP-C01 07: コスト・性能・オブザーバビリティ
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.19"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## 概要
+
+> 最終確認日: 2026-09-21
+>
+> 対応範囲: 4.1〜4.3, 1.2, 2.2, 5.2
+
+## このノートで身につけること
+
+- トークン、モデル、キャッシュ、バッチ、スループットのコストを比較する
+- TTFT、end-to-end latency、throughput、error rate を区別する
+- 技術メトリクスと品質・ビジネスメトリクスを結びつける
+- invocation logging の価値と機密データリスクを評価する
+
+## 最新仕様の要点
+
+Bedrock Runtime は CloudWatch の `AWS/Bedrock` namespace に呼び出し数、レイテンシー、トークン、エラー、Prompt Cache などのメトリクスを出します。Model Invocation Logging は既定で無効で、設定すると request / response / metadata を CloudWatch Logs または S3 に送れます。全文ログは診断に有用ですが、PII や秘密情報、保持、アクセス制御、コストのリスクがあります。
+
+Prompt Caching は長く繰り返す prefix の入力コストとレイテンシーを下げる候補です。Batch inference は非同期の大量処理、Provisioned Throughput は安定した高負荷、cross-Region inference は利用可能容量の拡大、Prompt Router は品質とコストの動的選択に使います。
+
+## ハンズオン1: 単価を変数としてコストを比較する
+
+価格は変更されるため、現在の [Bedrock Pricing](https://aws.amazon.com/bedrock/pricing/) から対象リージョン・モデルの「1,000 トークン当たり単価」を入力してください。
+
+```elixir
+input_price = Kino.Input.number("入力 $ / 1K tokens", default: 0.0001, step: 0.0001)
+output_price = Kino.Input.number("出力 $ / 1K tokens", default: 0.0005, step: 0.0001)
+requests_input = Kino.Input.number("月間リクエスト数", default: 100_000)
+avg_input = Kino.Input.number("平均入力 tokens", default: 800)
+avg_output = Kino.Input.number("平均出力 tokens", default: 200)
+
+Kino.Layout.grid([input_price, output_price, requests_input, avg_input, avg_output], columns: 3)
+```
+
+```elixir
+requests = Kino.Input.read(requests_input)
+input_tokens = requests * Kino.Input.read(avg_input)
+output_tokens = requests * Kino.Input.read(avg_output)
+
+input_cost = input_tokens / 1_000 * Kino.Input.read(input_price)
+output_cost = output_tokens / 1_000 * Kino.Input.read(output_price)
+
+%{
+  monthly_input_tokens: input_tokens,
+  monthly_output_tokens: output_tokens,
+  input_cost_usd: Float.round(input_cost, 2),
+  output_cost_usd: Float.round(output_cost, 2),
+  total_usd: Float.round(input_cost + output_cost, 2)
+}
+```
+
+## ハンズオン2: 最適化シナリオ
+
+```elixir
+baseline = %{requests: 100_000, input_tokens: 800, output_tokens: 200}
+
+scenarios = [
+  %{name: "baseline", request_ratio: 1.0, input_ratio: 1.0, output_ratio: 1.0},
+  %{name: "prompt compression", request_ratio: 1.0, input_ratio: 0.7, output_ratio: 1.0},
+  %{name: "semantic cache 25% hit", request_ratio: 0.75, input_ratio: 1.0, output_ratio: 1.0},
+  %{name: "maxTokens tuning", request_ratio: 1.0, input_ratio: 1.0, output_ratio: 0.65},
+  %{name: "combined", request_ratio: 0.75, input_ratio: 0.7, output_ratio: 0.65}
+]
+
+unit_input = Kino.Input.read(input_price)
+unit_output = Kino.Input.read(output_price)
+
+cost_rows =
+  scenarios
+  |> Enum.map(fn scenario ->
+    request_count = baseline.requests * scenario.request_ratio
+    in_tokens = request_count * baseline.input_tokens * scenario.input_ratio
+    out_tokens = request_count * baseline.output_tokens * scenario.output_ratio
+    cost = in_tokens / 1_000 * unit_input + out_tokens / 1_000 * unit_output
+
+    %{scenario: scenario.name, input_tokens: trunc(in_tokens), output_tokens: trunc(out_tokens), cost_usd: Float.round(cost, 2)}
+  end)
+
+cost_chart =
+  VegaLite.new(width: 680, height: 270, title: "最適化シナリオ別の月額推定")
+  |> VegaLite.data_from_values(cost_rows)
+  |> VegaLite.mark(:bar, tooltip: true)
+  |> VegaLite.encode_field(:y, "scenario", type: :nominal, title: "シナリオ", sort: "-x")
+  |> VegaLite.encode_field(:x, "cost_usd", type: :quantitative, title: "月額推定 (USD)")
+  |> Kino.VegaLite.new()
+
+Kino.Layout.tabs([
+  {"コスト比較", cost_chart},
+  {"トークン内訳", Kino.DataTable.new(cost_rows)}
+])
+```
+
+キャッシュは「同じ意味なら過去回答を返す」ため、権限、tenant、鮮度、モデル／prompt version、Guardrail version を cache key と invalidation に含めます。コスト削減だけで品質事故を起こさないようにします。
+
+## ハンズオン3: SLO とアラーム判定
+
+```elixir
+slo = %{
+  success_rate: 0.995,
+  p95_latency_ms: 3_000,
+  grounded_rate: 0.97,
+  cost_per_success_usd: 0.01
+}
+
+window = %{
+  requests: 20_000,
+  successes: 19_860,
+  p95_latency_ms: 2_850,
+  grounded_responses: 19_100,
+  evaluated_responses: 19_500,
+  cost_usd: 170.0
+}
+
+observed = %{
+  success_rate: window.successes / window.requests,
+  p95_latency_ms: window.p95_latency_ms,
+  grounded_rate: window.grounded_responses / window.evaluated_responses,
+  cost_per_success_usd: window.cost_usd / window.successes
+}
+
+Enum.map(observed, fn {metric, value} ->
+  target = Map.fetch!(slo, metric)
+  direction = if metric in [:p95_latency_ms, :cost_per_success_usd], do: :max, else: :min
+  pass = if direction == :max, do: value <= target, else: value >= target
+  %{metric: metric, observed: value, target: target, pass: pass}
+end)
+|> Kino.DataTable.new()
+```
+
+成功率だけでは「高速に誤答する」サービスを見逃します。運用、品質、安全、コスト、ビジネス成果の指標を並べます。
+
+## ハンズオン4: invocation log を安全に要約する
+
+```elixir
+log_record = %{
+  request_id: "req-123",
+  model_id: "example-model",
+  input_tokens: 820,
+  output_tokens: 190,
+  latency_ms: 2_340,
+  status: 200,
+  prompt: "顧客 taro@example.com の契約を要約して",
+  response: "taro@example.com の契約は..."
+}
+
+safe_log =
+  log_record
+  |> Map.drop([:prompt, :response])
+  |> Map.put(:content_logged, false)
+  |> Map.put(:prompt_fingerprint, :crypto.hash(:sha256, log_record.prompt) |> Base.encode16(case: :lower))
+
+safe_log
+```
+
+全文が必要な調査環境では、別ロググループ、KMS、厳格な IAM、短い保持、マスキング、監査を使います。CloudTrail は API 操作の監査、CloudWatch はメトリクス／ログ／アラーム、X-Ray はサービス境界のトレースという役割を区別します。
+
+## 監視する代表指標
+
+| 分類 | 指標例 |
+|---|---|
+| 利用 | Invocations、input/output/cache tokens |
+| 信頼性 | throttles、4xx/5xx、fallback rate、queue depth |
+| 性能 | TTFT、p50/p95/p99 latency、tokens/sec |
+| RAG | retrieval latency、Recall@k、empty retrieval、rerank gain |
+| 品質・安全 | grounded rate、hallucination rate、Guardrail intervention、schema failure |
+| Agent | task completion、tool error、steps、loop termination、approval rate |
+| ビジネス | containment、conversion、time saved、cost per successful task |
+
+## 判断問題
+
+1. オンデマンドから Provisioned Throughput に切り替える前に、何を測定しますか。
+2. Prompt Caching と semantic response cache の違いを説明してください。
+3. `totalTokens` が一定でもコストやレイテンシーが変わる理由を挙げてください。
+4. invocation logging を有効化しない判断が妥当になる条件は何ですか。
+
+## 公式資料
+
+- [CloudWatch runtime metrics](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-runtime-metrics.html)
+- [Model invocation logging](https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html)
+- [Prompt Caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html)
+- [Provisioned Throughput](https://docs.aws.amazon.com/bedrock/latest/userguide/prov-throughput.html)
+- [Scaling and throughput](https://docs.aws.amazon.com/bedrock/latest/userguide/scaling-throughput-best-practices.html)
+- [Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
