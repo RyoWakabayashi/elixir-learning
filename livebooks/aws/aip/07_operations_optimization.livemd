@@ -9,7 +9,7 @@ Mix.install([
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 >
 > 対応範囲: 4.1〜4.3, 1.2, 2.2, 5.2
 
@@ -161,6 +161,86 @@ safe_log
 ```
 
 全文が必要な調査環境では、別ロググループ、KMS、厳格な IAM、短い保持、マスキング、監査を使います。CloudTrail は API 操作の監査、CloudWatch はメトリクス／ログ／アラーム、X-Ray はサービス境界のトレースという役割を区別します。
+
+## ハンズオン5: Prompt Cache の損益分岐を測る
+
+Converse の `usage.inputTokens` はキャッシュ利用時、キャッシュから読んだ／書いたトークンを含まないため、総入力は `inputTokens + cacheReadInputTokens + cacheWriteInputTokens` で求めます。料金比率はモデルごとに変わるので、現在の価格表から入力してください。
+
+```elixir
+cache_usage = [
+  %{request: 1, input: 180, cache_read: 0, cache_write: 4_000, output: 220, latency_ms: 2_900},
+  %{request: 2, input: 190, cache_read: 4_000, cache_write: 0, output: 210, latency_ms: 1_700},
+  %{request: 3, input: 175, cache_read: 4_000, cache_write: 0, output: 205, latency_ms: 1_620},
+  %{request: 4, input: 4_180, cache_read: 0, cache_write: 0, output: 215, latency_ms: 2_850}
+]
+
+# 価格そのものではなく、通常入力を 1.0 とした相対単価。対象モデルの料金で置き換える。
+rates = %{input: 1.0, cache_read: 0.1, cache_write: 1.25}
+
+cache_analysis =
+  Enum.map(cache_usage, fn row ->
+    total_input = row.input + row.cache_read + row.cache_write
+    relative_cost = row.input * rates.input + row.cache_read * rates.cache_read + row.cache_write * rates.cache_write
+
+    Map.merge(row, %{
+      total_input: total_input,
+      cache_hit_rate: if(total_input == 0, do: 0.0, else: row.cache_read / total_input),
+      relative_input_cost: relative_cost
+    })
+  end)
+
+cache_rows =
+  Enum.flat_map(cache_analysis, fn row ->
+    [
+      %{request: row.request, metric: "latency_ms", value: row.latency_ms},
+      %{request: row.request, metric: "relative_input_cost", value: row.relative_input_cost}
+    ]
+  end)
+
+cache_chart =
+  VegaLite.new(width: 650, height: 260, title: "キャッシュ hit / miss がコストとレイテンシーへ与える影響")
+  |> VegaLite.data_from_values(cache_rows)
+  |> VegaLite.mark(:bar, tooltip: true)
+  |> VegaLite.encode_field(:x, "request", type: :ordinal, title: "request")
+  |> VegaLite.encode_field(:x_offset, "metric")
+  |> VegaLite.encode_field(:y, "value", type: :quantitative, title: "値（単位は凡例参照）")
+  |> VegaLite.encode_field(:color, "metric", type: :nominal, title: "metric")
+  |> Kino.VegaLite.new()
+
+Kino.Layout.tabs([
+  {"比較", cache_chart},
+  {"明細", Kino.DataTable.new(cache_analysis)}
+])
+```
+
+1回目の cache write は通常入力より高価な場合があり、再利用が少ない prefix では逆効果です。静的な system / tool definition / 長い参照文書を前、動的なユーザー入力を後ろへ置き、`cacheReadInputTokens`、hit rate、TTL 内の再利用回数、p95 latency を同時に確認します。暗黙キャッシュは best effort で、同じ入力でも hit は保証されません。
+
+## ハンズオン6: 429 をメトリクスから切り分ける
+
+```elixir
+diagnose_throttle = fn sample ->
+  cond do
+    sample.input_tpm >= sample.input_tpm_quota -> :input_tokens_per_minute
+    sample.output_tpm >= sample.output_tpm_quota -> :output_tokens_per_minute
+    sample.rpm >= sample.rpm_quota -> :requests_per_minute
+    sample.concurrent >= sample.concurrent_quota -> :concurrency
+    sample.max_tokens_reserved > sample.output_p95 * 4 -> :excessive_max_tokens
+    true -> :inspect_error_type_and_service_quota
+  end
+end
+
+throttle_samples = [
+  %{window: "10:00", input_tpm: 88_000, input_tpm_quota: 100_000, output_tpm: 9_000, output_tpm_quota: 20_000, rpm: 102, rpm_quota: 100, concurrent: 4, concurrent_quota: 10, max_tokens_reserved: 1_000, output_p95: 400},
+  %{window: "10:01", input_tpm: 101_000, input_tpm_quota: 100_000, output_tpm: 8_000, output_tpm_quota: 20_000, rpm: 80, rpm_quota: 100, concurrent: 5, concurrent_quota: 10, max_tokens_reserved: 1_000, output_p95: 380},
+  %{window: "10:02", input_tpm: 70_000, input_tpm_quota: 100_000, output_tpm: 7_000, output_tpm_quota: 20_000, rpm: 60, rpm_quota: 100, concurrent: 10, concurrent_quota: 10, max_tokens_reserved: 4_000, output_p95: 350}
+]
+
+throttle_samples
+|> Enum.map(&Map.put(&1, :likely_bottleneck, diagnose_throttle.(&1)))
+|> Kino.DataTable.new()
+```
+
+429 へ無条件にモデル変更や Provisioned Throughput を適用しません。まず dimension（model ID / inference profile / region）、エラー型、RPM / TPM / concurrency、`maxTokens`、retry 増幅を突き合わせます。安定した高利用率と予測可能な需要を測定してから Provisioned Throughput を比較し、突発負荷では cross-Region inference、キュー、同時実行制御も候補にします。
 
 ## 監視する代表指標
 

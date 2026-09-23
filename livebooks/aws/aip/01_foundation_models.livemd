@@ -11,7 +11,7 @@ Mix.install([
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 >
 > 対応範囲: 1.1, 1.2, 1.3, 2.2, 2.4
 
@@ -274,6 +274,64 @@ Enum.map(requests, &%{request: &1.name, selected: route.(&1)})
 ```
 
 本番ではモデル ID を AppConfig や環境設定に置き、カナリア、ロールバック、監査を可能にします。モデルの廃止やリージョン変更をアプリの再ビルドなしで扱える設計が狙いです。
+
+## ハンズオン5: hard constraint で候補を落としてから最適化する
+
+「最高品質のモデル」を最初に選ぶと、データ所在地、モダリティ、API 互換性、SLA を後付けしがちです。以下は医療文書要約と公開 FAQ を同じ候補表で評価する例です。
+
+```elixir
+model_catalog = [
+  %{id: "model-a", regions: ["ap-northeast-1"], modalities: [:text], converse: true, quality: 4.2, p95_ms: 1_900, relative_cost: 2.0},
+  %{id: "model-b", regions: ["us-east-1"], modalities: [:text, :image], converse: true, quality: 4.7, p95_ms: 3_100, relative_cost: 5.0},
+  %{id: "model-c", regions: ["ap-northeast-1"], modalities: [:text, :image], converse: false, quality: 4.4, p95_ms: 1_400, relative_cost: 3.0}
+]
+
+workload_requirements = [
+  %{name: "医療文書", allowed_regions: ["ap-northeast-1"], modality: :text, require_converse: true, max_p95_ms: 2_500},
+  %{name: "商品画像FAQ", allowed_regions: ["ap-northeast-1", "us-east-1"], modality: :image, require_converse: true, max_p95_ms: 3_500}
+]
+
+evaluate_candidate = fn model, requirement ->
+  violations =
+    []
+    |> then(fn xs -> if Enum.any?(model.regions, &(&1 in requirement.allowed_regions)), do: xs, else: [:data_residency | xs] end)
+    |> then(fn xs -> if requirement.modality in model.modalities, do: xs, else: [:modality | xs] end)
+    |> then(fn xs -> if not requirement.require_converse or model.converse, do: xs, else: [:api_compatibility | xs] end)
+    |> then(fn xs -> if model.p95_ms <= requirement.max_p95_ms, do: xs, else: [:latency_slo | xs] end)
+    |> Enum.reverse()
+
+  %{
+    workload: requirement.name,
+    model: model.id,
+    eligible: violations == [],
+    rejection_reasons: violations,
+    quality: model.quality,
+    relative_cost: model.relative_cost
+  }
+end
+
+decision_matrix =
+  for requirement <- workload_requirements,
+      model <- model_catalog,
+      do: evaluate_candidate.(model, requirement)
+
+Kino.DataTable.new(decision_matrix)
+```
+
+```elixir
+selected =
+  decision_matrix
+  |> Enum.filter(& &1.eligible)
+  |> Enum.group_by(& &1.workload)
+  |> Enum.map(fn {workload, candidates} ->
+    best = Enum.max_by(candidates, fn row -> row.quality / row.relative_cost end)
+    %{workload: workload, selected: best.model, reason: "hard constraints pass + quality/cost"}
+  end)
+
+Kino.DataTable.new(selected)
+```
+
+実際のカタログ値は `ListFoundationModels`、モデルカード、リージョン対応表、料金表、Service Quotas、負荷試験から作ります。HIPAA eligible などのコンプライアンス要件は「モデルの点数」ではなく、アカウント設定、BAA、データフロー、ログ、暗号化を含むシステム全体の hard gate として扱います。
 
 ## 判断問題
 

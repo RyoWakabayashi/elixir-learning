@@ -11,7 +11,7 @@ Mix.install([
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 >
 > 対応範囲: 3.1〜3.4, 1.6, 2.3
 
@@ -106,21 +106,19 @@ sample = "連絡先は taro@example.com、電話は 03-1234-5678 です。"
 
 正規表現は誤検出・見逃しがあります。Guardrails の sensitive information filter、Comprehend PII、Macie、データ分類と使い分けます。ログに保存した後で消すのでは遅いため、記録前の最小化が重要です。
 
-## ハンズオン3: Guardrail を Converse に適用する
+## ハンズオン3: タグ付き Guardrail を作成する
 
-事前に Bedrock Console で Guardrail を作成・バージョン発行し、現在対応するモデルを選びます。呼び出しには料金が発生します。
+この実習では DRAFT の Guardrail を作り、FM を呼ばずに `ApplyGuardrail` で PII 匿名化をテストします。作成・評価には料金が発生する場合があります。必要権限は `bedrock:CreateGuardrail`、`bedrock:GetGuardrail`、`bedrock:ListTagsForResource`、`bedrock:ApplyGuardrail`、`bedrock:DeleteGuardrail` と、残存確認用の `tag:GetResources` です。
 
 ```elixir
 access_key_input = Kino.Input.password("AWS_ACCESS_KEY_ID")
 secret_key_input = Kino.Input.password("AWS_SECRET_ACCESS_KEY")
 session_token_input = Kino.Input.password("AWS_SESSION_TOKEN（一時認証の場合）")
 region_input = Kino.Input.text("AWS_REGION", default: "ap-northeast-1")
-model_id_input = Kino.Input.text("MODEL_ID")
-guardrail_id_input = Kino.Input.text("GUARDRAIL_ID")
-guardrail_version_input = Kino.Input.text("GUARDRAIL_VERSION", default: "1")
+owner_input = Kino.Input.text("aip:owner（英数字・ハイフン）", default: "student")
 
 Kino.Layout.grid(
-  [access_key_input, secret_key_input, session_token_input, region_input, model_id_input, guardrail_id_input, guardrail_version_input],
+  [access_key_input, secret_key_input, session_token_input, region_input, owner_input],
   columns: 2
 )
 ```
@@ -138,32 +136,135 @@ client =
     AWS.Client.create(access_key, secret_key, session_token, region)
   end
 
-payload = %{
-  "messages" => [
-    %{
-      "role" => "user",
-      "content" => [%{"text" => "私のメールアドレス taro@example.com を繰り返してください"}]
-    }
-  ],
-  "guardrailConfig" => %{
-    "guardrailIdentifier" => Kino.Input.read(guardrail_id_input),
-    "guardrailVersion" => Kino.Input.read(guardrail_version_input),
-    "trace" => "enabled"
-  },
-  "inferenceConfig" => %{"maxTokens" => 200, "temperature" => 0.0}
-}
+owner =
+  owner_input
+  |> Kino.Input.read()
+  |> String.replace(~r/[^A-Za-z0-9_-]/, "-")
+  |> String.slice(0, 32)
 
-AWS.BedrockRuntime.converse(
-  client,
-  Kino.Input.read(model_id_input),
-  payload,
-  recv_timeout: 60_000
-)
+lab_id = "#{Date.utc_today() |> Date.to_iso8601() |> String.replace("-", "")}-#{System.unique_integer([:positive])}"
+expires_at = DateTime.utc_now() |> DateTime.add(4, :hour) |> DateTime.to_iso8601()
+
+lab_tags = [
+  %{"key" => "aip:managed-by", "value" => "livebook"},
+  %{"key" => "aip:lab-id", "value" => lab_id},
+  %{"key" => "aip:notebook", "value" => "05-safety-security-governance"},
+  %{"key" => "aip:owner", "value" => owner},
+  %{"key" => "aip:expires-at", "value" => expires_at}
+]
+
+{:ok, resource_ledger} = Agent.start_link(fn -> [] end)
+
+%{lab_id: lab_id, expires_at: expires_at, tags: lab_tags}
 ```
 
-レスポンスの `stopReason`、出力、trace を確認し、ブロック・匿名化・通過の期待値をテストケース化します。Guardrail の基盤モデルは更新されるため、作成時だけでなく継続的な回帰テストが必要です。
+作成結果を受け取った直後に台帳へ登録します。後続セルが失敗しても、このセルまで成功していれば ARN と ID を回収できます。
 
-## ハンズオン4: 最小権限ポリシーを読む
+```elixir
+guardrail_name = "aip-livebook-#{lab_id}"
+
+{:ok, guardrail, _http_response} =
+  AWS.Bedrock.create_guardrail(client, %{
+    "name" => guardrail_name,
+    "description" => "AIP Livebook lab; delete after verification",
+    "blockedInputMessaging" => "入力を安全に処理できませんでした。",
+    "blockedOutputsMessaging" => "出力を安全に処理できませんでした。",
+    "sensitiveInformationPolicyConfig" => %{
+      "piiEntitiesConfig" => [
+        %{"type" => "EMAIL", "action" => "ANONYMIZE"},
+        %{"type" => "PHONE", "action" => "ANONYMIZE"}
+      ]
+    },
+    "tags" => lab_tags
+  })
+
+guardrail_id = guardrail["guardrailId"]
+guardrail_arn = guardrail["guardrailArn"]
+
+Agent.update(resource_ledger, fn resources ->
+  [%{service: :bedrock, type: :guardrail, id: guardrail_id, arn: guardrail_arn, name: guardrail_name} | resources]
+end)
+
+guardrail
+```
+
+Guardrail の作成は非同期です。`READY` になるまで短くポーリングし、`FAILED` はその場で止めます。
+
+```elixir
+guardrail_status =
+  Enum.reduce_while(1..30, nil, fn attempt, _last ->
+    case AWS.Bedrock.get_guardrail(client, guardrail_id, "DRAFT") do
+      {:ok, %{"status" => "READY"} = body, _} ->
+        {:halt, body}
+
+      {:ok, %{"status" => "FAILED"} = body, _} ->
+        {:halt, body}
+
+      {:ok, body, _} ->
+        Process.sleep(1_000)
+        {:cont, Map.put(body, "pollAttempt", attempt)}
+
+      error ->
+        {:halt, %{error: inspect(error)}}
+    end
+  end)
+
+guardrail_status
+```
+
+## ハンズオン4: ApplyGuardrail をテーブル駆動で検証する
+
+`ApplyGuardrail` は FM と切り離して入力・出力を評価できます。安全な入力、メール、電話を同じコードでテストし、`action`、匿名化結果、処理単位を証跡にします。
+
+```elixir
+guardrail_cases = [
+  %{id: "safe", text: "返品条件を教えてください"},
+  %{id: "email", text: "連絡先は taro@example.com です"},
+  %{id: "phone", text: "電話番号は 03-1234-5678 です"}
+]
+
+guardrail_results =
+  if guardrail_status["status"] == "READY" do
+    Enum.map(guardrail_cases, fn test ->
+      case AWS.BedrockRuntime.apply_guardrail(
+             client,
+             guardrail_id,
+             "DRAFT",
+             %{
+               "source" => "INPUT",
+               "outputScope" => "FULL",
+               "content" => [%{"text" => %{"text" => test.text}}]
+             }
+           ) do
+        {:ok, body, _} ->
+          %{
+            id: test.id,
+            action: body["action"],
+            output: get_in(body, ["outputs", Access.at(0), "text"]),
+            sensitive_units: get_in(body, ["usage", "sensitiveInformationPolicyUnits"])
+          }
+
+        error ->
+          %{id: test.id, action: "ERROR", output: inspect(error), sensitive_units: nil}
+      end
+    end)
+  else
+    [%{id: "setup", action: "SKIPPED", output: "Guardrail is not READY. Retry the status and test cells.", sensitive_units: nil}]
+  end
+
+Kino.DataTable.new(guardrail_results)
+```
+
+```elixir
+{:ok, %{"tags" => actual_tags}, _} =
+  AWS.Bedrock.list_tags_for_resource(client, %{"resourceARN" => guardrail_arn})
+
+Kino.DataTable.new(actual_tags)
+```
+
+`action=GUARDRAIL_INTERVENED` でも、匿名化とブロックでは UI の扱いが異なります。`outputs` と `assessments` を併せて判定し、期待結果を回帰テストにしてください。Guardrail の内部モデルは更新されるため、作成時だけでなく継続的な評価が必要です。
+
+## ハンズオン5: 最小権限ポリシーを読む
 
 次は教材用テンプレートです。アカウント、リージョン、モデル、Guardrail を実値へ置き換え、IAM Access Analyzer で検証してください。
 
@@ -221,3 +322,81 @@ policy
 - [Automated Reasoning checks](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning-checks.html)
 - [Enforce a Guardrail with IAM](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions-id.html)
 - [Data retention](https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html)
+- [CreateGuardrail API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_CreateGuardrail.html)
+- [ApplyGuardrail API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ApplyGuardrail.html)
+- [DeleteGuardrail API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_DeleteGuardrail.html)
+- [Resource Groups Tagging API: GetResources](https://docs.aws.amazon.com/resourcegroupstagging/latest/APIReference/API_GetResources.html)
+
+## クリーンアップ: 必ず実行する
+
+これがこのノートブックの最終実習です。Guardrail 本体を削除すると全バージョンも削除されます。削除前に台帳を表示し、対象がこの `lab_id` のリソースであることを確認してください。
+
+```elixir
+created_resources = Agent.get(resource_ledger, &Enum.reverse/1)
+Kino.DataTable.new(created_resources)
+```
+
+```elixir
+cleanup_results =
+  created_resources
+  |> Enum.reverse()
+  |> Enum.map(fn
+    %{service: :bedrock, type: :guardrail, id: id, arn: arn} ->
+      %{resource: arn, result: AWS.Bedrock.delete_guardrail(client, id, %{})}
+  end)
+
+Kino.DataTable.new(
+  Enum.map(cleanup_results, fn row -> %{resource: row.resource, result: inspect(row.result)} end)
+)
+```
+
+削除は非同期になり得ます。個別 API で名前・ID が消えたことを確認した後、タグ検索で同じ実行の取りこぼしを探します。タグ検索は結果反映に時間がかかるため、残って見える場合は少し待って再実行してください。
+
+```elixir
+service_audit =
+  Enum.reduce_while(1..30, [], fn _attempt, _last ->
+    case AWS.Bedrock.list_guardrails(client) do
+      {:ok, body, _} ->
+        remaining =
+          body
+          |> Map.get("guardrails", [])
+          |> Enum.filter(fn item -> item["id"] == guardrail_id or item["name"] == guardrail_name end)
+
+        if remaining == [] do
+          {:halt, []}
+        else
+          Process.sleep(1_000)
+          {:cont, remaining}
+        end
+
+      error ->
+        {:halt, [%{"auditError" => inspect(error)}]}
+    end
+  end)
+
+tag_audit =
+  case AWS.ResourceGroupsTaggingAPI.get_resources(client, %{
+         "TagFilters" => [
+           %{"Key" => "aip:managed-by", "Values" => ["livebook"]},
+           %{"Key" => "aip:lab-id", "Values" => [lab_id]}
+         ]
+       }) do
+    {:ok, body, _} -> Map.get(body, "ResourceTagMappingList", [])
+    error -> [%{"auditError" => inspect(error)}]
+  end
+
+summary = %{
+  lab_id: lab_id,
+  service_resources_remaining: length(service_audit),
+  tagged_resources_remaining: length(tag_audit),
+  cleanup_complete: service_audit == [] and tag_audit == []
+}
+
+Kino.Layout.tabs([
+  {"結果", Kino.DataTable.new([summary])},
+  {"Bedrock 残存", Kino.DataTable.new(service_audit)},
+  {"タグ残存", Kino.DataTable.new(tag_audit)}
+])
+```
+
+`cleanup_complete` が `true` になるまで実習は完了ではありません。Livebook を閉じて台帳を失った場合は、Tag Editor または `GetResources` で `aip:managed-by=livebook`、`aip:owner=<自分>`、期限切れの `aip:expires-at` を検索してください。

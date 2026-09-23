@@ -9,7 +9,7 @@ Mix.install([
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 
 このシリーズは、Amazon Bedrock を中心に、本番向け生成 AI アプリケーションを設計・実装・運用する力を Livebook で身につけるための教材です。暗記ではなく、コードを動かして「なぜその選択肢が適切か」を説明できる状態を目指します。
 
@@ -38,6 +38,8 @@ Mix.install([
 7. [07 コスト・性能・オブザーバビリティ](07_operations_optimization.livemd)
 8. [08 評価・テスト・トラブルシューティング](08_evaluation_troubleshooting.livemd)
 
+各章には、実務要件を読み取って「採用案・却下案・検証方法」を決めるケース演習を置いています。05 と 06 は実際に AWS リソースを作成するため、最後のクリーンアップと残存確認までを実習範囲に含めます。
+
 ```elixir
 Kino.Mermaid.new("""
 flowchart
@@ -58,7 +60,7 @@ flowchart
 
 ## 推奨の進め方
 
-各ノートブックを「読む → ローカル演習 → AWS 実習 → 確認問題」の順に進めます。AWS 実習は料金が発生する場合があります。リソースを作る実習では、終了後に必ず削除してください。
+各ノートブックを「要件を読む → 仮説を立てる → ローカルで比較する → AWS で検証する → 証拠を残す → 削除する」の順に進めます。AWS 実習は料金が発生する場合があります。
 
 ```elixir
 domains = [
@@ -87,6 +89,40 @@ Kino.Layout.tabs([
 ```
 
 上の値は学習時間配分の目安です。試験は補整スコアリングであり、分野ごとの合格ラインはありません。
+
+## AWS 実習の共通ルール
+
+リソース作成を含むノートブックでは、次のタグを作成時に付けます。`aip:lab-id` は実行ごとに変え、`aip:owner` は自分を識別できる値にします。
+
+| タグ | 用途 |
+|---|---|
+| `aip:managed-by=livebook` | この教材が作成したリソースを横断検索する |
+| `aip:lab-id=<run id>` | 1回の実習で作成したリソースを束ねる |
+| `aip:notebook=<name>` | 作成元ノートブックを特定する |
+| `aip:owner=<name>` | 複数利用者の実習を区別する |
+| `aip:expires-at=<ISO 8601>` | 削除予定時刻を人と自動化が判断する |
+
+実習の完了条件は API が成功することではなく、次の4点です。
+
+1. 作成直後に ARN / URL / ID をリソース台帳へ登録する
+2. 操作結果、request ID、メトリクスを確認する
+3. 依存する側から逆順で削除する
+4. 個別 API と Resource Groups Tagging API の両方で残存を確認する
+
+> Livebook を閉じるとメモリ上の台帳は失われます。タグはその場合の復旧手段です。後日の棚卸しでは `aip:managed-by=livebook` と `aip:owner` で検索し、`aip:expires-at` を過ぎたものを確認してください。タグ検索は結果反映に時間がかかることがあり、未タグのリソースは `GetResources` に出ないため、サービス固有の一覧 API も併用します。
+
+```elixir
+Kino.Mermaid.new("""
+flowchart LR
+  P["Plan: name / TTL / tags"] --> C["Create"]
+  C --> R["Register ID / ARN"]
+  R --> V["Verify behavior"]
+  V --> D["Delete in reverse dependency order"]
+  D --> A{"Leak audit"}
+  A -->|remaining| D
+  A -->|none| Z["Lab complete"]
+""")
+```
 
 ## 学習前チェック
 

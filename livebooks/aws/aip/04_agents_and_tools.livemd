@@ -11,7 +11,7 @@ Mix.install([
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 >
 > 対応範囲: 2.1, 2.3, 2.5, 3.1, 4.3, 5.1
 
@@ -27,6 +27,8 @@ Mix.install([
 Amazon Bedrock の tool use では、通常モデル自身が外部処理を実行するのではなく、モデルがツール呼び出しを要求し、アプリケーションが検証・実行して結果を返します。Bedrock は client-side tool use に加え、Responses API の server-side tool use、Anthropic 固有ツールも提供します。API とモデルごとの対応を確認してください。
 
 標準版 AIP-C01 には Amazon Bedrock AgentCore が追加されています。AgentCore は Runtime、Gateway、Memory、Identity、Observability、Policy に加え、Harness、Browser、Code Interpreter、Payments、Evaluations、Optimization、Registry などを含む本番エージェント向けプラットフォームです。機能追加が速いため、名称の暗記より「実行・ツール接続・状態・認証認可・監視評価」の要件へ対応付けます。フレームワークや FM は Strands Agents や Bedrock 内のモデルに限定されません。
+
+> 2026-09-22 現在、従来の Amazon Bedrock Agents は **Agents Classic** とされ、新規顧客向け提供は終了しています。既存顧客は継続利用できます。AIP-C01 の出題範囲と既存環境の保守のため Action Groups、Knowledge Bases、`InvokeAgent`、session state は学びつつ、新規の本番設計では AgentCore や client-side tool use も比較してください。
 
 ```elixir
 Kino.Mermaid.new("""
@@ -234,13 +236,99 @@ end
 
 エージェントは「賢い Lambda」ではありません。非決定的な判断を含むため、リソース境界、冪等性キー、タイムアウト、サーキットブレーカー、ステップ上限、承認、監査証跡を明示します。
 
+## ハンズオン4: session state と業務データを分離する
+
+Agents Classic の `sessionAttributes` は同じ `sessionId` の間で保持され、`promptSessionAttributes` は1回の `InvokeAgent` だけに適用されます。どちらも認可の正本にはせず、注文所有者や返金可否はツール側のデータストアで再確認します。
+
+```elixir
+build_session_state = fn user_context, request_context ->
+  %{
+    "sessionAttributes" => %{
+      "locale" => user_context.locale,
+      "preferred_unit" => user_context.preferred_unit
+    },
+    "promptSessionAttributes" => %{
+      "request_id" => request_context.request_id,
+      "time_zone" => request_context.time_zone
+    }
+  }
+end
+
+session_state =
+  build_session_state.(
+    %{locale: "ja-JP", preferred_unit: "metric"},
+    %{request_id: "req-20260922-001", time_zone: "Asia/Tokyo"}
+  )
+
+Kino.Tree.new(session_state)
+```
+
+セッションへクレジットカード番号、アクセスキー、恒久的な顧客属性を入れません。`sessionId` は会話の相関用であり、ユーザー認証や tenant 境界の代替ではありません。
+
+## ハンズオン5: 副作用ツールを exactly-once に近づける
+
+ネットワーク再試行とモデルの再計画で、同じ返金ツールが複数回要求されることがあります。`toolUseId` だけでなく、業務操作を一意にする idempotency key と永続ストアを使います。
+
+```elixir
+{:ok, idempotency_store} = Agent.start_link(fn -> %{} end)
+
+refund = fn order_id, amount, idempotency_key ->
+  Agent.get_and_update(idempotency_store, fn state ->
+    case Map.fetch(state, idempotency_key) do
+      {:ok, previous} ->
+        {{:replayed, previous}, state}
+
+      :error ->
+        result = %{refund_id: "RF-#{order_id}", order_id: order_id, amount: amount}
+        {{:created, result}, Map.put(state, idempotency_key, result)}
+    end
+  end)
+end
+
+key = "tenant-a:ORD-100:refund-v1"
+
+[
+  refund.("ORD-100", 1_200, key),
+  refund.("ORD-100", 1_200, key)
+]
+```
+
+この Agent は教材用です。本番は DynamoDB の条件付き書き込みなどを使い、`tenant + operation + business entity + version` をキーにします。引数が同じキーと矛盾した場合は replay せず、監査イベントとして拒否します。
+
+## ハンズオン6: trace から失敗境界を特定する
+
+```elixir
+trace_events = [
+  %{step: 1, type: "orchestration", target: "FM", latency_ms: 740, status: "ok"},
+  %{step: 2, type: "tool", target: "get_order_status", latency_ms: 120, status: "ok"},
+  %{step: 3, type: "tool", target: "refund_order", latency_ms: 2_900, status: "timeout"},
+  %{step: 4, type: "orchestration", target: "FM retry", latency_ms: 810, status: "ok"}
+]
+
+latency_chart =
+  VegaLite.new(width: 650, height: 240, title: "Agent trace のステップ別レイテンシー")
+  |> VegaLite.data_from_values(trace_events)
+  |> VegaLite.mark(:bar, tooltip: true)
+  |> VegaLite.encode_field(:x, "step", type: :ordinal, title: "step")
+  |> VegaLite.encode_field(:y, "latency_ms", type: :quantitative, title: "latency (ms)")
+  |> VegaLite.encode_field(:color, "status", type: :nominal, title: "status")
+  |> Kino.VegaLite.new()
+
+Kino.Layout.tabs([
+  {"レイテンシー", latency_chart},
+  {"trace", Kino.DataTable.new(trace_events)}
+])
+```
+
+最終応答だけでは、計画、FM、Knowledge Base、Action Group / tool、権限、下流 API のどこで失敗したか判別できません。trace は機密情報を含み得るため、全文を無期限保存せず、request ID・step・resource・duration・outcome を中心に記録します。
+
 ## 構成の使い分け
 
 | 選択 | 適する場面 |
 |---|---|
 | アプリ内 client-side tool use | 小さな制御ループ、独自の厳密な実行制御 |
 | Step Functions | 可視な決定的ワークフロー、待機・承認・再試行 |
-| Bedrock Agents | Bedrock 管理のオーケストレーション、Action Groups、Knowledge Bases |
+| Bedrock Agents Classic | 既存環境の Bedrock 管理オーケストレーション、Action Groups、Knowledge Bases |
 | AgentCore | 任意フレームワークの本番実行、Gateway、Memory、Identity、Policy、Observability |
 | Lambda 上の MCP server | 軽量・ステートレスなツール公開 |
 | ECS 上の MCP server | 長時間・複雑・状態を伴うツール |
@@ -255,6 +343,9 @@ end
 ## 公式資料
 
 - [Amazon Bedrock tool use](https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use.html)
+- [Agents Classic maintenance mode](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html)
+- [Agent session context](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-session-state.html)
+- [Agent trace events](https://docs.aws.amazon.com/bedrock/latest/userguide/trace-events.html)
 - [Amazon Bedrock AgentCore Developer Guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html)
 - [AgentCore resource-based policies](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/resource-based-policies.html)
 - [AgentCore Gateway permissions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-prerequisites-permissions.html)

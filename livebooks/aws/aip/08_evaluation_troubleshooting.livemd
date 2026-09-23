@@ -9,7 +9,7 @@ Mix.install([
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 >
 > 対応範囲: 5.1, 5.2, 1.2, 1.5, 3.4, 4.3
 
@@ -217,6 +217,92 @@ diagnose.(%{
 })
 ```
 
+## ハンズオン5: 平均値ではなく slice ごとの退行を見る
+
+全体平均が改善しても、日本語、長文、権限制御、adversarial input の一部だけが悪化することがあります。baseline と candidate を同じ case に対して実行し、case 単位の差分を保存します。
+
+```elixir
+paired_results = [
+  %{id: "ja-short-1", slice: "ja-short", baseline: 0.82, candidate: 0.89},
+  %{id: "ja-long-1", slice: "ja-long", baseline: 0.78, candidate: 0.68},
+  %{id: "en-short-1", slice: "en-short", baseline: 0.86, candidate: 0.90},
+  %{id: "acl-1", slice: "authorization", baseline: 1.00, candidate: 0.50},
+  %{id: "attack-1", slice: "adversarial", baseline: 0.92, candidate: 0.94}
+]
+
+slice_results =
+  paired_results
+  |> Enum.group_by(& &1.slice)
+  |> Enum.map(fn {slice, rows} ->
+    baseline_mean = Enum.sum(Enum.map(rows, & &1.baseline)) / length(rows)
+    candidate_mean = Enum.sum(Enum.map(rows, & &1.candidate)) / length(rows)
+
+    %{
+      slice: slice,
+      baseline: baseline_mean,
+      candidate: candidate_mean,
+      delta: candidate_mean - baseline_mean,
+      hard_gate: slice in ["authorization", "adversarial"],
+      pass: candidate_mean >= baseline_mean - if(slice in ["authorization", "adversarial"], do: 0.0, else: 0.03)
+    }
+  end)
+  |> Enum.sort_by(& &1.delta)
+
+delta_chart =
+  VegaLite.new(width: 650, height: 260, title: "slice ごとの candidate - baseline")
+  |> VegaLite.data_from_values(slice_results)
+  |> VegaLite.mark(:bar, tooltip: true)
+  |> VegaLite.encode_field(:y, "slice", type: :nominal, title: "slice", sort: "x")
+  |> VegaLite.encode_field(:x, "delta", type: :quantitative, title: "score delta")
+  |> VegaLite.encode_field(:color, "pass", type: :nominal, title: "gate")
+  |> Kino.VegaLite.new()
+
+Kino.Layout.tabs([
+  {"退行", delta_chart},
+  {"判定", Kino.DataTable.new(slice_results)}
+])
+```
+
+この候補は英語・短文では改善していますが、authorization slice が hard gate を破るためリリース不可です。平均スコアや加重合計でセキュリティ退行を相殺しません。
+
+## ハンズオン6: LLM judge を人手ラベルで校正する
+
+judge のスコアをそのまま真実と扱わず、同じ rubric を使った人手ラベルとの一致率、false pass、false fail を確認します。false pass は「judge が合格、人が不合格」で、安全性や正確性のゲートでは特に危険です。
+
+```elixir
+calibration_set = [
+  %{id: "c1", human: :pass, judge: :pass},
+  %{id: "c2", human: :fail, judge: :pass},
+  %{id: "c3", human: :fail, judge: :fail},
+  %{id: "c4", human: :pass, judge: :fail},
+  %{id: "c5", human: :pass, judge: :pass},
+  %{id: "c6", human: :fail, judge: :pass}
+]
+
+confusion = %{
+  true_pass: Enum.count(calibration_set, &(&1.human == :pass and &1.judge == :pass)),
+  true_fail: Enum.count(calibration_set, &(&1.human == :fail and &1.judge == :fail)),
+  false_pass: Enum.count(calibration_set, &(&1.human == :fail and &1.judge == :pass)),
+  false_fail: Enum.count(calibration_set, &(&1.human == :pass and &1.judge == :fail))
+}
+
+calibration_summary = %{
+  agreement: (confusion.true_pass + confusion.true_fail) / length(calibration_set),
+  false_pass_rate: confusion.false_pass / Enum.count(calibration_set, &(&1.human == :fail)),
+  false_fail_rate: confusion.false_fail / Enum.count(calibration_set, &(&1.human == :pass)),
+  judge_model: "record-the-actual-judge-model",
+  rubric_version: "grounded-answer-v2"
+}
+
+Kino.Layout.tabs([
+  {"校正指標", Kino.DataTable.new([calibration_summary])},
+  {"混同行列", Kino.DataTable.new([confusion])},
+  {"ケース", Kino.DataTable.new(calibration_set)}
+])
+```
+
+本番ではラベル順をランダム化し、可能なら回答 A/B の提示順も入れ替えます。judge model、rubric、temperature、評価日時を固定し、不一致ケースを専門家が再確認します。Bedrock RAG evaluation では Retrieve-only の Context relevance / coverage と、Retrieve-and-generate の Correctness / Completeness / Faithfulness / Citation precision / Citation coverage などを目的に合わせて選びます。
+
 ## 評価セットの設計
 
 - 実トラフィック分布を反映し、easy / typical / hard / adversarial を含める
@@ -269,5 +355,6 @@ flowchart TD
 - [Amazon Bedrock Evaluations](https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html)
 - [LLM-as-a-judge](https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-judge.html)
 - [RAG evaluation metrics](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-eval-retrieve.html)
+- [RAG metric definitions](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-evaluation-metrics.html)
 - [CloudWatch runtime metrics](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-runtime-metrics.html)
 - [Troubleshooting API errors](https://docs.aws.amazon.com/bedrock/latest/userguide/troubleshooting-api-error-codes.html)

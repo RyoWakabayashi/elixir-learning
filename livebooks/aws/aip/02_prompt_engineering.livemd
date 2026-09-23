@@ -12,7 +12,7 @@ Mix.install([
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 >
 > 対応範囲: 1.6, 2.4, 4.1, 4.2, 5.2
 
@@ -257,6 +257,52 @@ results =
 ```
 
 本番の回帰テストでは、固定した評価データセット、プロンプトバージョン、モデル／推論プロファイル、推論パラメータ、出力、トークン、レイテンシーを一緒に記録します。
+
+## ハンズオン5: Prompt Management の昇格判定を作る
+
+Prompt Management の DRAFT を直接本番参照せず、固定 version の ARN をデプロイ設定へ昇格します。variant の比較結果だけでなく、安全性、スキーマ、コスト、レイテンシーを hard gate にします。
+
+```elixir
+prompt_release = %{
+  prompt_id: "PROMPT_ID",
+  candidate_version: "7",
+  variants: ["concise-v2", "grounded-v3"],
+  selected_variant: "grounded-v3",
+  model_id: "INFERENCE_PROFILE_OR_MODEL_ID",
+  eval_dataset_version: "support-golden-2026-09",
+  metrics: %{
+    schema_pass_rate: 1.0,
+    grounded_rate: 0.97,
+    safety_pass_rate: 0.998,
+    p95_latency_ms: 2_650,
+    avg_input_tokens: 1_240
+  }
+}
+
+release_gate = %{
+  min_schema_pass_rate: 0.995,
+  min_grounded_rate: 0.95,
+  min_safety_pass_rate: 0.995,
+  max_p95_latency_ms: 3_000,
+  max_avg_input_tokens: 1_500
+}
+
+release_checks = [
+  %{check: "schema", pass: prompt_release.metrics.schema_pass_rate >= release_gate.min_schema_pass_rate},
+  %{check: "grounded", pass: prompt_release.metrics.grounded_rate >= release_gate.min_grounded_rate},
+  %{check: "safety", pass: prompt_release.metrics.safety_pass_rate >= release_gate.min_safety_pass_rate},
+  %{check: "latency", pass: prompt_release.metrics.p95_latency_ms <= release_gate.max_p95_latency_ms},
+  %{check: "input tokens", pass: prompt_release.metrics.avg_input_tokens <= release_gate.max_avg_input_tokens}
+]
+
+%{
+  deploy: Enum.all?(release_checks, & &1.pass),
+  target_arn: "arn:aws:bedrock:REGION:ACCOUNT:prompt/#{prompt_release.prompt_id}:#{prompt_release.candidate_version}",
+  checks: release_checks
+}
+```
+
+managed prompt の ARN を `Converse` の `modelId` に使う場合、テンプレート側に system / messages / inference config が含まれます。呼び出し側では `promptVariables` を渡し、同時指定できない `system`、`toolConfig`、`inferenceConfig` などの制約を確認します。アプリ設定には prompt ID だけでなく version を固定し、前バージョンへ戻せるようにします。
 
 ## 判断問題
 

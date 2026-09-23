@@ -2,14 +2,17 @@
 
 ```elixir
 Mix.install([
+  {:aws, "~> 1.0.15"},
+  {:hackney, "~> 4.7"},
   {:kino, "~> 0.19"},
-  {:kino_vega_lite, "~> 0.1"}
+  {:kino_vega_lite, "~> 0.1"},
+  {:jason, "~> 1.4"}
 ])
 ```
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 >
 > 対応範囲: 1.1, 1.2, 2.2〜2.5, 4.2, 5.2
 
@@ -25,6 +28,58 @@ Mix.install([
 Bedrock の batch inference は大量の独立プロンプトを S3 入出力で非同期処理します。Converse 形式も利用できますが、tool calling、structured output、複数ターンのやり取りは使えません。状態変更は EventBridge で受け、ポーリングを避けられます。
 
 スロットリングや一時的容量不足では、`Retry-After` を尊重し、指数バックオフと jitter、上限付き試行回数、同時実行制御を使います。429 をすべて同じ原因と決めつけず、エラー型、RPM / TPM、`max_tokens`、モデル準備状態を確認します。503 / 529 は一時的容量エラーとして扱い、必要なら cross-Region inference やフォールバックを検討します。
+
+## AWS 接続と実習タグ
+
+後半の SQS 実習で2つのキューを作成します。長期アクセスキーを保存せず、一時認証情報または Livebook Secrets を使ってください。
+
+```elixir
+access_key_input = Kino.Input.password("AWS_ACCESS_KEY_ID")
+secret_key_input = Kino.Input.password("AWS_SECRET_ACCESS_KEY")
+session_token_input = Kino.Input.password("AWS_SESSION_TOKEN（一時認証の場合）")
+region_input = Kino.Input.text("AWS_REGION", default: "ap-northeast-1")
+owner_input = Kino.Input.text("aip:owner（英数字・ハイフン）", default: "student")
+
+Kino.Layout.grid(
+  [access_key_input, secret_key_input, session_token_input, region_input, owner_input],
+  columns: 2
+)
+```
+
+```elixir
+access_key = Kino.Input.read(access_key_input)
+secret_key = Kino.Input.read(secret_key_input)
+session_token = Kino.Input.read(session_token_input)
+region = Kino.Input.read(region_input)
+
+client =
+  if session_token in [nil, ""] do
+    AWS.Client.create(access_key, secret_key, region)
+  else
+    AWS.Client.create(access_key, secret_key, session_token, region)
+  end
+
+owner =
+  owner_input
+  |> Kino.Input.read()
+  |> String.replace(~r/[^A-Za-z0-9_-]/, "-")
+  |> String.slice(0, 20)
+
+lab_id = "#{Date.utc_today() |> Date.to_iso8601() |> String.replace("-", "")}-#{System.unique_integer([:positive])}"
+expires_at = DateTime.utc_now() |> DateTime.add(4, :hour) |> DateTime.to_iso8601()
+
+queue_tags = %{
+  "aip:managed-by" => "livebook",
+  "aip:lab-id" => lab_id,
+  "aip:notebook" => "06-production-integration",
+  "aip:owner" => owner,
+  "aip:expires-at" => expires_at
+}
+
+{:ok, queue_ledger} = Agent.start_link(fn -> [] end)
+
+%{lab_id: lab_id, expires_at: expires_at, tags: queue_tags}
+```
 
 ## ハンズオン1: 統合方式を要件から選ぶ
 
@@ -174,6 +229,110 @@ sample_event = %{
 handle_event.(sample_event)
 ```
 
+## ハンズオン5: DLQ 付き非同期キューを構築する
+
+ユーザーへの同期応答と長時間処理を分離する最小構成を SQS で作ります。DLQ を先に作り、その ARN を source queue の `RedrivePolicy` に設定します。タグは作成リクエストに含め、タグなしの瞬間を作りません。
+
+```elixir
+queue_prefix = "aip-#{owner}-#{lab_id}"
+dlq_name = "#{queue_prefix}-dlq"
+work_queue_name = "#{queue_prefix}-work"
+
+{:ok, %{"QueueUrl" => dlq_url}, _} =
+  AWS.SQS.create_queue(client, %{
+    "QueueName" => dlq_name,
+    "Attributes" => %{"MessageRetentionPeriod" => "3600"},
+    "tags" => queue_tags
+  })
+
+Agent.update(queue_ledger, fn resources ->
+  [%{type: :queue, role: :dlq, name: dlq_name, url: dlq_url} | resources]
+end)
+
+Process.sleep(1_000)
+
+{:ok, %{"Attributes" => %{"QueueArn" => dlq_arn}}, _} =
+  AWS.SQS.get_queue_attributes(client, %{
+    "QueueUrl" => dlq_url,
+    "AttributeNames" => ["QueueArn"]
+  })
+
+{:ok, %{"QueueUrl" => work_queue_url}, _} =
+  AWS.SQS.create_queue(client, %{
+    "QueueName" => work_queue_name,
+    "Attributes" => %{
+      "VisibilityTimeout" => "10",
+      "MessageRetentionPeriod" => "3600",
+      "ReceiveMessageWaitTimeSeconds" => "2",
+      "RedrivePolicy" => Jason.encode!(%{
+        "deadLetterTargetArn" => dlq_arn,
+        "maxReceiveCount" => "3"
+      })
+    },
+    "tags" => queue_tags
+  })
+
+Agent.update(queue_ledger, fn resources ->
+  [%{type: :queue, role: :work, name: work_queue_name, url: work_queue_url} | resources]
+end)
+
+Process.sleep(1_000)
+
+Kino.DataTable.new(Agent.get(queue_ledger, &Enum.reverse/1))
+```
+
+作成セルの途中で失敗した場合も、成功したキューは直後に台帳へ入ります。IAM には `sqs:CreateQueue` に加えて、作成時タグ用の `sqs:TagQueue` が必要です。
+
+```elixir
+job = %{
+  job_id: "job-001",
+  operation: "summarize",
+  input_uri: "s3://example-input/prefix/item.jsonl",
+  idempotency_key: "tenant-a:item-42:v1",
+  trace_id: "trace-001"
+}
+
+{:ok, sent, _} =
+  AWS.SQS.send_message(client, %{
+    "QueueUrl" => work_queue_url,
+    "MessageBody" => Jason.encode!(job)
+  })
+
+{:ok, received, _} =
+  AWS.SQS.receive_message(client, %{
+    "QueueUrl" => work_queue_url,
+    "MaxNumberOfMessages" => 1,
+    "WaitTimeSeconds" => 2,
+    "AttributeNames" => ["ApproximateReceiveCount"]
+  })
+
+%{sent: sent, received: received}
+```
+
+本番 worker は処理が成功した後だけ `DeleteMessage` を呼びます。可視性タイムアウトより処理が長い場合は延長し、重複配信を前提に idempotency key を永続化します。DLQ へ到達したメッセージは「自動的に直った」ことにはならないため、アラーム、原因分類、redrive 前の修正が必要です。
+
+```elixir
+{:ok, %{"Attributes" => queue_attributes}, _} =
+  AWS.SQS.get_queue_attributes(client, %{
+    "QueueUrl" => work_queue_url,
+    "AttributeNames" => [
+      "QueueArn",
+      "VisibilityTimeout",
+      "RedrivePolicy",
+      "ApproximateNumberOfMessages",
+      "ApproximateNumberOfMessagesNotVisible"
+    ]
+  })
+
+{:ok, %{"Tags" => actual_queue_tags}, _} =
+  AWS.SQS.list_queue_tags(client, %{"QueueUrl" => work_queue_url})
+
+Kino.Layout.tabs([
+  {"キュー属性", Kino.DataTable.new([queue_attributes])},
+  {"タグ", Kino.DataTable.new(Enum.map(actual_queue_tags, fn {key, value} -> %{key: key, value: value} end))}
+])
+```
+
 ## リファレンスアーキテクチャ
 
 ```elixir
@@ -222,3 +381,75 @@ flowchart
 - [Bedrock events with EventBridge](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-eventbridge-how-it-works.html)
 - [Cross-Region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html)
 - [Latency-optimized inference](https://docs.aws.amazon.com/bedrock/latest/userguide/latency-optimized-inference.html)
+- [SQS CreateQueue](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_CreateQueue.html)
+- [SQS dead-letter queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html)
+- [Resource Groups Tagging API: GetResources](https://docs.aws.amazon.com/resourcegroupstagging/latest/APIReference/API_GetResources.html)
+
+## クリーンアップ: 必ず実行する
+
+source queue が DLQ を参照しているため、source → DLQ の順に削除します。SQS はキュー削除後、同名キューを再作成できるまで最低60秒必要です。
+
+```elixir
+created_queues = Agent.get(queue_ledger, &Enum.reverse/1)
+Kino.DataTable.new(created_queues)
+```
+
+```elixir
+cleanup_results =
+  created_queues
+  |> Enum.reverse()
+  |> Enum.map(fn queue ->
+    %{name: queue.name, role: queue.role, result: AWS.SQS.delete_queue(client, %{"QueueUrl" => queue.url})}
+  end)
+
+Kino.DataTable.new(
+  Enum.map(cleanup_results, fn row -> Map.update!(row, :result, &inspect/1) end)
+)
+```
+
+```elixir
+service_audit =
+  Enum.reduce_while(1..30, [], fn _attempt, _last ->
+    case AWS.SQS.list_queues(client, %{"QueueNamePrefix" => queue_prefix}) do
+      {:ok, body, _} ->
+        remaining = Map.get(body, "QueueUrls", [])
+
+        if remaining == [] do
+          {:halt, []}
+        else
+          Process.sleep(1_000)
+          {:cont, remaining}
+        end
+
+      error ->
+        {:halt, [%{"auditError" => inspect(error)}]}
+    end
+  end)
+
+tag_audit =
+  case AWS.ResourceGroupsTaggingAPI.get_resources(client, %{
+         "TagFilters" => [
+           %{"Key" => "aip:managed-by", "Values" => ["livebook"]},
+           %{"Key" => "aip:lab-id", "Values" => [lab_id]}
+         ],
+         "ResourceTypeFilters" => ["sqs:queue"]
+       }) do
+    {:ok, body, _} -> Map.get(body, "ResourceTagMappingList", [])
+    error -> [%{"auditError" => inspect(error)}]
+  end
+
+summary = %{
+  lab_id: lab_id,
+  service_resources_remaining: length(service_audit),
+  tagged_resources_remaining: length(tag_audit),
+  cleanup_complete: service_audit == [] and tag_audit == []
+}
+
+Kino.Layout.tabs([
+  {"結果", Kino.DataTable.new([summary])},
+  {"SQS 残存", Kino.DataTable.new(Enum.map(service_audit, &%{queue_url: &1}))},
+  {"タグ残存", Kino.DataTable.new(tag_audit)}
+])
+```
+
+`cleanup_complete` が `true` になるまで実習は完了ではありません。タグ検索には反映遅延があるため、サービス固有の `ListQueues` が空でタグ側だけ残る場合は、少し待って監査セルを再実行してください。台帳を失った場合は `aip:managed-by=livebook` と `aip:owner=<自分>` で期限切れリソースを検索します。

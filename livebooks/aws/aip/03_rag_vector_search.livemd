@@ -11,7 +11,7 @@ Mix.install([
 
 ## 概要
 
-> 最終確認日: 2026-09-21
+> 最終確認日: 2026-09-22
 >
 > 対応範囲: 1.3, 1.4, 1.5, 3.1, 4.2, 5.1, 5.2
 
@@ -208,6 +208,81 @@ Kino.Text.new(grounded_prompt)
 ```
 
 ここで検索結果が誤っていれば、強い生成モデルに変えても根拠は改善しません。検索失敗（recall / relevance）と生成失敗（faithfulness / correctness）を分離して診断します。
+
+## ハンズオン5: semantic / keyword / hybrid を評価セットで比較する
+
+商品コード、エラーコード、固有名詞は keyword 検索が強く、言い換えは semantic 検索が強い傾向があります。どちらかを直感で選ばず、同一クエリに対する順位を Reciprocal Rank Fusion (RRF) で統合し、ACL フィルター後の Recall@k を比較します。
+
+```elixir
+retrieval_fixture = [
+  %{id: "d1", tenant: "alpha", text: "API の TooManyRequestsException は 429 を返す", semantic: 0.73, keyword: 1.00},
+  %{id: "d2", tenant: "alpha", text: "呼び出し過多では指数バックオフを使う", semantic: 0.94, keyword: 0.25},
+  %{id: "d3", tenant: "beta", text: "429 の上限緩和を申請する", semantic: 0.88, keyword: 0.80},
+  %{id: "d4", tenant: "alpha", text: "認証失敗は再試行しない", semantic: 0.31, keyword: 0.10}
+]
+
+rank = fn rows, score_key ->
+  rows
+  |> Enum.sort_by(&Map.fetch!(&1, score_key), :desc)
+  |> Enum.with_index(1)
+  |> Map.new(fn {row, position} -> {row.id, position} end)
+end
+
+authorized = Enum.filter(retrieval_fixture, &(&1.tenant == "alpha"))
+semantic_rank = rank.(authorized, :semantic)
+keyword_rank = rank.(authorized, :keyword)
+
+hybrid_results =
+  authorized
+  |> Enum.map(fn row ->
+    rrf = 1 / (60 + semantic_rank[row.id]) + 1 / (60 + keyword_rank[row.id])
+    Map.merge(row, %{semantic_rank: semantic_rank[row.id], keyword_rank: keyword_rank[row.id], rrf: rrf})
+  end)
+  |> Enum.sort_by(& &1.rrf, :desc)
+  |> Enum.with_index(1)
+  |> Enum.map(fn {row, position} -> Map.put(row, :hybrid_rank, position) end)
+
+Kino.DataTable.new(hybrid_results)
+```
+
+```elixir
+relevant = MapSet.new(["d1", "d2"])
+
+recall_at_2 = fn ranked_ids ->
+  ranked_ids
+  |> Enum.take(2)
+  |> MapSet.new()
+  |> MapSet.intersection(relevant)
+  |> MapSet.size()
+  |> Kernel./(MapSet.size(relevant))
+end
+
+comparison = [
+  %{strategy: "semantic", recall_at_2: recall_at_2.(semantic_rank |> Enum.sort_by(&elem(&1, 1)) |> Enum.map(&elem(&1, 0)))},
+  %{strategy: "keyword", recall_at_2: recall_at_2.(keyword_rank |> Enum.sort_by(&elem(&1, 1)) |> Enum.map(&elem(&1, 0)))},
+  %{strategy: "hybrid RRF", recall_at_2: recall_at_2.(Enum.map(hybrid_results, & &1.id))}
+]
+
+VegaLite.new(width: 600, height: 230, title: "検索方式ごとの Recall@2")
+|> VegaLite.data_from_values(comparison)
+|> VegaLite.mark(:bar, tooltip: true)
+|> VegaLite.encode_field(:x, "strategy", type: :nominal, title: "検索方式")
+|> VegaLite.encode_field(:y, "recall_at_2", type: :quantitative, title: "Recall@2", scale: [domain: [0, 1]])
+|> Kino.VegaLite.new()
+```
+
+この fixture では `tenant=beta` の文書が高得点でも、ランキング前に除外しています。検索後に ACL を適用すると、権限外の文書がモデル入力へ入り得るだけでなく、top-k の枠を消費して Recall も下がります。本番比較では、同じ評価セットで latency、Recall@k、MRR、フィルター後の候補数、rerank gain を記録します。
+
+### 実務ケース: 8 TB / 4,000万ベクトルをどう選ぶか
+
+次の順序で判断を書き出してください。
+
+1. hard constraint: データ所在地、暗号化、tenant 分離、復旧目標
+2. workload: ベクトル数、増分更新、QPS、p95 latency、hybrid / facet の要否
+3. economics: 保存・検索・取り込み・運用人件費
+4. experiment: 代表クエリと adversarial query で recall / latency / cost を比較
+
+低頻度で保存コスト重視なら S3 Vectors、高 QPS・低レイテンシー・高度な hybrid search なら OpenSearch が候補になりますが、規模だけで自動的に決まりません。Aurora PostgreSQL は既存の関係データとの整合性、Neptune Analytics は関係探索が主要要件のときに比較します。
 
 ## 設計比較
 
